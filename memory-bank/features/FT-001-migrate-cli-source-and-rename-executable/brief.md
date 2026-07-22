@@ -4,6 +4,9 @@ doc_kind: feature
 doc_function: canonical
 purpose: "Canonical brief для переноса Go CLI в standalone-репозиторий и смены единственного публичного имени исполняемого файла на `mb-cli`."
 derived_from:
+  - ../../product/context.md
+  - ../../domain/rules.md
+source_refs:
   - "https://github.com/dapi/memory-bank-cli/issues/1"
   - "https://github.com/dapi/memory-bank/issues/51"
   - "https://github.com/dapi/memory-bank-cli/issues/2"
