@@ -195,37 +195,56 @@ func safePath(root, relative string) (string, error) {
 }
 
 func render(item asset) string {
+	markers := markerSyntax(item)
 	digest := digest(item.content)
-	return fmt.Sprintf("<!-- MB-CLI GITHUB ADAPTER START: %s sha256:%s -->\n%s<!-- MB-CLI GITHUB ADAPTER END: %s -->\n", item.id, digest, item.content, item.id)
+	return markers.startPrefix + digest + markers.startTerminator + item.content + markers.end
 }
 
 func reconcile(item asset, existing string) (string, string, string) {
-	startPrefix := "<!-- MB-CLI GITHUB ADAPTER START: " + item.id + " sha256:"
-	end := "<!-- MB-CLI GITHUB ADAPTER END: " + item.id + " -->"
-	start := strings.Index(existing, startPrefix)
+	markers := markerSyntax(item)
+	start := strings.Index(existing, markers.startPrefix)
 	if start < 0 {
 		if strings.Contains(existing, "MB-CLI GITHUB ADAPTER") {
 			return existing, Conflict, "adapter markers are malformed or belong to another asset"
 		}
 		return existing, Preserve, "existing unmarked GitHub file is user-owned"
 	}
-	lineEnd := strings.Index(existing[start:], " -->\n")
-	endAt := strings.Index(existing[start:], end)
-	if lineEnd < 0 || endAt < 0 || strings.Count(existing, startPrefix) != 1 || strings.Count(existing, end) != 1 {
+	lineEnd := strings.Index(existing[start:], markers.startTerminator)
+	endAt := strings.Index(existing[start:], markers.end)
+	if lineEnd < 0 || endAt < 0 || lineEnd >= endAt || strings.Count(existing, markers.startPrefix) != 1 || strings.Count(existing, markers.end) != 1 {
 		return existing, Conflict, "adapter markers are malformed or ambiguous"
 	}
-	lineEnd += start + len(" -->\n")
+	lineEnd += start + len(markers.startTerminator)
 	endStart := start + endAt
-	recorded := strings.TrimSuffix(strings.TrimPrefix(existing[start:lineEnd], startPrefix), " -->\n")
+	recorded := strings.TrimSuffix(strings.TrimPrefix(existing[start:lineEnd], markers.startPrefix), markers.startTerminator)
 	body := existing[lineEnd:endStart]
 	if recorded != digest(body) {
 		return existing, Conflict, "managed adapter block has downstream drift"
 	}
 	nextBlock := render(item)
-	if existing[start:endStart+len(end)] == strings.TrimSuffix(nextBlock, "\n") {
+	if existing[start:endStart+len(markers.end)] == nextBlock {
 		return existing, Preserve, "managed adapter block is current"
 	}
-	return existing[:start] + strings.TrimSuffix(nextBlock, "\n") + existing[endStart+len(end):], Update, "update clean managed adapter block"
+	return existing[:start] + nextBlock + existing[endStart+len(markers.end):], Update, "update clean managed adapter block"
+}
+
+type markers struct {
+	startPrefix, startTerminator, end string
+}
+
+func markerSyntax(item asset) markers {
+	if filepath.Ext(item.path) == ".yml" || filepath.Ext(item.path) == ".yaml" {
+		return markers{
+			startPrefix:     "# MB-CLI GITHUB ADAPTER START: " + item.id + " sha256:",
+			startTerminator: "\n",
+			end:             "# MB-CLI GITHUB ADAPTER END: " + item.id + "\n",
+		}
+	}
+	return markers{
+		startPrefix:     "<!-- MB-CLI GITHUB ADAPTER START: " + item.id + " sha256:",
+		startTerminator: " -->\n",
+		end:             "<!-- MB-CLI GITHUB ADAPTER END: " + item.id + " -->\n",
+	}
 }
 
 func digest(value string) string {

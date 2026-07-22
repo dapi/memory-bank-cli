@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"gopkg.in/yaml.v3"
 )
 
 func decision(t *testing.T, report Report, path string) Decision {
@@ -26,12 +28,26 @@ func TestInitCreatesOptInAdapterAndUpdateIsIdempotent(t *testing.T) {
 	}
 	path := filepath.Join(repo, ".github", "ISSUE_TEMPLATE", "memory-bank-feature.yml")
 	data, err := os.ReadFile(path)
-	if err != nil || !strings.Contains(string(data), "Expected outcome") || !strings.Contains(string(data), "MB-CLI GITHUB ADAPTER START") {
+	if err != nil || !strings.Contains(string(data), "Expected outcome") || !strings.Contains(string(data), "# MB-CLI GITHUB ADAPTER START") {
 		t.Fatalf("feature form was not installed: %q, %v", data, err)
+	}
+	var form yaml.Node
+	if err := yaml.Unmarshal(data, &form); err != nil {
+		t.Fatalf("installed feature form is not valid YAML: %v", err)
 	}
 	report, err = Run(Options{RepoRoot: repo})
 	if err != nil || report.Applied || report.ConflictCount != 0 || decision(t, report, ".github/pull_request_template.md").Action != Preserve {
 		t.Fatalf("repeated update was not idempotent: report=%#v err=%v", report, err)
+	}
+}
+
+func TestMalformedReversedMarkerIsAConflict(t *testing.T) {
+	item := defaultAssets()[0]
+	// The end marker appears before the terminator of this deliberately broken start line.
+	malformed := "# MB-CLI GITHUB ADAPTER START: " + item.id + " sha256:missing" + markerSyntax(item).end + item.content
+	_, action, _ := reconcile(item, malformed)
+	if action != Conflict {
+		t.Fatalf("malformed marker action=%q, want conflict", action)
 	}
 }
 
