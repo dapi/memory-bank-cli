@@ -50,7 +50,7 @@ The standalone module has a GoReleaser configuration for `mb-cli`, but no reposi
 
 - `ASM-01` Issue #3 is open and explicitly requires a tagged, Go-installable `v1.0.0`; the repository currently has no tag or GitHub release.
 - `ASM-02` `.goreleaser.yml` is the existing release-build configuration: it has one `mb-cli` build, GitHub release settings and a Homebrew cask that requires `HOMEBREW_TAP_GITHUB_TOKEN`.
-- `CON-01` Creating a public tag/release, using GitHub credentials and publishing external assets are irreversible external effects; they require an explicit human approval gate.
+- `CON-01` Creating a public tag, using GitHub credentials and publishing external assets are irreversible external effects. The repository-enforced approval gate protects GitHub Release publication; a maintainer must separately authorize the tag push under repository permissions.
 - `CON-02` The release must be independently installable with the exact Go command from issue #3; local/snapshot builds cannot prove that criterion.
 - `CON-03` `memory-bank/` remains payload terminology; the prohibition in `REQ-04` applies to executable identities, release artifacts and installation paths.
 

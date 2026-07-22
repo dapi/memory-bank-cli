@@ -112,6 +112,54 @@ None.
 
 No blocking human gate. Future public publication remains explicitly subject to `AG-01`.
 
+## Reconciliation Run — 2026-07-22
+
+### Cycle 1
+
+#### Review summary
+
+The source issue, all FT-003 owners, related release operations guidance, the implemented workflow and the GitHub `release` environment were reconciled. The package correctly requires a maintainer and a protected release publication, but it overstated the environment's enforcement boundary.
+
+#### Findings
+
+| Priority | Finding | Resolution |
+| --- | --- | --- |
+| important | `brief.md` `CON-01`, `design.md` `INV-03`/`RB-02`, `implementation-plan.md` `PRE-03`, `AG-01`, `STEP-04`, `CP-03` and `STOP-02` represented the required-reviewer environment as a gate before tag creation. The implemented `.github/workflows/release.yml` is tag-triggered: the tag can be pushed by a permitted maintainer, then validation runs, and the environment gates only the GitHub Release publication job. | Separated maintainer authorization of the tag push from `AG-01`'s repository-enforced approval of GitHub Release publication. The update is recorded in `DEC-06` and reconciles the conflicting owner statements without changing release scope. |
+
+#### FPF resolutions
+
+- `DEC-06`: bounded-context and gate/evidence reasoning distinguished two observable controls: repository permission for a human tag push, and the GitHub environment's required-reviewer rule for publication. The result is grounded in the workflow trigger/job graph and environment protection, not an assumed pre-tag enforcement mechanism.
+
+#### Changes made
+
+Updated `brief.md`, `design.md`, `implementation-plan.md` and `decision-log.md` to describe the real authorization sequence. Also refined `STOP-01`: a failed tag-triggered validation can prevent approval/publication but cannot retroactively prevent its already-created tag.
+
+#### Human gate
+
+No blocking documentation gate. Future tag authorization, credentials and `AG-01` approval remain execution-time human actions; none can be performed or evidenced before a release candidate exists.
+
+### Cycle 2
+
+#### Review summary
+
+Re-reviewed the repaired package against Issue #3, `.github/workflows/release.yml`, `.goreleaser.yml`, the GitHub environment, `ops/release.md`, `PRD-001`, and FT-001 handoff. Requirement-to-check/evidence and solution-to-plan mappings are consistent; local feature links resolve.
+
+#### Findings
+
+No `critical` or `important` findings. Minor observations were intentionally not changed.
+
+#### FPF resolutions
+
+None; no blocking question remained.
+
+#### Changes made
+
+None.
+
+#### Human gate
+
+No blocking human gate.
+
 ## Final status
 
-`done` after 4 review-improve cycles. The package is ready for implementation and candidate validation; public tag/release creation is an approved future execution action, not evidence claimed by this documentation package.
+`done` after 2 review-improve cycles in this reconciliation run. The package is ready for implementation/candidate validation and accurately describes the separate tag-authorization and protected-publication controls. Public tag/release evidence is still intentionally absent until the future approved release execution.

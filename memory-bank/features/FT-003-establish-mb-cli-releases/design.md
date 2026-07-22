@@ -88,7 +88,7 @@ Issue #3 requires a stable, Go-installable `v1.0.0` release. The repository alre
 
 - `INV-01` No publication job can run before its required validation job succeeds.
 - `INV-02` Published executable artifacts, install documentation and release notes expose `mb-cli` only; payload-path mentions are not executable identities.
-- `INV-03` A public tag/release is never created by unattended local execution; the GitHub `release` environment requires `AG-01` approval before its publication job can run.
+- `INV-03` A public GitHub Release is never published by unattended workflow execution: the GitHub `release` environment requires `AG-01` approval before its publication job can run. Creating the tag remains a separately authorized maintainer action under repository permissions.
 - `INV-04` A binary installed from a tagged Go module reports that module tag through `mb-cli --version`; local development builds may report `dev`.
 
 ## Failure Modes
@@ -103,7 +103,7 @@ Issue #3 requires a stable, Go-installable `v1.0.0` release. The repository alre
 | Stage ID | Stage | Entry condition | Backout |
 | --- | --- | --- | --- |
 | `RB-01` | Validate candidate | workflows and docs are committed; local/CI validation is green | revert unpublished workflow/config/doc changes |
-| `RB-02` | Public `v1.0.0` release | `AG-01` approved, required credentials confirmed and validation evidence available | stop before tag if any precondition fails; do not claim release evidence |
+| `RB-02` | Public `v1.0.0` release | a maintainer authorizes the tag push; `AG-01` is approved, required credentials confirmed and validation evidence available | stop before the release publication job if any precondition fails; do not claim release evidence |
 | `RB-03` | Post-publication verification | GitHub release and Go install are observable | preserve evidence and escalate any release correction; never rewrite history as a local rollback |
 
 ## Design Verification
