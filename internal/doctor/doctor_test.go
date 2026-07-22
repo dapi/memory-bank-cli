@@ -150,6 +150,17 @@ func TestAutoProfileRejectsMalformedMarker(t *testing.T) {
 	}
 }
 
+func TestAutoProfileAcceptsCRLFMarker(t *testing.T) {
+	root := copyFixture(t, "template")
+	marker := filepath.Join(root, templateMarkerPath)
+	if err := os.WriteFile(marker, []byte(templateMarkerLine+"\r\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := detectProfile(root); got != ProfileTemplate {
+		t.Fatalf("profile = %q, want %q", got, ProfileTemplate)
+	}
+}
+
 func TestJSONReportContractIsVersionedAndFindingsAreActionable(t *testing.T) {
 	report, err := Run(Options{RepoRoot: fixture(t, "template"), ScopeRoot: "missing-bank", AgentFile: "AGENTS.md", Profile: ProfileTemplate, MaxDepth: 3})
 	if err != nil {

@@ -46,7 +46,7 @@ internal/ownership -> Git source + local filesystem + memory-bank/.lock
 
 ## Doctor template-profile marker
 
-For `doctor --profile auto`, a repository is the template source only when it has a regular root file named `.memory-bank-template` whose complete UTF-8 content is exactly `memory-bank-template-v1` followed by one newline. `memory-bank/.lock` takes precedence and always selects downstream; a missing, unreadable, non-regular, differently named, or differently formatted marker also selects downstream. Explicit `--profile template` and `--profile downstream` bypass this detector.
+For `doctor --profile auto`, a repository is the template source only when it has a regular root file named `.memory-bank-template` containing the single UTF-8 line `memory-bank-template-v1`. The line must end with LF or CRLF; accepting both preserves the same logical marker across Git checkout line-ending conversion. `memory-bank/.lock` takes precedence and always selects downstream; a missing, unreadable, non-regular, differently named, or differently formatted marker also selects downstream. Explicit `--profile template` and `--profile downstream` bypass this detector.
 
 The marker is source-repository metadata, never part of the copied `memory-bank/` payload. The `dapi/memory-bank` template repository owns adding and documenting it through issue #52.
 

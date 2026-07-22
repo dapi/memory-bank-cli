@@ -55,7 +55,7 @@ must_not_define:
 - `ASM-02` Existing fixtures are `internal/doctor/testdata/template` (with `tools/go.mod`) and `internal/doctor/testdata/downstream` (with `memory-bank/.lock`).
 - `CON-01` Issue #2 requires the marker to live in `dapi/memory-bank`, outside the copied `memory-bank/` payload; this CLI checkout cannot establish the marker in that separate repository.
 - `CON-02` The issue requires a downstream repository not be misclassified merely for a similarly named file, so the marker namespace and validation rule are part of the external contract.
-- `DEC-01` Accepted marker contract: `dapi/memory-bank/.memory-bank-template` is a UTF-8 root file, outside `memory-bank/`, whose complete contents are exactly `memory-bank-template-v1\n`. Auto detection recognizes the template only when this exact path and content are present; issue `dapi/memory-bank#52` owns adding and documenting the source marker.
+- `DEC-01` Accepted marker contract: `dapi/memory-bank/.memory-bank-template` is a UTF-8 root file, outside `memory-bank/`, containing exactly one line `memory-bank-template-v1`, terminated by LF or CRLF. Auto detection recognizes the template only when this exact path and logical line are present; issue `dapi/memory-bank#52` owns adding and documenting the source marker.
 
 ## Design Requirement Decision
 

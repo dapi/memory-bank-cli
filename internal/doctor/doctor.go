@@ -29,8 +29,8 @@ var shellPipefailPattern = regexp.MustCompile(`(?:^|\s)-o\s+pipefail(?:\s|$)|(?:
 var workflowFalseExpressionPattern = regexp.MustCompile(`^\$\{\{\s*false\s*\}\}$`)
 
 const (
-	templateMarkerPath    = ".memory-bank-template"
-	templateMarkerContent = "memory-bank-template-v1\n"
+	templateMarkerPath = ".memory-bank-template"
+	templateMarkerLine = "memory-bank-template-v1"
 )
 
 func NormalizeProfile(value string) (Profile, error) {
@@ -97,7 +97,11 @@ func detectProfile(repoRoot string) Profile {
 		return ProfileDownstream
 	}
 	marker, _, err := readRegularWithinRoot(repoRoot, templateMarkerPath)
-	if err == nil && string(marker) == templateMarkerContent {
+	if err != nil {
+		return ProfileDownstream
+	}
+	content := string(marker)
+	if content == templateMarkerLine+"\n" || content == templateMarkerLine+"\r\n" {
 		return ProfileTemplate
 	}
 	return ProfileDownstream

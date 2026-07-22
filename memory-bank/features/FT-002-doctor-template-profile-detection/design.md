@@ -45,7 +45,7 @@ must_not_define:
 
 ## Selected Solution
 
-- `SOL-01` Replace the `tools/go.mod` heuristic with a regular-file read at repository-root `.memory-bank-template`; classify as template only if its complete UTF-8 content exactly equals `memory-bank-template-v1\n`.
+- `SOL-01` Replace the `tools/go.mod` heuristic with a regular-file read at repository-root `.memory-bank-template`; classify as template only if it contains the single UTF-8 line `memory-bank-template-v1`, terminated by LF or CRLF.
 - `SOL-02` Preserve precedence: a present `memory-bank/.lock` classifies downstream before marker evaluation; absent or invalid marker classifies downstream.
 
 ## Alternatives Considered
@@ -60,7 +60,7 @@ must_not_define:
 
 | Trade-off ID | Decision | Benefit | Cost / Risk |
 | --- | --- | --- | --- |
-| `TRD-01` | Exact fixed content with `v1` rather than flexible parsing | Minimal surface and deterministic lookalike resistance, with an explicit future evolution seam | Any future format must intentionally add a compatible version rule. |
+| `TRD-01` | Exact fixed logical line with `v1`, accepting LF or CRLF, rather than flexible parsing | Minimal surface, deterministic lookalike resistance, portable Git checkouts, and an explicit future evolution seam | Any future format must intentionally add a compatible version rule. |
 
 ## Accepted Local Decisions
 
@@ -70,7 +70,7 @@ must_not_define:
 
 | Contract ID | Connector / direction | Roles and sync boundary | Guarantees / failure / evolution semantics |
 | --- | --- | --- | --- |
-| `CTR-01` | filesystem read: `mb-cli doctor` -> `<repo-root>/.memory-bank-template` | CLI initiator, repository file provider; synchronous local read | Regular root file only; exact bytes `memory-bank-template-v1\n` mean template. Missing, unreadable, non-regular, or different content means downstream. `memory-bank/.lock` has precedence. Future formats require a new accepted version rule. |
+| `CTR-01` | filesystem read: `mb-cli doctor` -> `<repo-root>/.memory-bank-template` | CLI initiator, repository file provider; synchronous local read | Regular root file only; the single line `memory-bank-template-v1` with LF or CRLF termination means template. Missing, unreadable, non-regular, or different content means downstream. `memory-bank/.lock` has precedence. Future formats require a new accepted version rule. |
 
 ## Invariants
 

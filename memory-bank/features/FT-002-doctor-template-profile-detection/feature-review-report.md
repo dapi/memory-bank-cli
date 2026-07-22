@@ -92,7 +92,7 @@ The FPF decision resolves the marker, validation, and ownership questions. The p
 
 ### FPF resolutions
 
-- `DEC-01`: fixed root marker `.memory-bank-template` with exact versioned bytes, owned for source creation by `dapi/memory-bank#52`.
+- `DEC-01`: fixed root marker `.memory-bank-template` with one exact versioned logical line (LF or CRLF terminated), owned for source creation by `dapi/memory-bank#52`.
 - `DEC-03`: `standard` profile with Go test, vet, and contract regression.
 - `DEC-04`: publish first, then create the durable issue backlink.
 
