@@ -80,7 +80,7 @@ The standalone module has a GoReleaser configuration for `mb-cli`, but no reposi
 
 - `EC-01` Automation runs Go tests, `go vet ./...`, GoReleaser configuration validation and a release build before publication.
 - `EC-02` GitHub contains the stable `v1.0.0` release and its assets contain only `mb-cli` executable names.
-- `EC-03` `go install github.com/dapi/memory-bank-cli/cmd/mb-cli@v1.0.0` succeeds from a clean Go module cache and the installed command responds as `mb-cli`.
+- `EC-03` `go install github.com/dapi/memory-bank-cli/cmd/mb-cli@v1.0.0` succeeds from a clean Go module cache and the installed command reports `mb-cli v1.0.0`.
 - `EC-04` Repository documentation and `v1.0.0` release notes state the intentional breaking rename and removal, without presenting a compatibility installation path.
 
 ### Traceability matrix
@@ -105,7 +105,7 @@ The standalone module has a GoReleaser configuration for `mb-cli`, but no reposi
 | `CHK-01` | `EC-01`, `SC-01` | Inspect the validation and release workflow definitions; run the validation workflow or its equivalent commands. | tests, vet, release-config validation and snapshot release build succeed before publish step. | `artifacts/ft-003/verify/chk-01/` |
 | `CHK-02` | `EC-01`, `SC-01` | Inspect the release workflow job dependency and run record. | publish job cannot run until validation job succeeds. | `artifacts/ft-003/verify/chk-02/` |
 | `CHK-03` | `EC-02`, `REQ-04`, `SC-03` | Inspect tag `v1.0.0`, GitHub release and asset names. | release exists; assets have only `mb-cli` executable identity. | `artifacts/ft-003/verify/chk-03/` |
-| `CHK-04` | `EC-03`, `SC-02` | From a clean Go module cache run `go install github.com/dapi/memory-bank-cli/cmd/mb-cli@v1.0.0`, then run the installed binary. | install exits 0 and the invoked command identifies as `mb-cli`. | `artifacts/ft-003/verify/chk-04/` |
+| `CHK-04` | `EC-03`, `SC-02` | From a clean Go module cache run `go install github.com/dapi/memory-bank-cli/cmd/mb-cli@v1.0.0`, then run `mb-cli --version`. | install exits 0 and the command prints `mb-cli v1.0.0`. | `artifacts/ft-003/verify/chk-04/` |
 | `CHK-05` | `EC-04`, `REQ-04`, `SC-03` | Review repository install/upgrade docs and generated `v1.0.0` release notes. | required install command and breaking-change statement exist; no compatibility install path exists. | `artifacts/ft-003/verify/chk-05/` |
 
 ### Evidence contract
