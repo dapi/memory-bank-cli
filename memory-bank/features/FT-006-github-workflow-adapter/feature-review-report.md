@@ -78,3 +78,10 @@ No `critical` or `important` findings remain. Minor: the adapter supplies valida
 ### Human gate
 
 No. The migrated source issue explicitly supplies the facts needed to select and verify the feature-local design.
+
+### Closure evidence
+
+- `go test ./...` passed.
+- `go vet ./...` passed.
+- `go run ./cmd/mb-cli lint --repo-root .` passed.
+- PR #8 is ready for review, reports no merge conflict and has no required CI checks configured on the repository.

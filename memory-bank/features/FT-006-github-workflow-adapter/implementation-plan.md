@@ -6,7 +6,7 @@ purpose: "Execution record for FT-006 implementation and verification; it refine
 derived_from:
   - brief.md
   - design.md
-status: active
+status: archived
 audience: humans_and_agents
 must_not_define:
   - ft_006_scope

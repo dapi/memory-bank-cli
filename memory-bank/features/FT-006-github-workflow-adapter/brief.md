@@ -8,7 +8,7 @@ derived_from:
   - ../../engineering/architecture.md
   - "https://github.com/dapi/memory-bank-cli/issues/6"
 status: active
-delivery_status: in_progress
+delivery_status: done
 audience: humans_and_agents
 must_not_define:
   - implementation_sequence
