@@ -105,6 +105,94 @@ func TestApplyFailureRollsBackAllManagedAssets(t *testing.T) {
 	}
 }
 
+func TestApplyRejectsDestinationCreatedAfterPlanning(t *testing.T) {
+	repo := t.TempDir()
+	path := filepath.Join(repo, ".github", "ISSUE_TEMPLATE", "memory-bank-small-change.yml")
+	injected := false
+	_, err := Run(Options{RepoRoot: repo, beforeMutation: func(relative string) {
+		if injected || relative != ".github/ISSUE_TEMPLATE/memory-bank-small-change.yml" {
+			return
+		}
+		injected = true
+		if writeErr := os.WriteFile(path, []byte("name: user-owned\n"), 0o644); writeErr != nil {
+			t.Fatal(writeErr)
+		}
+	}})
+	if err == nil {
+		t.Fatal("concurrently created user template was accepted")
+	}
+	data, readErr := os.ReadFile(path)
+	if readErr != nil || string(data) != "name: user-owned\n" {
+		t.Fatalf("concurrent user template was overwritten: %q, %v", data, readErr)
+	}
+}
+
+func TestApplyRejectsConcurrentManagedEdit(t *testing.T) {
+	repo := t.TempDir()
+	path := filepath.Join(repo, ".github", "pull_request_template.md")
+	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, []byte("before\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	mutation := mutation{relative: ".github/pull_request_template.md", path: path, data: "after\n", original: []byte("before\n"), existed: true}
+	if err := os.WriteFile(path, []byte("user edit\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := secureAtomicWrite(repo, mutation); err == nil {
+		t.Fatal("concurrent edit was overwritten")
+	}
+	data, _ := os.ReadFile(path)
+	if string(data) != "user edit\n" {
+		t.Fatalf("concurrent edit changed: %q", data)
+	}
+}
+
+func TestApplyRejectsParentSymlinkSwap(t *testing.T) {
+	repo, outside := t.TempDir(), t.TempDir()
+	injected := false
+	_, err := Run(Options{RepoRoot: repo, beforeMutation: func(relative string) {
+		if injected || relative != ".github/ISSUE_TEMPLATE/memory-bank-small-change.yml" {
+			return
+		}
+		injected = true
+		github := filepath.Join(repo, ".github")
+		if renameErr := os.Rename(github, filepath.Join(repo, "original-github")); renameErr != nil {
+			t.Fatal(renameErr)
+		}
+		if symlinkErr := os.Symlink(outside, github); symlinkErr != nil {
+			t.Fatal(symlinkErr)
+		}
+	}})
+	if err == nil {
+		t.Fatal("parent symlink swap was accepted")
+	}
+	if _, statErr := os.Stat(filepath.Join(outside, "ISSUE_TEMPLATE", "memory-bank-small-change.yml")); !os.IsNotExist(statErr) {
+		t.Fatalf("write escaped through swapped symlink: %v", statErr)
+	}
+}
+
+func TestManagedCRLFMarkersAreCurrent(t *testing.T) {
+	repo := t.TempDir()
+	if _, err := Run(Options{RepoRoot: repo}); err != nil {
+		t.Fatal(err)
+	}
+	path := filepath.Join(repo, ".github", "ISSUE_TEMPLATE", "memory-bank-feature.yml")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	crlf := strings.ReplaceAll(string(data), "\n", "\r\n")
+	if err := os.WriteFile(path, []byte(crlf), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	report, err := Run(Options{RepoRoot: repo})
+	if err != nil || report.ConflictCount != 0 || decision(t, report, ".github/ISSUE_TEMPLATE/memory-bank-feature.yml").Action != Preserve {
+		t.Fatalf("CRLF managed form was not current: report=%#v err=%v", report, err)
+	}
+}
+
 func TestExistingCustomTemplatesArePreserved(t *testing.T) {
 	repo := t.TempDir()
 	path := filepath.Join(repo, ".github", "pull_request_template.md")

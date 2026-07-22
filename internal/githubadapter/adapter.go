@@ -37,14 +37,16 @@ type Options struct {
 	DryRun   bool
 	// writeFile is used only by package tests to force an apply failure.
 	writeFile func(path string, data []byte) error
+	// beforeMutation is used only by package tests to model a concurrent edit.
+	beforeMutation func(string)
 }
 
 type asset struct{ id, path, content string }
 
 type mutation struct {
-	path, data string
-	original   []byte
-	existed    bool
+	relative, path, data string
+	original             []byte
+	existed              bool
 }
 
 // Run plans and, unless dry-run or a conflict is present, applies the adapter.
@@ -65,7 +67,7 @@ func Run(options Options) (Report, error) {
 		data, err := os.ReadFile(path)
 		if os.IsNotExist(err) {
 			report.Decisions = append(report.Decisions, Decision{Path: item.path, Action: Create, Reason: "adapter-managed file is missing"})
-			mutations = append(mutations, mutation{path: path, data: render(item)})
+			mutations = append(mutations, mutation{relative: item.path, path: path, data: render(item)})
 			continue
 		}
 		if err != nil {
@@ -76,7 +78,7 @@ func Run(options Options) (Report, error) {
 		if action == Conflict {
 			report.ConflictCount++
 		} else if action == Update {
-			mutations = append(mutations, mutation{path: path, data: next, original: data, existed: true})
+			mutations = append(mutations, mutation{relative: item.path, path: path, data: next, original: data, existed: true})
 		}
 	}
 	sort.Slice(report.Decisions, func(i, j int) bool { return report.Decisions[i].Path < report.Decisions[j].Path })
@@ -90,12 +92,17 @@ func Run(options Options) (Report, error) {
 			return report, err
 		}
 	}
-	writer := options.writeFile
-	if writer == nil {
-		writer = atomicWriteFile
-	}
 	for index, mutation := range mutations {
-		if err := writer(mutation.path, []byte(mutation.data)); err != nil {
+		if options.beforeMutation != nil {
+			options.beforeMutation(mutation.relative)
+		}
+		var err error
+		if options.writeFile != nil {
+			err = options.writeFile(mutation.path, []byte(mutation.data))
+		} else {
+			err = secureAtomicWrite(options.RepoRoot, mutation)
+		}
+		if err != nil {
 			rollback(mutations, index, createdDirs)
 			return report, fmt.Errorf("apply GitHub adapter: %w", err)
 		}
@@ -201,31 +208,40 @@ func render(item asset) string {
 }
 
 func reconcile(item asset, existing string) (string, string, string) {
+	original := existing
+	usesCRLF := strings.Contains(existing, "\r\n")
+	if usesCRLF {
+		existing = strings.ReplaceAll(existing, "\r\n", "\n")
+	}
 	markers := markerSyntax(item)
 	start := strings.Index(existing, markers.startPrefix)
 	if start < 0 {
 		if strings.Contains(existing, "MB-CLI GITHUB ADAPTER") {
-			return existing, Conflict, "adapter markers are malformed or belong to another asset"
+			return original, Conflict, "adapter markers are malformed or belong to another asset"
 		}
-		return existing, Preserve, "existing unmarked GitHub file is user-owned"
+		return original, Preserve, "existing unmarked GitHub file is user-owned"
 	}
 	lineEnd := strings.Index(existing[start:], markers.startTerminator)
 	endAt := strings.Index(existing[start:], markers.end)
 	if lineEnd < 0 || endAt < 0 || lineEnd >= endAt || strings.Count(existing, markers.startPrefix) != 1 || strings.Count(existing, markers.end) != 1 {
-		return existing, Conflict, "adapter markers are malformed or ambiguous"
+		return original, Conflict, "adapter markers are malformed or ambiguous"
 	}
 	lineEnd += start + len(markers.startTerminator)
 	endStart := start + endAt
 	recorded := strings.TrimSuffix(strings.TrimPrefix(existing[start:lineEnd], markers.startPrefix), markers.startTerminator)
 	body := existing[lineEnd:endStart]
 	if recorded != digest(body) {
-		return existing, Conflict, "managed adapter block has downstream drift"
+		return original, Conflict, "managed adapter block has downstream drift"
 	}
 	nextBlock := render(item)
 	if existing[start:endStart+len(markers.end)] == nextBlock {
-		return existing, Preserve, "managed adapter block is current"
+		return original, Preserve, "managed adapter block is current"
 	}
-	return existing[:start] + nextBlock + existing[endStart+len(markers.end):], Update, "update clean managed adapter block"
+	next := existing[:start] + nextBlock + existing[endStart+len(markers.end):]
+	if usesCRLF {
+		next = strings.ReplaceAll(next, "\n", "\r\n")
+	}
+	return next, Update, "update clean managed adapter block"
 }
 
 type markers struct {
