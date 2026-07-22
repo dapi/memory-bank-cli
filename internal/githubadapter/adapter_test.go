@@ -46,6 +46,24 @@ func TestDryRunDoesNotWrite(t *testing.T) {
 	}
 }
 
+func TestApplyFailureRollsBackAllManagedAssets(t *testing.T) {
+	repo := t.TempDir()
+	writes := 0
+	report, err := Run(Options{RepoRoot: repo, writeFile: func(path string, data []byte) error {
+		writes++
+		if writes == 3 {
+			return os.ErrPermission
+		}
+		return atomicWriteFile(path, data)
+	}})
+	if err == nil || report.Applied || writes != 3 {
+		t.Fatalf("expected third write to fail atomically: report=%#v err=%v writes=%d", report, err, writes)
+	}
+	if _, statErr := os.Stat(filepath.Join(repo, ".github")); !os.IsNotExist(statErr) {
+		t.Fatalf("failed apply left adapter files or directories: %v", statErr)
+	}
+}
+
 func TestExistingCustomTemplatesArePreserved(t *testing.T) {
 	repo := t.TempDir()
 	path := filepath.Join(repo, ".github", "pull_request_template.md")

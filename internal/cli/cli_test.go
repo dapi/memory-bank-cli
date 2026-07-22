@@ -96,6 +96,20 @@ func TestGitHubAdapterDryRunJSON(t *testing.T) {
 	}
 }
 
+func TestGitHubAdapterHelpSucceeds(t *testing.T) {
+	for _, command := range []string{"init", "update"} {
+		t.Run(command, func(t *testing.T) {
+			var stdout, stderr bytes.Buffer
+			if exitCode := Run([]string{"github", command, "--help"}, "test", &stdout, &stderr); exitCode != 0 {
+				t.Fatalf("help exit=%d stderr=%q", exitCode, stderr.String())
+			}
+			if !strings.Contains(stderr.String(), "-dry-run") {
+				t.Fatalf("help output missing flags: %q", stderr.String())
+			}
+		})
+	}
+}
+
 func TestRootRejectsMissingAndUnknownCommands(t *testing.T) {
 	for _, arguments := range [][]string{nil, {"unknown"}} {
 		var stdout, stderr bytes.Buffer

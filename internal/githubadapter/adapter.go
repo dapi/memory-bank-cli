@@ -35,9 +35,17 @@ type Report struct {
 type Options struct {
 	RepoRoot string
 	DryRun   bool
+	// writeFile is used only by package tests to force an apply failure.
+	writeFile func(path string, data []byte) error
 }
 
 type asset struct{ id, path, content string }
+
+type mutation struct {
+	path, data string
+	original   []byte
+	existed    bool
+}
 
 // Run plans and, unless dry-run or a conflict is present, applies the adapter.
 // `init` and `update` have identical ownership semantics: markers identify the
@@ -48,7 +56,6 @@ func Run(options Options) (Report, error) {
 	}
 	assets := defaultAssets()
 	report := Report{FormatVersion: 1, DryRun: options.DryRun}
-	type mutation struct{ path, data string }
 	mutations := make([]mutation, 0, len(assets))
 	for _, item := range assets {
 		path, err := safePath(options.RepoRoot, item.path)
@@ -69,23 +76,101 @@ func Run(options Options) (Report, error) {
 		if action == Conflict {
 			report.ConflictCount++
 		} else if action == Update {
-			mutations = append(mutations, mutation{path: path, data: next})
+			mutations = append(mutations, mutation{path: path, data: next, original: data, existed: true})
 		}
 	}
 	sort.Slice(report.Decisions, func(i, j int) bool { return report.Decisions[i].Path < report.Decisions[j].Path })
 	if report.DryRun || report.ConflictCount > 0 {
 		return report, nil
 	}
+	createdDirs := map[string]struct{}{}
 	for _, mutation := range mutations {
-		if err := os.MkdirAll(filepath.Dir(mutation.path), 0o755); err != nil {
-			return Report{}, err
+		if err := ensureParent(options.RepoRoot, filepath.Dir(mutation.path), createdDirs); err != nil {
+			rollback(mutations, 0, createdDirs)
+			return report, err
 		}
-		if err := os.WriteFile(mutation.path, []byte(mutation.data), 0o644); err != nil {
-			return Report{}, err
+	}
+	writer := options.writeFile
+	if writer == nil {
+		writer = atomicWriteFile
+	}
+	for index, mutation := range mutations {
+		if err := writer(mutation.path, []byte(mutation.data)); err != nil {
+			rollback(mutations, index, createdDirs)
+			return report, fmt.Errorf("apply GitHub adapter: %w", err)
 		}
 	}
 	report.Applied = len(mutations) > 0
 	return report, nil
+}
+
+func ensureParent(root, directory string, created map[string]struct{}) error {
+	relative, err := filepath.Rel(root, directory)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return fmt.Errorf("unsafe adapter parent %q", directory)
+	}
+	current := root
+	for _, component := range strings.Split(relative, string(filepath.Separator)) {
+		if component == "." || component == "" {
+			continue
+		}
+		current = filepath.Join(current, component)
+		info, err := os.Lstat(current)
+		if os.IsNotExist(err) {
+			if err := os.Mkdir(current, 0o755); err != nil {
+				return err
+			}
+			created[current] = struct{}{}
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("unsafe adapter parent %q", current)
+		}
+	}
+	return nil
+}
+
+func atomicWriteFile(path string, data []byte) error {
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".mb-cli-github-*")
+	if err != nil {
+		return err
+	}
+	temporaryPath := temporary.Name()
+	defer os.Remove(temporaryPath)
+	if _, err := temporary.Write(data); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Chmod(0o644); err != nil {
+		temporary.Close()
+		return err
+	}
+	if err := temporary.Close(); err != nil {
+		return err
+	}
+	return os.Rename(temporaryPath, path)
+}
+
+func rollback(mutations []mutation, applied int, createdDirs map[string]struct{}) {
+	for index := applied - 1; index >= 0; index-- {
+		mutation := mutations[index]
+		if mutation.existed {
+			_ = atomicWriteFile(mutation.path, mutation.original)
+		} else {
+			_ = os.Remove(mutation.path)
+		}
+	}
+	directories := make([]string, 0, len(createdDirs))
+	for directory := range createdDirs {
+		directories = append(directories, directory)
+	}
+	sort.Slice(directories, func(i, j int) bool { return len(directories[i]) > len(directories[j]) })
+	for _, directory := range directories {
+		_ = os.Remove(directory)
+	}
 }
 
 func safePath(root, relative string) (string, error) {

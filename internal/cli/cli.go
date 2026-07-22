@@ -103,6 +103,9 @@ func runGitHubAdapter(arguments []string, stdout, stderr io.Writer) int {
 	dryRun := flags.Bool("dry-run", false, "print the adapter mutation plan without applying it")
 	jsonOutput := addJSONOutputFlag(flags)
 	if err := flags.Parse(arguments[1:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return exitSuccess
+		}
 		return exitUsage
 	}
 	if flags.NArg() != 0 {
