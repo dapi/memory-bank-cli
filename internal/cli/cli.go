@@ -11,6 +11,7 @@ import (
 	"sort"
 
 	"github.com/dapi/memory-bank-cli/internal/doctor"
+	"github.com/dapi/memory-bank-cli/internal/githubadapter"
 	"github.com/dapi/memory-bank-cli/internal/lint"
 	"github.com/dapi/memory-bank-cli/internal/ownership"
 	"github.com/dapi/memory-bank-cli/internal/repository"
@@ -51,6 +52,8 @@ func Run(arguments []string, version string, stdout, stderr io.Writer) int {
 		return runOwnership(arguments[1:], "update", stdout, stderr)
 	case "doctor":
 		return runDoctor(arguments[1:], stdout, stderr)
+	case "github":
+		return runGitHubAdapter(arguments[1:], stdout, stderr)
 	case "--version", "-version":
 		if len(arguments) != 1 {
 			fmt.Fprintf(stderr, "mb-cli: unexpected arguments: %v\n", arguments[1:])
@@ -82,10 +85,62 @@ func printRootUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "  update  Safely update a template using its ownership lock")
 	fmt.Fprintln(writer, "  doctor  Diagnose adoption, governance, managed drift, and navigation")
 	fmt.Fprintln(writer, "  lint    Audit markdown navigation integrity")
+	fmt.Fprintln(writer, "  github  Install or update the optional GitHub workflow adapter")
 	fmt.Fprintln(writer)
 	fmt.Fprintln(writer, "Options:")
 	fmt.Fprintln(writer, "  --help       Show this help")
 	fmt.Fprintln(writer, "  --version    Print the version and exit")
+}
+
+func runGitHubAdapter(arguments []string, stdout, stderr io.Writer) int {
+	if len(arguments) == 0 || (arguments[0] != "init" && arguments[0] != "update") {
+		fmt.Fprintln(stderr, "Usage: mb-cli github <init|update> [--repo-root DIR] [--dry-run] [--json]")
+		return exitUsage
+	}
+	flags := flag.NewFlagSet("mb-cli github "+arguments[0], flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	repoRootArgument := addRepoRootFlag(flags)
+	dryRun := flags.Bool("dry-run", false, "print the adapter mutation plan without applying it")
+	jsonOutput := addJSONOutputFlag(flags)
+	if err := flags.Parse(arguments[1:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return exitSuccess
+		}
+		return exitUsage
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintf(stderr, "mb-cli github %s: unexpected arguments: %v\n", arguments[0], flags.Args())
+		return exitUsage
+	}
+	repoRoot, err := repository.ResolveRoot(*repoRootArgument)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitFailure
+	}
+	report, err := githubadapter.Run(githubadapter.Options{RepoRoot: repoRoot, DryRun: *dryRun})
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitFailure
+	}
+	if err := writeResult(stdout, *jsonOutput, report, func(writer io.Writer) {
+		for _, decision := range report.Decisions {
+			fmt.Fprintf(writer, "%s\t%s\t%s\n", decision.Action, decision.Path, decision.Reason)
+		}
+		if report.ConflictCount > 0 {
+			fmt.Fprintf(writer, "adapter not applied: %d conflict(s)\n", report.ConflictCount)
+		} else if report.DryRun {
+			fmt.Fprintln(writer, "dry run: no files changed")
+		} else if report.Applied {
+			fmt.Fprintln(writer, "adapter applied")
+		}
+	}); err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitFailure
+	}
+	if report.ConflictCount > 0 {
+		return exitFailure
+	}
+	return exitSuccess
 }
 
 func runOwnership(arguments []string, command string, stdout, stderr io.Writer) int {
