@@ -42,7 +42,7 @@ must_not_define:
 
 | Approval Gate ID | Trigger | Applies to | Why approval is required | Approver / evidence |
 | --- | --- | --- | --- | --- |
-| `AG-01` | candidate is validated and ready for `v1.0.0` | `STEP-04` | Tag/release creation and credentialed external publication are irreversible public effects. | repository release maintainer; approval URL or written record in `EVID-03` |
+| `AG-01` | candidate is validated and ready for `v1.0.0` | `STEP-04` | Tag/release creation and credentialed external publication are irreversible public effects. | required reviewer approves the GitHub `release` environment deployment; deployment record in `EVID-03` |
 
 ## Order of Work
 

@@ -54,7 +54,7 @@ Issue #3 requires a stable, Go-installable `v1.0.0` release. The repository alre
 ## Selected Solution
 
 - `SOL-01` Add a validation workflow for repository changes that runs `go test -count=1 -race ./...`, `go vet ./...`, GoReleaser configuration validation and a clean snapshot release build.
-- `SOL-02` Add a tag-driven release workflow that repeats the required validation and invokes the existing GoReleaser GitHub-release configuration only after its validation job succeeds and a human has approved the public-release gate.
+- `SOL-02` Add a tag-driven release workflow that repeats the required validation and invokes the existing GoReleaser GitHub-release configuration only after its validation job succeeds and the protected GitHub `release` environment has received required-reviewer approval.
 - `SOL-03` Publish the first release from semantic-version tag `v1.0.0`; add repository install/upgrade instructions for the exact Go command in issue #3 and release notes declaring `memory-bank` breaking removal and `memory-bank-lint` removal. When GoReleaser has not injected a linker version, resolve `--version` from Go build information so module-installed binaries report their tagged version.
 
 ## Alternatives Considered
@@ -88,7 +88,7 @@ Issue #3 requires a stable, Go-installable `v1.0.0` release. The repository alre
 
 - `INV-01` No publication job can run before its required validation job succeeds.
 - `INV-02` Published executable artifacts, install documentation and release notes expose `mb-cli` only; payload-path mentions are not executable identities.
-- `INV-03` A public tag/release is never created by unattended local execution; it requires `AG-01` approval.
+- `INV-03` A public tag/release is never created by unattended local execution; the GitHub `release` environment requires `AG-01` approval before its publication job can run.
 - `INV-04` A binary installed from a tagged Go module reports that module tag through `mb-cli --version`; local development builds may report `dev`.
 
 ## Failure Modes
