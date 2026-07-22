@@ -88,6 +88,11 @@ release:
   footer: |
     ## Installation
 
+    ### Go
+    ```bash
+    go install github.com/dapi/memory-bank-cli/cmd/mb-cli@{{ .Tag }}
+    ```
+
     ### Homebrew
     ```bash
     brew install dapi/tap/mb-cli
@@ -116,5 +121,9 @@ release:
 
     ### Windows
     Download `mb-cli-windows-amd64.exe` from the assets below and add it to `PATH`.
+
+    ## Breaking changes
+
+    `mb-cli` is the only supported executable. `memory-bank` was intentionally renamed and `memory-bank-lint` was removed; no compatibility binaries or aliases are published.
 
     **Full Changelog**: https://github.com/dapi/memory-bank-cli/compare/{{ .PreviousTag }}...{{ .Tag }}
