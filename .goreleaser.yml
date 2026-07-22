@@ -1,0 +1,120 @@
+# GoReleaser configuration for the standalone mb-cli binary.
+# https://goreleaser.com
+
+version: 2
+
+project_name: mb-cli
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: mb-cli
+    main: ./cmd/mb-cli
+    binary: mb-cli
+    env:
+      - CGO_ENABLED=0
+    ldflags:
+      - -s -w -X main.version={{.Version}}
+    targets:
+      - linux_amd64
+      - linux_arm64
+      - darwin_amd64
+      - darwin_arm64
+      - windows_amd64
+
+archives:
+  - id: mb-cli
+    ids:
+      - mb-cli
+    formats:
+      - binary
+    name_template: "mb-cli-{{ .Os }}-{{ .Arch }}"
+
+checksum:
+  name_template: checksums.txt
+  algorithm: sha256
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  use: github
+  filters:
+    exclude:
+      - '^docs(\(.+\))?:'
+      - '^test(\(.+\))?:'
+      - '^chore(\(.+\))?:'
+      - '^refactor(\(.+\))?:'
+      - '(?i)typo'
+  groups:
+    - title: New Features
+      regexp: '^.*?feat(\([[:word:]]+\))??!?:.+$'
+      order: 0
+    - title: Bug Fixes
+      regexp: '^.*?fix(\([[:word:]]+\))??!?:.+$'
+      order: 1
+    - title: Performance Improvements
+      regexp: '^.*?perf(\([[:word:]]+\))??!?:.+$'
+      order: 2
+    - title: Documentation Updates
+      regexp: '^.*?docs(\([[:word:]]+\))??!?:.+$'
+      order: 3
+    - title: Other Changes
+      order: 999
+
+homebrew_casks:
+  - name: mb-cli
+    ids:
+      - mb-cli
+    binaries:
+      - mb-cli
+    repository:
+      owner: dapi
+      name: homebrew-tap
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: https://github.com/dapi/memory-bank-cli
+    description: CLI for Memory Bank documentation tooling
+
+release:
+  github:
+    owner: dapi
+    name: memory-bank-cli
+  prerelease: auto
+  mode: append
+  footer: |
+    ## Installation
+
+    ### Homebrew
+    ```bash
+    brew install dapi/tap/mb-cli
+    ```
+
+    ### macOS (Apple Silicon)
+    ```bash
+    curl -L -o mb-cli https://github.com/dapi/memory-bank-cli/releases/download/{{ .Tag }}/mb-cli-darwin-arm64
+    chmod +x mb-cli
+    sudo mv mb-cli /usr/local/bin/
+    ```
+
+    ### macOS (Intel)
+    ```bash
+    curl -L -o mb-cli https://github.com/dapi/memory-bank-cli/releases/download/{{ .Tag }}/mb-cli-darwin-amd64
+    chmod +x mb-cli
+    sudo mv mb-cli /usr/local/bin/
+    ```
+
+    ### Linux (amd64)
+    ```bash
+    curl -L -o mb-cli https://github.com/dapi/memory-bank-cli/releases/download/{{ .Tag }}/mb-cli-linux-amd64
+    chmod +x mb-cli
+    sudo mv mb-cli /usr/local/bin/
+    ```
+
+    ### Windows
+    Download `mb-cli-windows-amd64.exe` from the assets below and add it to `PATH`.
+
+    **Full Changelog**: https://github.com/dapi/memory-bank-cli/compare/{{ .PreviousTag }}...{{ .Tag }}
