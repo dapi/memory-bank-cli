@@ -76,6 +76,26 @@ func TestRootHelpAndVersion(t *testing.T) {
 	}
 }
 
+func TestGitHubAdapterDryRunJSON(t *testing.T) {
+	repo := t.TempDir()
+	var stdout, stderr bytes.Buffer
+	if exitCode := Run([]string{"github", "init", "--repo-root", repo, "--dry-run", "--json"}, "test", &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("unexpected exit=%d stderr=%q", exitCode, stderr.String())
+	}
+	var report struct {
+		DryRun    bool `json:"dry_run"`
+		Decisions []struct {
+			Action string `json:"action"`
+		} `json:"decisions"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &report); err != nil || !report.DryRun || len(report.Decisions) != 5 {
+		t.Fatalf("unexpected report=%s err=%v", stdout.String(), err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".github")); !os.IsNotExist(err) {
+		t.Fatalf("dry run changed repository: %v", err)
+	}
+}
+
 func TestRootRejectsMissingAndUnknownCommands(t *testing.T) {
 	for _, arguments := range [][]string{nil, {"unknown"}} {
 		var stdout, stderr bytes.Buffer
