@@ -254,17 +254,84 @@ func digest(value string) string {
 
 func defaultAssets() []asset {
 	return []asset{
-		{"small-change", ".github/ISSUE_TEMPLATE/memory-bank-small-change.yml", issueForm("Small Change", "small-change")},
-		{"feature", ".github/ISSUE_TEMPLATE/memory-bank-feature.yml", issueForm("Feature", "feature")},
+		{"small-change", ".github/ISSUE_TEMPLATE/memory-bank-small-change.yml", smallChangeIssueForm},
+		{"feature", ".github/ISSUE_TEMPLATE/memory-bank-feature.yml", featureIssueForm},
 		{"pull-request", ".github/pull_request_template.md", prTemplate},
 		{"validation", ".github/memory-bank-validation.md", validationGuidance},
 		{"agent-guidance", ".github/memory-bank-agent-guidance.md", agentGuidance},
 	}
 }
 
-func issueForm(name, flow string) string {
-	return fmt.Sprintf("name: Memory Bank %s\ndescription: Request work through the Memory Bank %s flow.\ntitle: \"[%s] \"\nbody:\n  - type: textarea\n    id: outcome\n    attributes:\n      label: Expected outcome\n    validations:\n      required: true\n  - type: input\n    id: owner_docs\n    attributes:\n      label: Canonical owner documents\n      description: Link brief, design, plan or ADR when applicable.\n  - type: input\n    id: validation_profile\n    attributes:\n      label: Validation profile\n  - type: textarea\n    id: verify\n    attributes:\n      label: Acceptance and verification evidence\n    validations:\n      required: true\n  - type: input\n    id: feature_or_epic\n    attributes:\n      label: Feature or epic identifier\n", name, flow, flow)
-}
+const smallChangeIssueForm = `name: Memory Bank Small Change
+description: Request a locally bounded change through the Small Change flow.
+title: "[small-change] "
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Expected outcome
+    validations:
+      required: true
+  - type: textarea
+    id: routing_record
+    attributes:
+      label: Small Change routing record
+      description: State why the Small Change predicates apply and link the issue/task routing record.
+    validations:
+      required: true
+  - type: input
+    id: validation_profile
+    attributes:
+      label: Validation profile
+    validations:
+      required: true
+  - type: textarea
+    id: verification
+    attributes:
+      label: Concrete verification evidence
+      description: List the checks and evidence required for this local change.
+    validations:
+      required: true
+`
+
+const featureIssueForm = `name: Memory Bank Feature
+description: Request a delivery unit through Feature Flow.
+title: "[feature] "
+body:
+  - type: textarea
+    id: outcome
+    attributes:
+      label: Expected outcome
+    validations:
+      required: true
+  - type: input
+    id: feature_or_epic
+    attributes:
+      label: Feature or epic identifier
+      description: Provide the FT-* package, EP-* package, or routing decision.
+    validations:
+      required: true
+  - type: textarea
+    id: canonical_owner_docs
+    attributes:
+      label: Canonical feature owner documents
+      description: Link brief.md and, when applicable, design.md, implementation-plan.md and ADRs.
+    validations:
+      required: true
+  - type: input
+    id: validation_profile
+    attributes:
+      label: Validation profile
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance_evidence
+    attributes:
+      label: Acceptance and evidence contract
+      description: Link acceptance scenarios, checks and required evidence from the feature brief.
+    validations:
+      required: true
+`
 
 const prTemplate = `## What changed
 

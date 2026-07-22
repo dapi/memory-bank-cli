@@ -51,6 +51,31 @@ func TestMalformedReversedMarkerIsAConflict(t *testing.T) {
 	}
 }
 
+func TestIssueFormsHaveFlowSpecificDocumentationAndEvidenceFields(t *testing.T) {
+	assets := defaultAssets()
+	var smallChange, feature string
+	for _, item := range assets {
+		switch item.id {
+		case "small-change":
+			smallChange = item.content
+		case "feature":
+			feature = item.content
+		}
+	}
+	if !strings.Contains(smallChange, "id: routing_record") || !strings.Contains(smallChange, "id: verification") {
+		t.Fatalf("small change form lacks routing/verification fields: %s", smallChange)
+	}
+	if strings.Contains(smallChange, "id: canonical_owner_docs") || strings.Contains(smallChange, "id: feature_or_epic") {
+		t.Fatalf("small change form contains feature-only fields: %s", smallChange)
+	}
+	if !strings.Contains(feature, "id: canonical_owner_docs") || !strings.Contains(feature, "id: feature_or_epic") || !strings.Contains(feature, "id: acceptance_evidence") {
+		t.Fatalf("feature form lacks owner/evidence fields: %s", feature)
+	}
+	if strings.Contains(feature, "id: routing_record") || strings.Contains(feature, "id: verification") {
+		t.Fatalf("feature form contains small-change-only fields: %s", feature)
+	}
+}
+
 func TestDryRunDoesNotWrite(t *testing.T) {
 	repo := t.TempDir()
 	report, err := Run(Options{RepoRoot: repo, DryRun: true})
