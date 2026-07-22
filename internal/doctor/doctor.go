@@ -28,6 +28,11 @@ var shellErrexitPattern = regexp.MustCompile(`(?:^|\s)-[A-Za-z]*e[A-Za-z]*(?:\s|
 var shellPipefailPattern = regexp.MustCompile(`(?:^|\s)-o\s+pipefail(?:\s|$)|(?:^|\s)pipefail(?:\s|$)`)
 var workflowFalseExpressionPattern = regexp.MustCompile(`^\$\{\{\s*false\s*\}\}$`)
 
+const (
+	templateMarkerPath    = ".memory-bank-template"
+	templateMarkerContent = "memory-bank-template-v1\n"
+)
+
 func NormalizeProfile(value string) (Profile, error) {
 	profile := Profile(strings.ToLower(strings.TrimSpace(value)))
 	switch profile {
@@ -91,8 +96,8 @@ func detectProfile(repoRoot string) Profile {
 	if _, err := os.Lstat(filepath.Join(repoRoot, ownership.LockFileName)); err == nil {
 		return ProfileDownstream
 	}
-	module, err := os.ReadFile(filepath.Join(repoRoot, "tools", "go.mod"))
-	if err == nil && strings.Contains(string(module), "module github.com/dapi/memory-bank/tools") {
+	marker, _, err := readRegularWithinRoot(repoRoot, templateMarkerPath)
+	if err == nil && string(marker) == templateMarkerContent {
 		return ProfileTemplate
 	}
 	return ProfileDownstream

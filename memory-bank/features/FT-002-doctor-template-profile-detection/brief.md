@@ -12,7 +12,7 @@ source_refs:
   - "https://github.com/dapi/memory-bank-cli/issues/2"
   - "https://github.com/dapi/memory-bank/issues/51"
 status: active
-delivery_status: planned
+delivery_status: in_progress
 audience: humans_and_agents
 must_not_define:
   - selected_solution
