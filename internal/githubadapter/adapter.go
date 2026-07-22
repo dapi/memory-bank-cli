@@ -88,7 +88,7 @@ func Run(options Options) (Report, error) {
 	createdDirs := map[string]struct{}{}
 	for _, mutation := range mutations {
 		if err := ensureParent(options.RepoRoot, filepath.Dir(mutation.path), createdDirs); err != nil {
-			rollback(mutations, 0, createdDirs)
+			rollback(options.RepoRoot, mutations, 0, createdDirs)
 			return report, err
 		}
 	}
@@ -103,7 +103,7 @@ func Run(options Options) (Report, error) {
 			err = secureAtomicWrite(options.RepoRoot, mutation)
 		}
 		if err != nil {
-			rollback(mutations, index, createdDirs)
+			rollback(options.RepoRoot, mutations, index, createdDirs)
 			return report, fmt.Errorf("apply GitHub adapter: %w", err)
 		}
 	}
@@ -161,23 +161,13 @@ func atomicWriteFile(path string, data []byte) error {
 	return os.Rename(temporaryPath, path)
 }
 
-func rollback(mutations []mutation, applied int, createdDirs map[string]struct{}) {
+func rollback(root string, mutations []mutation, applied int, createdDirs map[string]struct{}) {
 	for index := applied - 1; index >= 0; index-- {
-		mutation := mutations[index]
-		if mutation.existed {
-			_ = atomicWriteFile(mutation.path, mutation.original)
-		} else {
-			_ = os.Remove(mutation.path)
-		}
+		_ = secureRollback(root, mutations[index])
 	}
-	directories := make([]string, 0, len(createdDirs))
-	for directory := range createdDirs {
-		directories = append(directories, directory)
-	}
-	sort.Slice(directories, func(i, j int) bool { return len(directories[i]) > len(directories[j]) })
-	for _, directory := range directories {
-		_ = os.Remove(directory)
-	}
+	// Empty parent directories are harmless. Do not remove them by pathname:
+	// an ancestor could have been replaced after planning.
+	_ = createdDirs
 }
 
 func safePath(root, relative string) (string, error) {
@@ -210,8 +200,9 @@ func render(item asset) string {
 func reconcile(item asset, existing string) (string, string, string) {
 	original := existing
 	usesCRLF := strings.Contains(existing, "\r\n")
+	var offsets []int
 	if usesCRLF {
-		existing = strings.ReplaceAll(existing, "\r\n", "\n")
+		existing, offsets = normalizeLineEndings(existing)
 	}
 	markers := markerSyntax(item)
 	start := strings.Index(existing, markers.startPrefix)
@@ -237,11 +228,30 @@ func reconcile(item asset, existing string) (string, string, string) {
 	if existing[start:endStart+len(markers.end)] == nextBlock {
 		return original, Preserve, "managed adapter block is current"
 	}
-	next := existing[:start] + nextBlock + existing[endStart+len(markers.end):]
-	if usesCRLF {
-		next = strings.ReplaceAll(next, "\n", "\r\n")
+	end := endStart + len(markers.end)
+	if !usesCRLF {
+		return existing[:start] + nextBlock + existing[end:], Update, "update clean managed adapter block"
 	}
-	return next, Update, "update clean managed adapter block"
+	originalStart := offsets[start]
+	originalEnd := offsets[end-1] + 1
+	replacement := nextBlock
+	if strings.Contains(original[originalStart:originalEnd], "\r\n") {
+		replacement = strings.ReplaceAll(replacement, "\n", "\r\n")
+	}
+	return original[:originalStart] + replacement + original[originalEnd:], Update, "update clean managed adapter block"
+}
+
+func normalizeLineEndings(value string) (string, []int) {
+	var normalized strings.Builder
+	offsets := make([]int, 0, len(value))
+	for index := 0; index < len(value); index++ {
+		if value[index] == '\r' && index+1 < len(value) && value[index+1] == '\n' {
+			continue
+		}
+		normalized.WriteByte(value[index])
+		offsets = append(offsets, index)
+	}
+	return normalized.String(), offsets
 }
 
 type markers struct {

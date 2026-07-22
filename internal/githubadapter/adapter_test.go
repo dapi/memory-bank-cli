@@ -100,8 +100,8 @@ func TestApplyFailureRollsBackAllManagedAssets(t *testing.T) {
 	if err == nil || report.Applied || writes != 3 {
 		t.Fatalf("expected third write to fail atomically: report=%#v err=%v writes=%d", report, err, writes)
 	}
-	if _, statErr := os.Stat(filepath.Join(repo, ".github")); !os.IsNotExist(statErr) {
-		t.Fatalf("failed apply left adapter files or directories: %v", statErr)
+	if _, statErr := os.Stat(filepath.Join(repo, ".github", "ISSUE_TEMPLATE", "memory-bank-small-change.yml")); !os.IsNotExist(statErr) {
+		t.Fatalf("failed apply left an adapter file: %v", statErr)
 	}
 }
 
@@ -190,6 +190,23 @@ func TestManagedCRLFMarkersAreCurrent(t *testing.T) {
 	report, err := Run(Options{RepoRoot: repo})
 	if err != nil || report.ConflictCount != 0 || decision(t, report, ".github/ISSUE_TEMPLATE/memory-bank-feature.yml").Action != Preserve {
 		t.Fatalf("CRLF managed form was not current: report=%#v err=%v", report, err)
+	}
+}
+
+func TestUpdatePreservesMixedLineEndingsOutsideManagedBlock(t *testing.T) {
+	old := asset{id: "mixed", path: ".github/mixed.md", content: "old managed\n"}
+	updated := old
+	updated.content = "new managed\n"
+	existing := "outside before\n" + strings.ReplaceAll(render(old), "\n", "\r\n") + "outside after\n"
+	next, action, reason := reconcile(updated, existing)
+	if action != Update {
+		t.Fatalf("action=%q reason=%q", action, reason)
+	}
+	if !strings.HasPrefix(next, "outside before\n") || !strings.HasSuffix(next, "outside after\n") {
+		t.Fatalf("outside line endings changed: %q", next)
+	}
+	if !strings.Contains(next, "new managed\r\n") {
+		t.Fatalf("managed block did not retain CRLF: %q", next)
 	}
 }
 

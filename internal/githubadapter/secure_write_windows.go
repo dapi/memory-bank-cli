@@ -28,3 +28,14 @@ func secureAtomicWrite(root string, mutation mutation) error {
 	}
 	return atomicWriteFile(path, []byte(mutation.data))
 }
+
+func secureRollback(root string, mutation mutation) error {
+	path, err := safePath(root, mutation.relative)
+	if err != nil {
+		return err
+	}
+	if !mutation.existed {
+		return os.Remove(path)
+	}
+	return atomicWriteFile(path, mutation.original)
+}

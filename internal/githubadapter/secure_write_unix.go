@@ -47,6 +47,23 @@ func secureAtomicWrite(root string, mutation mutation) error {
 	return unix.Renameat(parent, temporary, parent, leaf)
 }
 
+func secureRollback(root string, mutation mutation) error {
+	parent, leaf, err := openAdapterParent(root, mutation.relative)
+	if err != nil {
+		return err
+	}
+	defer unix.Close(parent)
+	if !mutation.existed {
+		return unix.Unlinkat(parent, leaf, 0)
+	}
+	temporary, err := createTemporary(parent, mutation.original)
+	if err != nil {
+		return err
+	}
+	defer unix.Unlinkat(parent, temporary, 0)
+	return unix.Renameat(parent, temporary, parent, leaf)
+}
+
 func openAdapterParent(root, relative string) (int, string, error) {
 	if filepath.IsAbs(relative) || strings.Contains(relative, "..") || strings.Contains(relative, "\\") {
 		return -1, "", fmt.Errorf("unsafe adapter path %q", relative)
