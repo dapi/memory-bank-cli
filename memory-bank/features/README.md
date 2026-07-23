@@ -22,6 +22,7 @@ audience: humans_and_agents
 - [FT-003: Establish memory-bank-cli Releases](FT-003-establish-memory-bank-cli-releases/README.md) — planned release-deployment package for CI, the approved `v1.0.0` publication and Go installation documentation.
 - [FT-005: Downstream Smoke Tests and Compatibility Canaries](FT-005-downstream-smoke-tests-and-compatibility-canaries/README.md) — active delivery package for issue #5's blocking stable smoke and scheduled/manual compatibility canary.
 - [FT-006: Opt-in GitHub Workflow Adapter](FT-006-github-workflow-adapter/README.md) — active delivery package for issue #6's opt-in, marker-owned GitHub workflow adapter.
+- [FT-014: Source Payload Path Translation](FT-014-source-payload-path-translation/README.md) — planned package for issue #14's source `memory-bank-template/` to downstream `memory-bank/` translation and release handoff.
 
 ## Rules
 
