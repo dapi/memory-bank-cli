@@ -36,7 +36,7 @@ No `critical` findings were found. Minor findings were not changed.
 
 ### Open questions closed through FPF
 
-None during this cycle. The package's previously closed questions remain recorded in [decision-log.md](decision-log.md): source/downstream boundary, strict new source root, lint/doctor scope behavior and release-version ownership.
+None during this cycle. The package's previously closed questions remain recorded in [decision-log.md](decision-log.md): source/downstream boundary, source-root model, lint/doctor scope behavior and release-version ownership.
 
 ### Changes made
 
@@ -96,15 +96,66 @@ No critical/important correction was required. This final cycle and verdict were
 
 No.
 
+## Cycle 4
+
+### Review summary
+
+External review found that the strict source-root switch conflicted with the required release-before-template-rename order: a newly released CLI would reject the still-current official legacy template. This is an important rollout defect, not a reason to relax the downstream namespace or allow indefinite discovery.
+
+### Critical and important findings
+
+| Severity | Finding | Conflicting / affected documents | Resolution |
+| --- | --- | --- | --- |
+| `important` | Immediate rejection of legacy `memory-bank/` causes a compatibility outage between the compatible CLI release and the later #63 template rename. | `brief.md` `CON-03`/`NS-02`/`EC-01`; `design.md` `TRD-02`, `FM-01`, rollout; `implementation-plan.md` source tests and release handoff | Replaced strict rejection with an exact bounded selector: transition CLI accepts exactly one legacy or target root, rejects neither/both, always emits downstream `memory-bank/*`, and records a separately reviewed post-#63 legacy-removal release. |
+
+No `critical` findings were found. Minor findings were not changed.
+
+### Open questions closed through FPF
+
+`DEC-02` was reopened and closed using the issue ordering and non-scope wording as facts. The rejected alternatives were immediate new-only (outage) and indefinite fallback (outside scope). The selected bounded two-root selector is recorded in [decision-log.md](decision-log.md).
+
+### Changes made
+
+- Grounded the bounded compatibility matrix and exact neither/both rejection in brief, design and implementation plan.
+- Added retirement handoff `RB-04`, `STEP-08`, `CHK-08` and `EVID-08`; it requires a separately reviewed removal release without inventing a version or automatic upstream-state detector.
+- Reconciled source tests, checkpoints, risks and stop conditions with the transition behavior.
+
+### Human gate
+
+No. The release ordering, no-indefinite-support constraint and both source-root names are explicit in #14/#63; the package does not choose the later release version or create an external follow-up unilaterally.
+
+## Cycle 5
+
+### Review summary
+
+The corrected package now has one consistent transition model: accept exactly one known source root during the compatibility release, translate at the reader boundary to the unchanged downstream namespace, reject ambiguous duplicate/missing roots, and route legacy retirement to a separately reviewed post-#63 release. Requirement, design, implementation, verification and decision-log references agree.
+
+### Critical and important findings
+
+None.
+
+### Open questions closed through FPF
+
+None.
+
+### Changes made
+
+No further critical/important correction was required.
+
+### Human gate
+
+No.
+
 ## Final Report
 
 - **Status:** `done`
-- **Cycles completed:** 3
+- **Cycles completed:** 5
 - **Critical findings closed:** none were found.
 - **Important findings closed:**
   - repaired the missing review-report route and broken link;
   - separated regression-test and use-case-documentation traceability;
   - added the required Feature Flow routing record to issue #14.
+  - replaced the unsafe immediate source-root switch with bounded transition compatibility and explicit post-#63 retirement handoff.
 - **Critical/important findings remaining:** none.
 - **Minor findings:** none recorded or changed.
 - **Decision log:** [decision-log.md](decision-log.md)
