@@ -1,0 +1,38 @@
+name: Downstream smoke
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stable:
+    name: Stable downstream smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Run pinned downstream fixture
+        env:
+          # v1.0.1 is the forward-only replacement for the poisoned v1.0.0
+          # module version and remains on the public consumer path.
+          CLI_REF: v1.0.1
+          TEMPLATE_REF: v1.0.1
+          RELEASE_TAG: v1.0.1
+          REPORT_DIR: ${{ runner.temp }}/downstream-smoke
+        run: bash scripts/downstream-smoke.sh
+      - name: Upload downstream evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: downstream-smoke-stable
+          path: ${{ runner.temp }}/downstream-smoke
+          if-no-files-found: warn

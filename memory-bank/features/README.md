@@ -20,6 +20,7 @@ audience: humans_and_agents
 - [FT-001: Migrate CLI Source and Rename Executable](FT-001-migrate-cli-source-and-rename-executable/README.md) — active delivery package for standalone migration and sole `memory-bank-cli` executable identity; its brief is still marked `in_progress`.
 - [FT-002: Doctor Template-Profile Detection](FT-002-doctor-template-profile-detection/README.md) — draft package for issue #2; blocked pending the explicit template-source marker contract and validation-profile confirmation.
 - [FT-003: Establish memory-bank-cli Releases](FT-003-establish-memory-bank-cli-releases/README.md) — planned release-deployment package for CI, the approved `v1.0.0` publication and Go installation documentation.
+- [FT-005: Downstream Smoke Tests and Compatibility Canaries](FT-005-downstream-smoke-tests-and-compatibility-canaries/README.md) — active delivery package for issue #5's blocking stable smoke and scheduled/manual compatibility canary.
 - [FT-006: Opt-in GitHub Workflow Adapter](FT-006-github-workflow-adapter/README.md) — active delivery package for issue #6's opt-in, marker-owned GitHub workflow adapter.
 
 ## Rules
