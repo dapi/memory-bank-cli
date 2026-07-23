@@ -171,7 +171,7 @@ Review feedback found two execution-evidence gaps in the authorization clarifica
 | Priority | Finding | Resolution |
 | --- | --- | --- |
 | important | `STOP-02` grouped missing tag authorization with post-tag publication controls, despite a tag itself being an irreversible public effect. | Split the stop conditions: absent/rejected tag authorization now prevents the push; only credentials or environment approval after an authorized push stop publication. |
-| important | `CP-03` cited `EVID-03`, a release/tag URL and asset inventory, as evidence for authorization that must precede publication. | Added `CHK-06` and `EVID-06` for the distinct tag-authorization and environment deployment-approval records; `CP-03` now references that pre-publication evidence. |
+| important | `CP-03` and the `AG-01` approval-gate row cited `EVID-03`, a release/tag URL and asset inventory, as evidence for authorization that must precede publication. | Added `CHK-06` and `EVID-06` for the distinct tag-authorization and environment deployment-approval records; both `CP-03` and `AG-01` now reference that pre-publication evidence. |
 
 #### FPF resolutions
 

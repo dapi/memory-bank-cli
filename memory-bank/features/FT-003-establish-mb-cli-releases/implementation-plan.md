@@ -42,7 +42,7 @@ must_not_define:
 
 | Approval Gate ID | Trigger | Applies to | Why approval is required | Approver / evidence |
 | --- | --- | --- | --- | --- |
-| `AG-01` | the tag-triggered workflow has passed validation and is ready to publish | GitHub Release publication in `STEP-04` | Credentialed external publication is irreversible. Tag creation is separately authorized by a maintainer and is not enforced by this environment gate. | required reviewer approves the GitHub `release` environment deployment; deployment record in `EVID-03` |
+| `AG-01` | the tag-triggered workflow has passed validation and is ready to publish | GitHub Release publication in `STEP-04` | Credentialed external publication is irreversible. Tag creation is separately authorized by a maintainer and is not enforced by this environment gate. | required reviewer approves the GitHub `release` environment deployment; deployment record in `EVID-06` |
 
 ## Order of Work
 
