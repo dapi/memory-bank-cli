@@ -67,7 +67,7 @@ must_not_define:
 
 | Risk ID | Risk | Impact | Mitigation | Trigger |
 | --- | --- | --- | --- | --- |
-| `ER-01` | Candidate checks fail | invalid release could be published | keep publication dependent on validation | any failed test/vet/build |
+| `ER-01` | Candidate checks fail | an invalid GitHub Release could be published; if failure occurs after tag push, an invalid module version is already public | validate the candidate before authorizing a tag; after a tag-triggered failure, block GitHub Release publication and remediate forward with a new semantic version | any failed test/vet/build |
 | `ER-02` | Existing distribution credential is unavailable | release cannot complete | stop before tag/release and obtain human direction | credential validation fails |
 | `ER-03` | Tag or asset names expose removed identities | breaking-release contract is violated | inspect names before and after release | `CHK-03` or `CHK-05` fails |
 
@@ -75,7 +75,7 @@ must_not_define:
 
 | Stop ID | Related refs | Trigger | Immediate action | Safe fallback state |
 | --- | --- | --- | --- | --- |
-| `STOP-01` | `FM-01`, `ER-01` | validation fails | if the tag has not been pushed, do not push it; if its tag workflow has already failed validation, do not approve or publish the release; correct the candidate | committed candidate, or an unpublished tag with no GitHub Release |
+| `STOP-01` | `FM-01`, `ER-01`, `CON-01` | validation fails | if the tag has not been pushed, do not push it; if its tag workflow has already failed validation, do not approve or publish the GitHub Release, do not retag/repoint `v1.0.0`, and obtain maintainer direction for a forward-only corrected semantic version | committed untagged candidate, or a public Go module version with no GitHub Release |
 | `STOP-02` | `CON-01`, `PRE-03` | tag authorization is absent or rejected | do not create or push the tag; request maintainer direction | validated, untagged candidate |
-| `STOP-03` | `FM-02`, `ER-02`, `CON-01` | credentials or environment approval are absent or rejected after an authorized tag push | do not approve or allow the release publication job; request maintainer direction | validated, unpublished tag with no GitHub Release |
-| `STOP-04` | `FM-03`, `ER-03` | old identity is present in artifact/docs | do not publish or claim completion; correct source | validated state before tag |
+| `STOP-03` | `FM-02`, `ER-02`, `CON-01` | credentials or environment approval are absent or rejected after an authorized tag push | do not approve or allow the release publication job; request maintainer direction | public Go module version with no GitHub Release |
+| `STOP-04` | `FM-03`, `ER-03`, `CON-01` | old identity is present in artifact/docs | before tag push, do not publish and correct source; after tag push, do not repoint it, preserve the public module version and obtain maintainer direction for a forward-only corrected semantic version | corrected untagged candidate, or a public Go module version with no GitHub Release |

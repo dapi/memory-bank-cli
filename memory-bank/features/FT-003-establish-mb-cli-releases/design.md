@@ -26,7 +26,7 @@ must_not_define:
 
 ## Context
 
-Issue #3 requires a stable, Go-installable `v1.0.0` release. The repository already contains a single-binary GoReleaser configuration, but no CI workflow or released tag. The solution must prove validation before publication and isolate external effects behind a human gate.
+Issue #3 requires a stable, Go-installable `v1.0.0` release. The repository already contains a single-binary GoReleaser configuration, but no CI workflow or released tag. The solution must prove validation before GitHub Release publication and isolate external effects behind a human gate.
 
 ## C4 Applicability
 
@@ -49,7 +49,7 @@ Issue #3 requires a stable, Go-installable `v1.0.0` release. The repository alre
 | Connectors / interactions | covered | `CTR-01` | release workflow | Tag-to-release and Go-install interaction are explicit. |
 | Configuration / topology | covered | `SOL-01`, `SOL-02`, `C4-01` | workflow files and `.goreleaser.yml` | Uses existing one-binary release configuration. |
 | Behavioral semantics | covered | `INV-01`, `INV-02`, `FM-01` | verify checks | Publication requires validation; only `mb-cli` is distributed. |
-| Quality / evolution concerns | covered | `TRD-01`, `RB-01`, `RB-02` | decision log and approval gate | Public release is auditable and can stop safely before publication. |
+| Quality / evolution concerns | covered | `TRD-01`, `RB-01`, `RB-02` | decision log and approval gate | GitHub Release publication is auditable and can stop safely before that release boundary. |
 
 ## Selected Solution
 
@@ -61,7 +61,7 @@ Issue #3 requires a stable, Go-installable `v1.0.0` release. The repository alre
 
 | Alternative ID | Option | Why not selected |
 | --- | --- | --- |
-| `ALT-01` | Publish manually without CI workflow | Fails `REQ-01` and cannot demonstrate validation before publication. |
+| `ALT-01` | Publish manually without CI workflow | Fails `REQ-01` and cannot demonstrate validation before GitHub Release publication. |
 | `ALT-02` | Publish a snapshot/non-semantic tag | Cannot satisfy the explicitly required stable `v1.0.0` Go install contract. |
 | `ALT-03` | Reintroduce old executable artifacts | Explicitly forbidden by `REQ-04` and issue #3. |
 
@@ -82,7 +82,7 @@ Issue #3 requires a stable, Go-installable `v1.0.0` release. The repository alre
 
 | Contract ID | Connector / direction | Roles and sync boundary | Guarantees / failure / evolution semantics |
 | --- | --- | --- | --- |
-| `CTR-01` | approved `v1.0.0` tag → GitHub Actions → GoReleaser/GitHub Release → Go module consumer | asynchronous workflow then synchronous consumer install | publication begins only after workflow validation; published module path and command use `mb-cli`; failed validation prevents publication. |
+| `CTR-01` | approved `v1.0.0` tag → GitHub Actions → GoReleaser/GitHub Release → Go module consumer | asynchronous workflow then synchronous consumer install | the pushed tag exposes the immutable Go module version; GitHub Release publication begins only after workflow validation and `AG-01`; published module path and command use `mb-cli`. |
 
 ## Invariants
 
@@ -93,7 +93,7 @@ Issue #3 requires a stable, Go-installable `v1.0.0` release. The repository alre
 
 ## Failure Modes
 
-- `FM-01` Tests, vet, GoReleaser validation or snapshot build fail. Mitigation: do not publish; fix the failure and rerun the workflow.
+- `FM-01` Tests, vet, GoReleaser validation or snapshot build fail. Mitigation: before a tag push, do not tag; after tag-triggered validation fails, do not publish a GitHub Release or repoint the tag. Treat the tagged module version as public and use a new semantic version for any corrected release after human authorization.
 - `FM-02` A required GitHub or existing distribution credential is absent or rejected. Mitigation: stop before tag/release and request credential/configuration direction; do not weaken or bypass the configured destination.
 - `FM-03` Release assets or documentation expose an old executable identity. Mitigation: fail `CHK-03`/`CHK-05`, correct the source configuration/docs and publish only after a new approved validation run.
 - `FM-04` A Go-installed binary retains the local `dev` fallback because no linker flag is applied. Mitigation: fall back to `debug.ReadBuildInfo` and cover linker, tagged-module and local-build cases with unit tests.
@@ -103,7 +103,7 @@ Issue #3 requires a stable, Go-installable `v1.0.0` release. The repository alre
 | Stage ID | Stage | Entry condition | Backout |
 | --- | --- | --- | --- |
 | `RB-01` | Validate candidate | workflows and docs are committed; local/CI validation is green | revert unpublished workflow/config/doc changes |
-| `RB-02` | Public `v1.0.0` release | a maintainer records authorization before the tag push; after tag-triggered validation succeeds, `AG-01` is approved and required credentials are confirmed | do not push without tag authorization; after an authorized push, stop before the release publication job if validation, credentials or `AG-01` fail; do not claim release evidence |
+| `RB-02` | Public `v1.0.0` release | a maintainer records authorization before the tag push; after tag-triggered validation succeeds, `AG-01` is approved and required credentials are confirmed | do not push without tag authorization; after an authorized push, stop before the release publication job if validation, credentials or `AG-01` fail. The tag is already a public module version: preserve it, do not repoint it, and use a new semantic version for any corrected release. |
 | `RB-03` | Post-publication verification | GitHub release and Go install are observable | preserve evidence and escalate any release correction; never rewrite history as a local rollback |
 
 ## Design Verification

@@ -185,6 +185,30 @@ Updated the brief verify/evidence contract, design rollout gate and implementati
 
 No new gate. The documented maintainer authorization and `AG-01` approval remain required execution-time human actions.
 
+### Cycle 4
+
+#### Review summary
+
+Review feedback identified a boundary error in the fallback wording: the tag-triggered workflow can fail only after its tag has already exposed the Go module version.
+
+#### Findings
+
+| Priority | Finding | Resolution |
+| --- | --- | --- |
+| important | The plan called a pushed tag “unpublished” and allowed correcting the candidate as if `v1.0.0` could safely be moved. | `DEC-09` separates immutable Go-module publication by tag from later GitHub Release publication. Failure after the push now blocks the GitHub Release, preserves the tag, and requires forward-only remediation with a new semantic version and renewed authorization. |
+
+#### FPF resolutions
+
+- `DEC-09`: boundary and evidence reasoning distinguishes the tag's Go-module publication from the GitHub Release gate, so the stop condition no longer claims a reversible state after the first public effect.
+
+#### Changes made
+
+Updated the problem constraint, release contract, failure/rollback semantics, risks and all post-tag safe fallback states.
+
+#### Human gate
+
+No new gate. A post-tag validation failure requires maintainer direction and renewed authorization for a new semantic version; it does not authorize retagging `v1.0.0`.
+
 ## Final status
 
-`done` after 3 review-improve cycles in this reconciliation run. The package is ready for implementation/candidate validation and accurately describes the separate tag-authorization and protected-publication controls. Public tag/release evidence is still intentionally absent until the future approved release execution.
+`done` after 4 review-improve cycles in this reconciliation run. The package is ready for implementation/candidate validation and accurately describes the separate tag-authorization and protected-publication controls. Public tag/release evidence is still intentionally absent until the future approved release execution.
