@@ -24,7 +24,7 @@ must_not_define:
 
 ## Selected Design
 
-- `SOL-01` Stable CI creates new temporary source and downstream Git repositories, clones this repository at `v1.0.0` (`06f88e4638c6fd5f07cd05caf93e0601927faea3`), installs the CLI with documented `go install ...@v1.0.0`, and passes the clone, version and SHA to `init`/`update`.
+- `SOL-01` Stable CI creates new temporary source and downstream Git repositories, clones this repository at `v1.0.1` (`b0d8ca47cdb3315df4b755a704d01ffb139754e7`), installs the CLI with documented `go install ...@v1.0.1`, and passes the clone, version and SHA to `init`/`update`. This forward-only pin replaces the poisoned `v1.0.0` module version.
 - `SOL-02` Canary runs on schedule and `workflow_dispatch`; it accepts separate CLI/template refs, resolves each to a SHA before work, installs the CLI through `go install ...@<resolved-cli-sha>`, and clones the template at its resolved SHA. It reports requested refs, resolved SHAs, tool versions and phase result. Defaults are `main`/`main`.
 - `SOL-03` Go installation remains the fixture's CLI path. When the selected release contains both `checksums.txt` and binary assets, a separate packaging phase downloads every binary asset and validates its SHA-256 entry.
 - `SOL-04` Every run assigns one terminal boundary: `packaging` (install/assets/checksum), `template` (clone/source/provenance), `cli` (commands after inputs are established), or `external-tooling` (Go/Git/network/runner before a feature-owned phase). It reports the boundary, not an unproven root cause.

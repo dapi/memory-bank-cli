@@ -49,8 +49,8 @@ None. FPF B.5/B.5.2 was used to state the evidence-backed prompt, retain materia
 
 | Question | Available facts | Options | Risk of a wrong choice | Needed from a human |
 | --- | --- | --- | --- | --- |
-| What selects stable and canary CLI/template references, including the clean source checkout? | Stable must be pinned and blocking; canary must be scheduled/manual; CLI requires an explicit clean local template checkout/version/full SHA; `v1.0.0` is published. | Pin stable to `v1.0.0` and vary canary via moving latest; use explicit workflow-dispatch inputs for both; use a version manifest/lock as the source of both. | False compatibility claims, non-hermetic stable CI, or unclassifiable failures. | Select the policy and the allowed source acquisition/credentials. |
-| What does conditional release-asset integrity cover? | Users install through `go install`; `v1.0.0` additionally has binary release assets and `checksums.txt`; issue says integrity when assets are introduced. | Go-install only; download/check release binaries and checksums now; add a named future packaging trigger. | Missing required supply-chain coverage or adding a test surface outside issue intent. | Name assets, trigger, verifier and expected evidence. |
+| What selects stable and canary CLI/template references, including the clean source checkout? | Stable must be pinned and blocking; canary must be scheduled/manual; CLI requires an explicit clean local template checkout/version/full SHA; the forward-only `v1.0.1` replacement for the poisoned `v1.0.0` module is published. | Pin stable to `v1.0.1` and vary canary via moving latest; use explicit workflow-dispatch inputs for both; use a version manifest/lock as the source of both. | False compatibility claims, non-hermetic stable CI, or unclassifiable failures. | Select the policy and the allowed source acquisition/credentials. |
+| What does conditional release-asset integrity cover? | Users install through `go install`; `v1.0.1` additionally has binary release assets and `checksums.txt`; issue says integrity when assets are introduced. | Go-install only; download/check release binaries and checksums now; add a named future packaging trigger. | Missing required supply-chain coverage or adding a test surface outside issue intent. | Name assets, trigger, verifier and expected evidence. |
 | Which validation profile/evidence minimum applies? | Current policy covers Go test/vet and FT-003 release checks; profiles document no general catalogue for this feature. | Approve `standard`; approve `release-deployment`; define a feature-specific integration minimum. | Under-testing a blocking CI/release-path change or imposing unapproved delivery obligations. | Select and state the required suites/CI evidence. |
 
 ## Final status
@@ -73,7 +73,7 @@ No `critical` or remaining `important` findings. No `minor` findings were acted 
 
 ### Open questions closed through FPF
 
-- `DEC-01`: selected explicit refs resolved to immutable commits, with fixed `v1.0.0` stable pair.
+- `DEC-01`: selected explicit refs resolved to immutable commits, with fixed forward-only `v1.0.1` stable pair replacing the poisoned `v1.0.0` module.
 - `DEC-02`: selected separate Go-install and conditional all-binary checksum evidence.
 - `DEC-03`: selected `standard` rather than release-deployment or an invented profile.
 

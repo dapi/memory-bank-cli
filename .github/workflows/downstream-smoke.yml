@@ -22,9 +22,11 @@ jobs:
           go-version-file: go.mod
       - name: Run pinned downstream fixture
         env:
-          CLI_REF: v1.0.0
-          TEMPLATE_REF: v1.0.0
-          RELEASE_TAG: v1.0.0
+          # v1.0.1 is the forward-only replacement for the poisoned v1.0.0
+          # module version and remains on the public consumer path.
+          CLI_REF: v1.0.1
+          TEMPLATE_REF: v1.0.1
+          RELEASE_TAG: v1.0.1
           REPORT_DIR: ${{ runner.temp }}/downstream-smoke
         run: bash scripts/downstream-smoke.sh
       - name: Upload downstream evidence

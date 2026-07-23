@@ -48,7 +48,7 @@ Issue #5 requires delivery-path evidence that the standalone CLI and Memory Bank
 
 ### Constraints / Assumptions
 
-- `ASM-01` The supported user installation path is `go install github.com/dapi/memory-bank-cli/cmd/memory-bank-cli@vX.Y.Z`; `v1.0.0` is published at commit `06f88e4638c6fd5f07cd05caf93e0601927faea3` and contains binaries plus `checksums.txt`.
+- `ASM-01` The supported user installation path is `go install github.com/dapi/memory-bank-cli/cmd/memory-bank-cli@vX.Y.Z`; the forward-only `v1.0.1` replacement for the poisoned `v1.0.0` module is published at commit `b0d8ca47cdb3315df4b755a704d01ffb139754e7` and contains binaries plus `checksums.txt`.
 - `ASM-02` The current CLI `init` and `update` require a clean local template Git checkout, `--source`, `--template-version`, and a full-commit `--source-ref`; it does not fetch a template itself.
 - `ASM-03` Current tests and fixtures cover repository-local ownership/doctor/lint behavior; no issue #5 downstream CI workflow or fixture is present.
 - `CON-01` Stable smoke must be hermetic, isolated in temporary repositories, least-privilege, and blocking.
