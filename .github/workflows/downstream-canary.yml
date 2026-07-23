@@ -1,0 +1,45 @@
+name: Downstream compatibility canary
+
+on:
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      cli_ref:
+        description: CLI Git ref to test
+        required: false
+        default: main
+        type: string
+      template_ref:
+        description: Template Git ref to test
+        required: false
+        default: main
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  canary:
+    name: Downstream compatibility canary
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Run compatibility fixture
+        env:
+          CLI_REF: ${{ inputs.cli_ref || 'main' }}
+          TEMPLATE_REF: ${{ inputs.template_ref || 'main' }}
+          REPORT_DIR: ${{ runner.temp }}/downstream-canary
+        run: bash scripts/downstream-smoke.sh
+      - name: Upload canary evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: downstream-canary
+          path: ${{ runner.temp }}/downstream-canary
+          if-no-files-found: warn
