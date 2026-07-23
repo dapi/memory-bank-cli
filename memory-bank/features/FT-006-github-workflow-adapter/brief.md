@@ -22,7 +22,7 @@ must_not_define:
 
 ### Problem
 
-Issue #6 requests an opt-in GitHub adapter that `mb-cli` installs and updates, while keeping GitHub outside the Memory Bank core dependency. The requested adapter must manage optional issue forms, a PR template, validation workflow/configuration and agent guidance; it must protect user-owned GitHub templates and report create, update, conflict and dry-run decisions.
+Issue #6 requests an opt-in GitHub adapter that `memory-bank-cli` installs and updates, while keeping GitHub outside the Memory Bank core dependency. The requested adapter must manage optional issue forms, a PR template, validation workflow/configuration and agent guidance; it must protect user-owned GitHub templates and report create, update, conflict and dry-run decisions.
 
 ### Outcome
 
@@ -35,7 +35,7 @@ The issue defines qualitative acceptance only. No baseline, numeric target or so
 ### Scope
 
 - `REQ-01` Provide an explicit, opt-in adapter boundary for GitHub-specific issue forms, PR template, validation workflow/configuration and agent guidance; non-GitHub adoption remains unaffected.
-- `REQ-02` Install and update the adapter through `mb-cli` with ownership-aware, dry-run-capable and non-destructive handling of user-owned `.github/` templates.
+- `REQ-02` Install and update the adapter through `memory-bank-cli` with ownership-aware, dry-run-capable and non-destructive handling of user-owned `.github/` templates.
 - `REQ-03` Report create, update, conflict and dry-run decisions for adapter-managed paths.
 - `REQ-04` Define adapter guidance that distinguishes Small Change from Feature documentation/evidence requirements and addresses delivery evidence, full closure and partial references.
 - `REQ-05` Cover an empty `.github/` tree and existing custom templates with fixtures.
@@ -52,7 +52,7 @@ The issue defines qualitative acceptance only. No baseline, numeric target or so
 - `ASM-02` The existing CLI exposes `init` and `update` ownership flows with `--dry-run`; its ownership model names `managed`, `adapted`, `user-owned` and `generated` classes. These are discovery facts, not an approved reuse decision for the adapter.
 - `CON-01` User-owned `.github/` templates must not be overwritten.
 - `CON-02` GitHub state must remain separate from canonical Memory Bank owner documents.
-- `DEC-01` Accepted in `design.md`: use `mb-cli github init|update`, embedded assets and marker-managed ownership.
+- `DEC-01` Accepted in `design.md`: use `memory-bank-cli github init|update`, embedded assets and marker-managed ownership.
 - `DEC-02` Accepted: use the existing `standard` profile vocabulary; the feature's minimum is unit/CLI coverage, full Go suite, vet, navigation audit and green PR CI.
 
 ## Design Requirement Decision
@@ -79,14 +79,14 @@ The issue defines qualitative acceptance only. No baseline, numeric target or so
 
 ### Acceptance Scenarios
 
-- `SC-01` A repository without `.github/` runs `mb-cli github init` and receives the five managed assets; non-GitHub commands are unchanged.
+- `SC-01` A repository without `.github/` runs `memory-bank-cli github init` and receives the five managed assets; non-GitHub commands are unchanged.
 - `SC-02` A repository with an existing unmarked custom GitHub template runs init/update and the file is preserved with a reported decision.
 - `SC-03` A clean managed asset is modified inside its marker block; update reports conflict and applies no mutations.
 - `SC-04` `--dry-run` reports planned creates/updates/conflicts and does not write.
 
 ### Exit Criteria
 
-- `EC-01` The optional adapter installs only via `mb-cli github`, preserves user-owned templates and reports decisions.
+- `EC-01` The optional adapter installs only via `memory-bank-cli github`, preserves user-owned templates and reports decisions.
 - `EC-02` Forms/PR/guidance cover the issue-required flow, evidence and closure distinctions.
 
 ### Traceability matrix
@@ -102,7 +102,7 @@ The issue defines qualitative acceptance only. No baseline, numeric target or so
 | --- | --- | --- | --- | --- |
 | `CHK-01` | `SC-01`–`SC-04` | `go test ./internal/githubadapter` | all ownership and fixture scenarios pass | `EVID-01` |
 | `CHK-02` | `SC-01`, `SC-04` | `go test ./internal/cli` | command/JSON contract passes | `EVID-02` |
-| `CHK-03` | all `REQ-*` | `go test ./... && go vet ./... && go run ./cmd/mb-cli lint --repo-root .` plus PR CI | local and CI checks pass | `EVID-03` |
+| `CHK-03` | all `REQ-*` | `go test ./... && go vet ./... && go run ./cmd/memory-bank-cli lint --repo-root .` plus PR CI | local and CI checks pass | `EVID-03` |
 
 ### Evidence
 

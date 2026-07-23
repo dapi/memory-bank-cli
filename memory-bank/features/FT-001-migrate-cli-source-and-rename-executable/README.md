@@ -2,7 +2,7 @@
 title: "FT-001: Migrate CLI Source and Rename Executable"
 doc_kind: feature
 doc_function: index
-purpose: "Навигация по feature-пакету миграции Go CLI в standalone-репозиторий и переименования публичной команды в `mb-cli`."
+purpose: "Навигация по feature-пакету миграции Go CLI в standalone-репозиторий и переименования публичной команды в `memory-bank-cli`."
 derived_from:
   - brief.md
 status: active

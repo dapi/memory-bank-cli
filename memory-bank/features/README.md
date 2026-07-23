@@ -17,9 +17,9 @@ audience: humans_and_agents
 
 ## Instantiated Features
 
-- [FT-001: Migrate CLI Source and Rename Executable](FT-001-migrate-cli-source-and-rename-executable/README.md) — active delivery package for standalone migration and sole `mb-cli` executable identity; its brief is still marked `in_progress`.
+- [FT-001: Migrate CLI Source and Rename Executable](FT-001-migrate-cli-source-and-rename-executable/README.md) — active delivery package for standalone migration and sole `memory-bank-cli` executable identity; its brief is still marked `in_progress`.
 - [FT-002: Doctor Template-Profile Detection](FT-002-doctor-template-profile-detection/README.md) — draft package for issue #2; blocked pending the explicit template-source marker contract and validation-profile confirmation.
-- [FT-003: Establish mb-cli Releases](FT-003-establish-mb-cli-releases/README.md) — planned release-deployment package for CI, the approved `v1.0.0` publication and Go installation documentation.
+- [FT-003: Establish memory-bank-cli Releases](FT-003-establish-memory-bank-cli-releases/README.md) — planned release-deployment package for CI, the approved `v1.0.0` publication and Go installation documentation.
 - [FT-006: Opt-in GitHub Workflow Adapter](FT-006-github-workflow-adapter/README.md) — active delivery package for issue #6's opt-in, marker-owned GitHub workflow adapter.
 
 ## Rules

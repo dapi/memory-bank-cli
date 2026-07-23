@@ -15,10 +15,10 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// doctorCommandPattern accepts a mb-cli invocation at the start of a shell
+// doctorCommandPattern accepts a memory-bank-cli invocation at the start of a shell
 // command, including after common shell command separators. It intentionally
 // does not match arbitrary text in a run block (for example, echo commands).
-var doctorCommandPattern = regexp.MustCompile(`(?m)(?:^|[;&|]\s*|\bthen\s+|\bdo\s+)(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+\s+)*(?:\S*/)?mb-cli["']?\s+doctor(?:[ \t]|$|[;&|])`)
+var doctorCommandPattern = regexp.MustCompile(`(?m)(?:^|[;&|]\s*|\bthen\s+|\bdo\s+)(?:[A-Za-z_][A-Za-z0-9_]*=[^\s]+\s+)*(?:\S*/)?memory-bank-cli["']?\s+doctor(?:[ \t]|$|[;&|])`)
 
 var shellErrexitStatePattern = regexp.MustCompile(`(?m)(?:^|[;\n])\s*set\s+([+-])(?:e|o\s+(?:errexit|e))(?:\s|;|$)`)
 var shellSuccessfulExitPattern = regexp.MustCompile(`(?m)(?:^|[;\n])\s*exit\s+0(?:\s*#.*)?\s*$`)
@@ -112,15 +112,15 @@ func (report *Report) add(finding Finding) { report.Findings = append(report.Fin
 func (report *Report) checkIdentityAndDrift(agentFile string) {
 	lock, exists, lockErr := ownership.ReadLock(report.RepoRoot)
 	if lockErr != nil {
-		report.add(Finding{Code: "manifest.invalid", Severity: Error, Group: "manifest", Path: ownership.LockFileName, Message: lockErr.Error(), Remediation: "Repair or recreate the ownership lock with mb-cli init from a trusted template checkout."})
+		report.add(Finding{Code: "manifest.invalid", Severity: Error, Group: "manifest", Path: ownership.LockFileName, Message: lockErr.Error(), Remediation: "Repair or recreate the ownership lock with memory-bank-cli init from a trusted template checkout."})
 	} else if exists {
 		report.TemplateIdentity = TemplateIdentity{SchemaVersion: lock.SchemaVersion, Version: lock.Template.Version, SourceRef: lock.Template.SourceRef}
-		report.add(Finding{Code: "template.identity", Severity: Info, Group: "template_identity", Path: ownership.LockFileName, Subject: lock.Template.Version, Message: "Installed template identity is recorded in the ownership lock.", Remediation: "Use mb-cli update --dry-run to compare with a newer pinned template source."})
+		report.add(Finding{Code: "template.identity", Severity: Info, Group: "template_identity", Path: ownership.LockFileName, Subject: lock.Template.Version, Message: "Installed template identity is recorded in the ownership lock.", Remediation: "Use memory-bank-cli update --dry-run to compare with a newer pinned template source."})
 		report.checkManagedDrift(lock)
 	} else if report.Profile == ProfileDownstream {
-		report.add(Finding{Code: "template.identity_missing", Severity: Error, Group: "template_identity", Path: ownership.LockFileName, Message: "The downstream repository has no ownership lock, so its installed template version is unknown.", Remediation: "Adopt the template with mb-cli init and commit memory-bank/.lock."})
+		report.add(Finding{Code: "template.identity_missing", Severity: Error, Group: "template_identity", Path: ownership.LockFileName, Message: "The downstream repository has no ownership lock, so its installed template version is unknown.", Remediation: "Adopt the template with memory-bank-cli init and commit memory-bank/.lock."})
 	} else {
-		report.add(Finding{Code: "template.source_repository", Severity: Info, Group: "template_identity", Subject: "template", Message: "Template source profile detected; an installed-template lock is not expected.", Remediation: "Create locks only in downstream repositories through mb-cli init."})
+		report.add(Finding{Code: "template.source_repository", Severity: Info, Group: "template_identity", Subject: "template", Message: "Template source profile detected; an installed-template lock is not expected.", Remediation: "Create locks only in downstream repositories through memory-bank-cli init."})
 	}
 
 	contents, _, err := readRegularWithinRoot(report.RepoRoot, agentFile)
@@ -132,15 +132,15 @@ func (report *Report) checkIdentityAndDrift(agentFile string) {
 		}
 		report.add(Finding{Code: "agent.entrypoint_missing", Severity: severity, Group: "agent_integration", Path: agentFile, Message: message, Remediation: "Create the agent instruction file and link it to memory-bank/README.md."})
 	} else if !strings.Contains(string(contents), "memory-bank/README.md") {
-		report.add(Finding{Code: "agent.memory_bank_link_missing", Severity: Error, Group: "agent_integration", Path: agentFile, Message: "Agent instructions do not route readers to memory-bank/README.md.", Remediation: "Add a repository-relative link to memory-bank/README.md or run mb-cli update with the same --agent-file."})
+		report.add(Finding{Code: "agent.memory_bank_link_missing", Severity: Error, Group: "agent_integration", Path: agentFile, Message: "Agent instructions do not route readers to memory-bank/README.md.", Remediation: "Add a repository-relative link to memory-bank/README.md or run memory-bank-cli update with the same --agent-file."})
 	}
 	if exists && lockErr == nil {
 		agentReport, err := ownership.InspectAgentInstructions(report.RepoRoot, agentFile)
 		if err != nil {
-			report.add(Finding{Code: "agent.managed_block_invalid", Severity: Error, Group: "agent_integration", Path: agentFile, Message: err.Error(), Remediation: "Resolve unsafe paths or damaged markers, then run mb-cli update."})
+			report.add(Finding{Code: "agent.managed_block_invalid", Severity: Error, Group: "agent_integration", Path: agentFile, Message: err.Error(), Remediation: "Resolve unsafe paths or damaged markers, then run memory-bank-cli update."})
 		} else if agentReport.DriftCount > 0 {
 			decision := agentReport.Decisions[0]
-			report.add(Finding{Code: "agent.managed_block_drift", Severity: Error, Group: "agent_integration", Path: decision.Path, Subject: string(decision.Action), Message: decision.Reason, Remediation: "Run mb-cli update using the pinned template checkout and the same --agent-file."})
+			report.add(Finding{Code: "agent.managed_block_drift", Severity: Error, Group: "agent_integration", Path: decision.Path, Subject: string(decision.Action), Message: decision.Reason, Remediation: "Run memory-bank-cli update using the pinned template checkout and the same --agent-file."})
 		}
 	}
 }
@@ -162,12 +162,12 @@ func (report *Report) checkManagedDrift(lock ownership.Lock) {
 			if os.IsNotExist(err) {
 				code, message = "manifest.managed_missing", "Managed file recorded by the lock is missing."
 			}
-			report.add(Finding{Code: code, Severity: Error, Group: "manifest", Path: filePath, Message: message, Remediation: "Restore the file from the pinned template with mb-cli update."})
+			report.add(Finding{Code: code, Severity: Error, Group: "manifest", Path: filePath, Message: message, Remediation: "Restore the file from the pinned template with memory-bank-cli update."})
 			continue
 		}
 		digest := fmt.Sprintf("sha256:%x", sha256.Sum256(data))
 		if digest != contract.PayloadDigest {
-			report.add(Finding{Code: "manifest.managed_content_drift", Severity: Error, Group: "manifest", Path: filePath, Message: "Managed file content differs from the lock payload digest.", Remediation: "Review the local change, then restore/update it through mb-cli update."})
+			report.add(Finding{Code: "manifest.managed_content_drift", Severity: Error, Group: "manifest", Path: filePath, Message: "Managed file content differs from the lock payload digest.", Remediation: "Review the local change, then restore/update it through memory-bank-cli update."})
 		}
 		mode := "100644"
 		if info.Mode().Perm()&0o111 != 0 {
@@ -222,20 +222,20 @@ func (report *Report) checkCI() {
 		data, readErr := os.ReadFile(path)
 		if readErr == nil {
 			doctorGatePresent = doctorGatePresent || workflowRunsDoctor(data)
-			cliInstalledAtLatest = cliInstalledAtLatest || strings.Contains(string(data), "cmd/mb-cli@latest")
+			cliInstalledAtLatest = cliInstalledAtLatest || strings.Contains(string(data), "cmd/memory-bank-cli@latest")
 		}
 		return nil
 	})
 	if !doctorGatePresent {
-		report.add(Finding{Code: "ci.doctor_gate_missing", Severity: Warning, Group: "downstream_ci", Path: ".github/workflows", Message: "No GitHub Actions workflow runs mb-cli doctor.", Remediation: "Add a read-only mb-cli doctor gate; downstream CI should install a pinned CLI version."})
+		report.add(Finding{Code: "ci.doctor_gate_missing", Severity: Warning, Group: "downstream_ci", Path: ".github/workflows", Message: "No GitHub Actions workflow runs memory-bank-cli doctor.", Remediation: "Add a read-only memory-bank-cli doctor gate; downstream CI should install a pinned CLI version."})
 	}
 	if report.Profile == ProfileDownstream && cliInstalledAtLatest {
-		report.add(Finding{Code: "ci.cli_version_unpinned", Severity: Warning, Group: "downstream_ci", Path: ".github/workflows", Message: "CI installs mb-cli from the moving @latest reference.", Remediation: "Pin the install to a release tag or full commit SHA."})
+		report.add(Finding{Code: "ci.cli_version_unpinned", Severity: Warning, Group: "downstream_ci", Path: ".github/workflows", Message: "CI installs memory-bank-cli from the moving @latest reference.", Remediation: "Pin the install to a release tag or full commit SHA."})
 	}
 }
 
 // workflowRunsDoctor reports whether a valid GitHub Actions workflow has a run
-// field that executes mb-cli doctor. Parsing YAML ensures comments and
+// field that executes memory-bank-cli doctor. Parsing YAML ensures comments and
 // unrelated workflow metadata cannot satisfy the CI gate diagnostic.
 func workflowRunsDoctor(data []byte) bool {
 	var document yaml.Node
@@ -403,7 +403,7 @@ func shellFollowingCommandSuppresses(remainder string) bool {
 
 // pipelineStatusCheckBlocks recognizes the common explicit Bash check used
 // after piping doctor's output through tee, for example:
-// `mb-cli doctor | tee report.txt; test ${PIPESTATUS[0]} -eq 0`.
+// `memory-bank-cli doctor | tee report.txt; test ${PIPESTATUS[0]} -eq 0`.
 func pipelineStatusCheckBlocks(run string, pipelineOperator, doctorIndex int) bool {
 	if pipelineOperator < 0 || pipelineOperator >= len(run) {
 		return false

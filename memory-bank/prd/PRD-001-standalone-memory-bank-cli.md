@@ -1,8 +1,8 @@
 ---
-title: "PRD-001: Standalone mb-cli"
+title: "PRD-001: Standalone memory-bank-cli"
 doc_kind: prd
 doc_function: canonical
-purpose: "Фиксирует продуктовую инициативу самостоятельного CLI с единственной публичной командой mb-cli."
+purpose: "Фиксирует продуктовую инициативу самостоятельного CLI с единственной публичной командой memory-bank-cli."
 derived_from:
   - ../product/context.md
   - ../domain/rules.md
@@ -15,7 +15,7 @@ must_not_define:
   - feature_level_verify_contract
 ---
 
-# PRD-001: Standalone `mb-cli`
+# PRD-001: Standalone `memory-bank-cli`
 
 ## Problem
 
@@ -30,7 +30,7 @@ The existing CLI source was historically located in the Memory Bank repository a
 
 ## Goals
 
-- `G-01` Provide the Go module `github.com/dapi/memory-bank-cli` and one public executable identity, `mb-cli`.
+- `G-01` Provide the Go module `github.com/dapi/memory-bank-cli` and one public executable identity, `memory-bank-cli`.
 - `G-02` Preserve supported command semantics, exit codes and versioned JSON contracts for `lint`, `doctor`, `init` and `update`.
 - `G-03` Ensure configured release builds do not emit an old executable identity.
 - `G-04` Publish the standalone module through validated semantic-version releases with installation documentation.
@@ -57,7 +57,7 @@ The existing CLI source was historically located in the Memory Bank repository a
 
 ## Business Rules
 
-- `mb-cli` is the only public executable identity.
+- `memory-bank-cli` is the only public executable identity.
 - The `memory-bank/` path remains domain payload data and is not itself an executable identity.
 - Existing command/JSON and exit-code contracts are preserved.
 
@@ -66,7 +66,7 @@ The existing CLI source was historically located in the Memory Bank repository a
 | Metric | Baseline | Target | Measurement |
 | --- | --- | --- | --- |
 | Module location | CLI under upstream `tools/` module | standalone `github.com/dapi/memory-bank-cli` module | inspect `go.mod` and source tree |
-| Executable identities | legacy identities before initiative | only `mb-cli` configured/built | source/release configuration inspection |
+| Executable identities | legacy identities before initiative | only `memory-bank-cli` configured/built | source/release configuration inspection |
 | Supported command contract | existing commands | preserved `lint`, `doctor`, `init`, `update` contracts | regression suite |
 
 ## Risks and Open Questions
@@ -80,5 +80,5 @@ The existing CLI source was historically located in the Memory Bank repository a
 
 | Feature | Why it exists | Status |
 | --- | --- | --- |
-| [FT-001](../features/FT-001-migrate-cli-source-and-rename-executable/README.md) | Migrate source and make `mb-cli` the only public executable. | in_progress according to its brief |
-| [FT-003](../features/FT-003-establish-mb-cli-releases/README.md) | Add CI, publish approved `v1.0.0`, and provide Go installation/upgrade documentation. | planned |
+| [FT-001](../features/FT-001-migrate-cli-source-and-rename-executable/README.md) | Migrate source and make `memory-bank-cli` the only public executable. | in_progress according to its brief |
+| [FT-003](../features/FT-003-establish-memory-bank-cli-releases/README.md) | Add CI, publish approved `v1.0.0`, and provide Go installation/upgrade documentation. | planned |

@@ -1,4 +1,4 @@
-name: Validate and release mb-cli
+name: Validate and release memory-bank-cli
 
 on:
   pull_request:

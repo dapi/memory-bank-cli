@@ -14,6 +14,6 @@ status: active
 
 | PRD | Status | Purpose |
 | --- | --- | --- |
-| [PRD-001: Standalone `mb-cli`](PRD-001-standalone-mb-cli.md) | draft | Product initiative to establish the standalone module and only public executable identity while preserving supported command contracts. |
+| [PRD-001: Standalone `memory-bank-cli`](PRD-001-standalone-memory-bank-cli.md) | draft | Product initiative to establish the standalone module and only public executable identity while preserving supported command contracts. |
 
 PRD templates live in [flows/templates/prd](../flows/templates/prd/PRD-XXX.md). Feature-level implementation design and verification remain in [FT-001](../features/FT-001-migrate-cli-source-and-rename-executable/README.md).

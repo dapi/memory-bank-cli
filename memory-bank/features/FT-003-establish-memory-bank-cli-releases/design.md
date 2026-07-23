@@ -2,7 +2,7 @@
 title: "FT-003: Design"
 doc_kind: feature
 doc_function: canonical
-purpose: "Feature-local CI, release and publication solution for the first stable `mb-cli` distribution."
+purpose: "Feature-local CI, release and publication solution for the first stable `memory-bank-cli` distribution."
 derived_from:
   - brief.md
   - ../../ops/release.md
@@ -26,7 +26,11 @@ must_not_define:
 
 ## Context
 
-Issue #3 requires a stable, Go-installable `v1.0.0` release. The repository already contains a single-binary GoReleaser configuration, but no CI workflow or released tag. The solution validates the exact release commit before it creates the public tag or GitHub Release, then isolates those external effects behind a human gate.
+The current executable rename requires a stable, Go-installable `v1.0.0`
+release. The repository already contains a single-binary GoReleaser
+configuration and a validation workflow. The solution validates the exact
+release commit before it creates the public tag or GitHub Release, then
+isolates those external effects behind a human gate.
 
 ## C4 Applicability
 
@@ -39,7 +43,7 @@ Issue #3 requires a stable, Go-installable `v1.0.0` release. The repository alre
 | GitHub Actions validation workflow | runs tests, vet and release-build validation | repository source → Go toolchain / GoReleaser |
 | GitHub Actions release workflow | repeats required validation, then invokes GoReleaser publication after approval | protected tag → GitHub Release |
 | GitHub Release / Go module proxy | exposes tag and release assets to consumers | `v1.0.0` → `go install` |
-| User environment | installs and invokes the published command | `go install` → `mb-cli` |
+| User environment | installs and invokes the published command | `go install` → `memory-bank-cli` |
 
 ## Architecture Coverage Decision
 
@@ -48,14 +52,14 @@ Issue #3 requires a stable, Go-installable `v1.0.0` release. The repository alre
 | Components / responsibilities | covered | `SOL-01`, `SOL-02` | C2 compact view | Separates validation from external publication. |
 | Connectors / interactions | covered | `CTR-01` | release workflow | Tag-to-release and Go-install interaction are explicit. |
 | Configuration / topology | covered | `SOL-01`, `SOL-02`, `C4-01` | workflow files and `.goreleaser.yml` | Uses existing one-binary release configuration. |
-| Behavioral semantics | covered | `INV-01`, `INV-02`, `FM-01` | verify checks | Publication requires validation; only `mb-cli` is distributed. |
+| Behavioral semantics | covered | `INV-01`, `INV-02`, `FM-01` | verify checks | Publication requires validation; only `memory-bank-cli` is distributed. |
 | Quality / evolution concerns | covered | `TRD-01`, `RB-01`, `RB-02` | decision log and approval gate | GitHub Release publication is auditable and can stop safely before that release boundary. |
 
 ## Selected Solution
 
 - `SOL-01` Add a validation workflow for repository changes that runs `go test -count=1 -race ./...`, `go vet ./...`, GoReleaser configuration validation and a clean snapshot release build.
 - `SOL-02` Add a `workflow_dispatch` release workflow that validates the selected `main` commit, then—only after its validation job succeeds and the protected GitHub `release` environment has received required-reviewer approval—creates `v1.0.0` on that exact commit and invokes the existing GoReleaser GitHub-release configuration.
-- `SOL-03` Publish the first release from semantic-version tag `v1.0.0`; add repository install/upgrade instructions for the exact Go command in issue #3 and release notes declaring `memory-bank` breaking removal and `memory-bank-lint` removal. When GoReleaser has not injected a linker version, resolve `--version` from Go build information so module-installed binaries report their tagged version.
+- `SOL-03` Publish the first release under the current executable identity from semantic-version tag `v1.0.0`; add repository install/upgrade instructions for the exact Go command and release notes declaring the breaking identity change. When GoReleaser has not injected a linker version, resolve `--version` from Go build information so module-installed binaries report their tagged version.
 
 ## Alternatives Considered
 
@@ -82,14 +86,14 @@ Issue #3 requires a stable, Go-installable `v1.0.0` release. The repository alre
 
 | Contract ID | Connector / direction | Roles and sync boundary | Guarantees / failure / evolution semantics |
 | --- | --- | --- | --- |
-| `CTR-01` | manual release run on `main` → validation → `AG-01` → `v1.0.0` tag / GoReleaser GitHub Release → Go module consumer | asynchronous workflow then synchronous consumer install | validation and approval precede the immutable tag and GitHub Release; the tag points to the validated commit; published module path and command use `mb-cli`. |
+| `CTR-01` | manual release run on `main` → validation → `AG-01` → `v1.0.0` tag / GoReleaser GitHub Release → Go module consumer | asynchronous workflow then synchronous consumer install | validation and approval precede the immutable tag and GitHub Release; the tag points to the validated commit; published module path and command use `memory-bank-cli`. |
 
 ## Invariants
 
 - `INV-01` No tag or GitHub Release can be created before its required validation job succeeds on the exact release commit.
-- `INV-02` Published executable artifacts, install documentation and release notes expose `mb-cli` only; payload-path mentions are not executable identities.
+- `INV-02` Published executable artifacts, install documentation and release notes expose `memory-bank-cli` only; payload-path mentions are not executable identities.
 - `INV-03` A public tag or GitHub Release is never created by unattended workflow execution: the GitHub `release` environment requires `AG-01` approval before the job that creates both can run.
-- `INV-04` A binary installed from a tagged Go module reports that module tag through `mb-cli --version`; local development builds may report `dev`.
+- `INV-04` A binary installed from a tagged Go module reports that module tag through `memory-bank-cli --version`; local development builds may report `dev`.
 
 ## Failure Modes
 

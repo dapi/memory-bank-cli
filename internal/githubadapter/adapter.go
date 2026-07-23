@@ -141,7 +141,7 @@ func ensureParent(root, directory string, created map[string]struct{}) error {
 }
 
 func atomicWriteFile(path string, data []byte) error {
-	temporary, err := os.CreateTemp(filepath.Dir(path), ".mb-cli-github-*")
+	temporary, err := os.CreateTemp(filepath.Dir(path), ".memory-bank-cli-github-*")
 	if err != nil {
 		return err
 	}
@@ -207,7 +207,7 @@ func reconcile(item asset, existing string) (string, string, string) {
 	markers := markerSyntax(item)
 	start := strings.Index(existing, markers.startPrefix)
 	if start < 0 {
-		if strings.Contains(existing, "MB-CLI GITHUB ADAPTER") {
+		if strings.Contains(existing, "MEMORY-BANK-CLI GITHUB ADAPTER") {
 			return original, Conflict, "adapter markers are malformed or belong to another asset"
 		}
 		return original, Preserve, "existing unmarked GitHub file is user-owned"
@@ -261,15 +261,15 @@ type markers struct {
 func markerSyntax(item asset) markers {
 	if filepath.Ext(item.path) == ".yml" || filepath.Ext(item.path) == ".yaml" {
 		return markers{
-			startPrefix:     "# MB-CLI GITHUB ADAPTER START: " + item.id + " sha256:",
+			startPrefix:     "# MEMORY-BANK-CLI GITHUB ADAPTER START: " + item.id + " sha256:",
 			startTerminator: "\n",
-			end:             "# MB-CLI GITHUB ADAPTER END: " + item.id + "\n",
+			end:             "# MEMORY-BANK-CLI GITHUB ADAPTER END: " + item.id + "\n",
 		}
 	}
 	return markers{
-		startPrefix:     "<!-- MB-CLI GITHUB ADAPTER START: " + item.id + " sha256:",
+		startPrefix:     "<!-- MEMORY-BANK-CLI GITHUB ADAPTER START: " + item.id + " sha256:",
 		startTerminator: " -->\n",
-		end:             "<!-- MB-CLI GITHUB ADAPTER END: " + item.id + " -->\n",
+		end:             "<!-- MEMORY-BANK-CLI GITHUB ADAPTER END: " + item.id + " -->\n",
 	}
 }
 
@@ -375,7 +375,7 @@ const prTemplate = `## What changed
 
 const validationGuidance = `# Memory Bank validation configuration
 
-Configure this repository's CI to run a pinned ` + "`mb-cli doctor`" + ` command. This adapter does not install a moving CLI reference or create GitHub state outside this repository. Record the pinned version and CI evidence in the relevant issue or feature verify contract.
+Configure this repository's CI to run a pinned ` + "`memory-bank-cli doctor`" + ` command. This adapter does not install a moving CLI reference or create GitHub state outside this repository. Record the pinned version and CI evidence in the relevant issue or feature verify contract.
 `
 
 const agentGuidance = `# GitHub delivery guidance

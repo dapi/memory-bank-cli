@@ -125,7 +125,7 @@ func verifyExpected(parent int, leaf string, mutation mutation) error {
 
 func createTemporary(parent int, data []byte) (string, error) {
 	for attempt := 0; attempt < 100; attempt++ {
-		name := fmt.Sprintf(".mb-cli-github-%d-%d", os.Getpid(), attempt)
+		name := fmt.Sprintf(".memory-bank-cli-github-%d-%d", os.Getpid(), attempt)
 		fd, err := unix.Openat(parent, name, unix.O_WRONLY|unix.O_CREAT|unix.O_EXCL|unix.O_CLOEXEC, 0o644)
 		if errors.Is(err, unix.EEXIST) {
 			continue

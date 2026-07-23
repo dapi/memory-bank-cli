@@ -110,7 +110,7 @@ No. The remaining tracker write has an explicit safe sequencing rule rather than
 
 ### Review summary
 
-The active brief, design, plan, decision log, and routing layer are mutually consistent. `mb-cli doctor --profile template` reports no FT-002 navigation or lifecycle finding; its only error/warning findings concern pre-existing repository-wide `AGENTS.md` and CI gaps. `go test ./...` passes.
+The active brief, design, plan, decision log, and routing layer are mutually consistent. `memory-bank-cli doctor --profile template` reports no FT-002 navigation or lifecycle finding; its only error/warning findings concern pre-existing repository-wide `AGENTS.md` and CI gaps. `go test ./...` passes.
 
 ### Findings
 

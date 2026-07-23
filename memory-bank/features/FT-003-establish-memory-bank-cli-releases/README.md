@@ -1,15 +1,15 @@
 ---
-title: "FT-003: Establish mb-cli Releases"
+title: "FT-003: Establish memory-bank-cli Releases"
 doc_kind: feature
 doc_function: index
-purpose: "Навигация по feature-пакету CI, первого stable release и install-документации для `mb-cli`."
+purpose: "Навигация по feature-пакету CI, первого stable release и install-документации для `memory-bank-cli`."
 derived_from:
   - brief.md
 status: active
 audience: humans_and_agents
 ---
 
-# FT-003: Establish mb-cli Releases
+# FT-003: Establish memory-bank-cli Releases
 
 ## О разделе
 

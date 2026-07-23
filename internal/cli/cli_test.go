@@ -63,8 +63,8 @@ func TestRootHelpAndVersion(t *testing.T) {
 		arguments []string
 		want      string
 	}{
-		{arguments: []string{"--help"}, want: "Usage: mb-cli <command>"},
-		{arguments: []string{"--version"}, want: "mb-cli v1.2.3\n"},
+		{arguments: []string{"--help"}, want: "Usage: memory-bank-cli <command>"},
+		{arguments: []string{"--version"}, want: "memory-bank-cli v1.2.3\n"},
 	} {
 		var stdout, stderr bytes.Buffer
 		if exitCode := Run(test.arguments, "v1.2.3", &stdout, &stderr); exitCode != 0 {
@@ -116,7 +116,7 @@ func TestRootRejectsMissingAndUnknownCommands(t *testing.T) {
 		if exitCode := Run(arguments, "test", &stdout, &stderr); exitCode != 2 {
 			t.Fatalf("unexpected exit code %d for %v", exitCode, arguments)
 		}
-		if !strings.Contains(stderr.String(), "Usage: mb-cli <command>") {
+		if !strings.Contains(stderr.String(), "Usage: memory-bank-cli <command>") {
 			t.Fatalf("unexpected stderr for %v: %q", arguments, stderr.String())
 		}
 	}
