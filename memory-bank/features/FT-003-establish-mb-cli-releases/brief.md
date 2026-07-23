@@ -88,7 +88,7 @@ The standalone module has a GoReleaser configuration for `mb-cli`, but no reposi
 | Requirement ID | Problem refs | Acceptance refs | Checks | Evidence IDs |
 | --- | --- | --- | --- | --- |
 | `REQ-01` | `ASM-02`, `CON-01` | `EC-01`, `SC-01` | `CHK-01`, `CHK-02` | `EVID-01`, `EVID-02` |
-| `REQ-02` | `ASM-01`, `CON-01`, `CON-02` | `EC-02`, `EC-03`, `SC-02` | `CHK-03`, `CHK-04` | `EVID-03`, `EVID-04` |
+| `REQ-02` | `ASM-01`, `CON-01`, `CON-02` | `EC-02`, `EC-03`, `SC-02` | `CHK-03`, `CHK-04`, `CHK-06` | `EVID-03`, `EVID-04`, `EVID-06` |
 | `REQ-03` | `ASM-01`, `CON-02` | `EC-03`, `EC-04`, `SC-02` | `CHK-04`, `CHK-05` | `EVID-04`, `EVID-05` |
 | `REQ-04` | `ASM-02`, `CON-03` | `EC-02`, `EC-04`, `SC-03` | `CHK-03`, `CHK-05` | `EVID-03`, `EVID-05` |
 
@@ -107,6 +107,7 @@ The standalone module has a GoReleaser configuration for `mb-cli`, but no reposi
 | `CHK-03` | `EC-02`, `REQ-04`, `SC-03` | Inspect tag `v1.0.0`, GitHub release and asset names. | release exists; assets have only `mb-cli` executable identity. | `artifacts/ft-003/verify/chk-03/` |
 | `CHK-04` | `EC-03`, `SC-02` | From a clean Go module cache run `go install github.com/dapi/memory-bank-cli/cmd/mb-cli@v1.0.0`, then run `mb-cli --version`. | install exits 0 and the command prints `mb-cli v1.0.0`. | `artifacts/ft-003/verify/chk-04/` |
 | `CHK-05` | `EC-04`, `REQ-04`, `SC-03` | Review repository install/upgrade docs and generated `v1.0.0` release notes. | required install command and breaking-change statement exist; no compatibility install path exists. | `artifacts/ft-003/verify/chk-05/` |
+| `CHK-06` | `REQ-02`, `AG-01`, `CP-03` | Before pushing the tag, record the maintainer's authorization; after the tag workflow validates and before its release job publishes, record the GitHub `release` environment approval/deployment. | both authorization records exist in their required order; neither is replaced by a release URL or asset inventory. | `artifacts/ft-003/verify/chk-06/` |
 
 ### Evidence contract
 
@@ -117,3 +118,4 @@ The standalone module has a GoReleaser configuration for `mb-cli`, but no reposi
 | `EVID-03` | release/tag URL and asset inventory | release maintainer | `artifacts/ft-003/verify/chk-03/` | `CHK-03` |
 | `EVID-04` | clean-cache install command and command smoke output | release maintainer/CI | `artifacts/ft-003/verify/chk-04/` | `CHK-04` |
 | `EVID-05` | documentation and release-note review output | reviewer | `artifacts/ft-003/verify/chk-05/` | `CHK-05` |
+| `EVID-06` | maintainer tag-authorization record and GitHub `release` environment deployment-approval record | release maintainer/GitHub | `artifacts/ft-003/verify/chk-06/` | `CHK-06` |

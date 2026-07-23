@@ -103,7 +103,7 @@ Issue #3 requires a stable, Go-installable `v1.0.0` release. The repository alre
 | Stage ID | Stage | Entry condition | Backout |
 | --- | --- | --- | --- |
 | `RB-01` | Validate candidate | workflows and docs are committed; local/CI validation is green | revert unpublished workflow/config/doc changes |
-| `RB-02` | Public `v1.0.0` release | a maintainer authorizes the tag push; `AG-01` is approved, required credentials confirmed and validation evidence available | stop before the release publication job if any precondition fails; do not claim release evidence |
+| `RB-02` | Public `v1.0.0` release | a maintainer records authorization before the tag push; after tag-triggered validation succeeds, `AG-01` is approved and required credentials are confirmed | do not push without tag authorization; after an authorized push, stop before the release publication job if validation, credentials or `AG-01` fail; do not claim release evidence |
 | `RB-03` | Post-publication verification | GitHub release and Go install are observable | preserve evidence and escalate any release correction; never rewrite history as a local rollback |
 
 ## Design Verification

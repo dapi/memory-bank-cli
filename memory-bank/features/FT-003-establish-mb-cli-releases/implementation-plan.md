@@ -27,7 +27,7 @@ must_not_define:
 | Canonical solution refs | Owner | Realization target | Steps | Checks | Evidence |
 | --- | --- | --- | --- | --- | --- |
 | `SOL-01`, `SD-02`, `INV-01`, `FM-01` | `design.md` | validation workflow | `STEP-01`, `STEP-02` | `CHK-01`, `CHK-02` | `EVID-01`, `EVID-02` |
-| `SOL-02`, `CTR-01`, `SD-01`, `SD-03`, `FM-02` | `design.md` | tag-driven release workflow | `STEP-02`, `STEP-04` | `CHK-02`, `CHK-03` | `EVID-02`, `EVID-03` |
+| `SOL-02`, `CTR-01`, `SD-01`, `SD-03`, `FM-02` | `design.md` | tag-driven release workflow | `STEP-02`, `STEP-04` | `CHK-02`, `CHK-03`, `CHK-06` | `EVID-02`, `EVID-03`, `EVID-06` |
 | `SOL-03`, `INV-02`, `INV-04`, `FM-03`, `FM-04`, `RB-01`–`RB-03` | `design.md` | version resolution, documentation, release notes, tag/release verification | `STEP-03`, `STEP-04`, `STEP-05` | `CHK-03`–`CHK-05` | `EVID-03`–`EVID-05` |
 
 ## Workstreams
@@ -51,7 +51,7 @@ must_not_define:
 | `STEP-01` | either | `REQ-01`, `SOL-01` | add validation workflow | `.github/workflows/`, `.goreleaser.yml` only if validation requires no semantic change | workflow definitions | `CHK-01` | `EVID-01` | run Go tests, vet, GoReleaser check and clean snapshot release build | `PRE-01` | none | GoReleaser config requires an unrecorded external change |
 | `STEP-02` | either | `REQ-01`, `REQ-02`, `SOL-02`, `INV-01` | add release workflow dependency on validation | `.github/workflows/` | tag-driven release workflow | `CHK-02` | `EVID-02` | inspect job graph and run a non-publishing validation path | `STEP-01` | none | publication could bypass failed validation |
 | `STEP-03` | either | `REQ-03`, `REQ-04`, `SOL-03`, `INV-02`, `INV-04` | make Go-installed version observable; add install/upgrade docs and breaking release notes | `cmd/mb-cli`, unit tests, root README and release-note source/config | version resolution and reviewable documentation | `CHK-04`, `CHK-05` | `EVID-04`, `EVID-05` | run version-resolution tests; review exact install command and prohibited identity surface | none | none | a tagged module cannot report its version or docs contradict the issue |
-| `STEP-04` | human/either | `REQ-02`, `SOL-02`, `SD-01`, `SD-03` | create a maintainer-authorized `v1.0.0` tag, then publish the approved release | GitHub tag/release and configured secrets | public release | `CHK-03` | `EVID-03` | authorize and push the tag, allow validation to complete, approve `AG-01`, inspect release/assets | `STEP-02`, `STEP-03`, `PRE-02`, `PRE-03` | `AG-01` for publication | credential missing/rejected or workflow fails |
+| `STEP-04` | human/either | `REQ-02`, `SOL-02`, `SD-01`, `SD-03` | create a maintainer-authorized `v1.0.0` tag, then publish the approved release | GitHub tag/release and configured secrets | public release | `CHK-03`, `CHK-06` | `EVID-03`, `EVID-06` | record tag authorization before pushing the tag; allow validation to complete; record `AG-01` deployment approval before publication; inspect release/assets | `STEP-02`, `STEP-03`, `PRE-02`, `PRE-03` | `AG-01` for publication | tag authorization, credential or environment approval missing/rejected; or workflow fails |
 | `STEP-05` | either | `REQ-02`–`REQ-04`, `RB-03` | independently verify consumer installation and documentation | clean Go cache, published release, docs | final evidence | `CHK-04`, `CHK-05` | `EVID-04`, `EVID-05` | execute exact Go install then smoke command; review docs/release notes | `STEP-04` | none | install or identity checks fail |
 
 ## Checkpoints
@@ -60,7 +60,7 @@ must_not_define:
 | --- | --- | --- | --- |
 | `CP-01` | `STEP-01`, `SOL-01`, `DV-01` | validation workflow has successful snapshot-build evidence | `EVID-01` |
 | `CP-02` | `STEP-02`, `INV-01` | publish job is structurally dependent on validation | `EVID-02` |
-| `CP-03` | `STEP-04`, `AG-01`, `RB-02` | maintainer tag authorization, environment approval and release prerequisites are recorded before GitHub Release publication | `EVID-03` |
+| `CP-03` | `STEP-04`, `AG-01`, `RB-02`, `CHK-06` | tag authorization is recorded before the push, and environment approval is recorded after validation but before GitHub Release publication | `EVID-06` |
 | `CP-04` | `STEP-05`, `EC-02`–`EC-04` | release, clean-cache install and documentation evidence agree | `EVID-03`–`EVID-05` |
 
 ## Execution Risks
@@ -76,5 +76,6 @@ must_not_define:
 | Stop ID | Related refs | Trigger | Immediate action | Safe fallback state |
 | --- | --- | --- | --- | --- |
 | `STOP-01` | `FM-01`, `ER-01` | validation fails | if the tag has not been pushed, do not push it; if its tag workflow has already failed validation, do not approve or publish the release; correct the candidate | committed candidate, or an unpublished tag with no GitHub Release |
-| `STOP-02` | `FM-02`, `ER-02`, `CON-01` | credential, tag authorization or environment approval absent or rejected | stop before release publication and request maintainer direction | validated, unpublished candidate (or an unpublished tag) |
-| `STOP-03` | `FM-03`, `ER-03` | old identity is present in artifact/docs | do not publish or claim completion; correct source | validated state before tag |
+| `STOP-02` | `CON-01`, `PRE-03` | tag authorization is absent or rejected | do not create or push the tag; request maintainer direction | validated, untagged candidate |
+| `STOP-03` | `FM-02`, `ER-02`, `CON-01` | credentials or environment approval are absent or rejected after an authorized tag push | do not approve or allow the release publication job; request maintainer direction | validated, unpublished tag with no GitHub Release |
+| `STOP-04` | `FM-03`, `ER-03` | old identity is present in artifact/docs | do not publish or claim completion; correct source | validated state before tag |

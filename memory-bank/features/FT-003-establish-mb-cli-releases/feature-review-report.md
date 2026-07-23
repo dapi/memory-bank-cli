@@ -160,6 +160,31 @@ None.
 
 No blocking human gate.
 
+### Cycle 3
+
+#### Review summary
+
+Review feedback found two execution-evidence gaps in the authorization clarification: a stop condition could still be read as permitting an unauthorized tag push, and the approval checkpoint cited post-publication release evidence.
+
+#### Findings
+
+| Priority | Finding | Resolution |
+| --- | --- | --- |
+| important | `STOP-02` grouped missing tag authorization with post-tag publication controls, despite a tag itself being an irreversible public effect. | Split the stop conditions: absent/rejected tag authorization now prevents the push; only credentials or environment approval after an authorized push stop publication. |
+| important | `CP-03` cited `EVID-03`, a release/tag URL and asset inventory, as evidence for authorization that must precede publication. | Added `CHK-06` and `EVID-06` for the distinct tag-authorization and environment deployment-approval records; `CP-03` now references that pre-publication evidence. |
+
+#### FPF resolutions
+
+None. Both corrections preserve the accepted `DEC-06` control separation and repair execution traceability.
+
+#### Changes made
+
+Updated the brief verify/evidence contract, design rollout gate and implementation plan mappings, checkpoint and stop conditions.
+
+#### Human gate
+
+No new gate. The documented maintainer authorization and `AG-01` approval remain required execution-time human actions.
+
 ## Final status
 
-`done` after 2 review-improve cycles in this reconciliation run. The package is ready for implementation/candidate validation and accurately describes the separate tag-authorization and protected-publication controls. Public tag/release evidence is still intentionally absent until the future approved release execution.
+`done` after 3 review-improve cycles in this reconciliation run. The package is ready for implementation/candidate validation and accurately describes the separate tag-authorization and protected-publication controls. Public tag/release evidence is still intentionally absent until the future approved release execution.
