@@ -5,8 +5,12 @@ on:
   push:
     branches:
       - main
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semantic version tag to publish (for example v1.0.0)"
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -40,7 +44,7 @@ jobs:
   release:
     name: Publish release
     needs: validate
-    if: startsWith(github.ref, 'refs/tags/v')
+    if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     # GitHub environment protection requires the configured release reviewer
     # to approve this deployment before any publication step can run.
@@ -54,6 +58,33 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - name: Create or verify release tag
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+
+          case "$RELEASE_VERSION" in
+            v[0-9]*.[0-9]*.[0-9]*) ;;
+            *)
+              echo "release version must be a v-prefixed semantic version" >&2
+              exit 1
+              ;;
+          esac
+
+          candidate_sha="$(git rev-parse HEAD)"
+          existing_tag_sha="$(git ls-remote --tags origin "refs/tags/${RELEASE_VERSION}^{}" | awk '{print $1}')"
+          if [ -n "$existing_tag_sha" ]; then
+            if [ "$existing_tag_sha" != "$candidate_sha" ]; then
+              echo "${RELEASE_VERSION} already points to a different commit" >&2
+              exit 1
+            fi
+            echo "${RELEASE_VERSION} already tags the validated commit"
+            exit 0
+          fi
+
+          git tag --annotate "$RELEASE_VERSION" --message "Release $RELEASE_VERSION" "$candidate_sha"
+          git push origin "refs/tags/$RELEASE_VERSION"
       - name: Publish GitHub release
         uses: goreleaser/goreleaser-action@v7
         env:

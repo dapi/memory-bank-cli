@@ -209,6 +209,32 @@ Updated the problem constraint, release contract, failure/rollback semantics, ri
 
 No new gate. A post-tag validation failure requires maintainer direction and renewed authorization for a new semantic version; it does not authorize retagging `v1.0.0`.
 
+### Cycle 5
+
+#### Review summary
+
+Review feedback correctly found that the Cycle 4 wording weakened Issue #3's validation-before-publication requirement and incorrectly treated a new version as satisfying FT-003's mandatory `v1.0.0` acceptance.
+
+#### Findings
+
+| Priority | Finding | Resolution |
+| --- | --- | --- |
+| important | The tag-triggered workflow exposed the Go module before automated validation, while the brief narrowed `REQ-01` to a later GitHub Release boundary. | Replaced the tag trigger with a manually dispatched release run: it validates the selected `main` commit, then the protected release job creates `v1.0.0` on that same commit and publishes the GitHub Release. `REQ-01` and `EC-01` again cover both tag and release publication. |
+| important | A corrected semantic version after a defective `v1.0.0` tag cannot meet `EC-02`/`EC-03`. | `DEC-09` now records that a post-tag acceptance defect blocks FT-003 pending human-approved change to the required version/acceptance; a new version is not claimed as remediation within this feature. |
+
+#### FPF resolutions
+
+- `DEC-03`, `DEC-06`, `DEC-08`: assurance evidence is now a prerequisite of the job that performs the first public effect, and `AG-01` is the independent authorization for that job.
+- `DEC-09`: immutable tag evidence and the feature's fixed `v1.0.0` promise remain distinct; failure of the latter is a change-control gate, not silent scope substitution.
+
+#### Changes made
+
+Updated `.github/workflows/release.yml`, all affected canonical owners, the implementation plan and decision log. The workflow only verifies an already-existing tag when it points at the same validated commit, preventing repoint during a retry.
+
+#### Human gate
+
+No new gate before normal release execution. A defect discovered after `v1.0.0` exists blocks FT-003 and requires human approval to alter its mandatory acceptance criteria.
+
 ## Final status
 
-`done` after 4 review-improve cycles in this reconciliation run. The package is ready for implementation/candidate validation and accurately describes the separate tag-authorization and protected-publication controls. Public tag/release evidence is still intentionally absent until the future approved release execution.
+`done` after 5 review-improve cycles in this reconciliation run. The package is ready for implementation/candidate validation and accurately requires exact-commit validation before either public release boundary. Public tag/release evidence is still intentionally absent until the future approved release execution.
