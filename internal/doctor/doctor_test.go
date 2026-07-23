@@ -103,12 +103,33 @@ func TestProfilesUseSeparateFixturesAndProduceCleanReports(t *testing.T) {
 		{name: "downstream", want: ProfileDownstream},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			report, err := Run(Options{RepoRoot: fixture(t, test.name), ScopeRoot: "memory-bank", AgentFile: "AGENTS.md", Profile: ProfileAuto, MaxDepth: 3})
+			report, err := Run(Options{RepoRoot: fixture(t, test.name), AgentFile: "AGENTS.md", Profile: ProfileAuto, MaxDepth: 3})
 			if err != nil {
 				t.Fatal(err)
 			}
 			if report.FormatVersion != ReportFormatVersion || report.Profile != test.want || report.Summary.Errors != 0 {
 				t.Fatalf("unexpected report: %#v", report)
+			}
+		})
+	}
+}
+
+func TestImplicitScopeFollowsResolvedProfile(t *testing.T) {
+	for _, test := range []struct {
+		name      string
+		profile   Profile
+		wantScope string
+	}{
+		{name: "template", profile: ProfileTemplate, wantScope: "memory-bank-template"},
+		{name: "downstream", profile: ProfileDownstream, wantScope: "memory-bank"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			report, err := Run(Options{RepoRoot: fixture(t, test.name), AgentFile: "AGENTS.md", Profile: test.profile, MaxDepth: 3})
+			if err != nil {
+				t.Fatal(err)
+			}
+			if report.Navigation.ScopeRoot != test.wantScope || report.Summary.Errors != 0 {
+				t.Fatalf("unexpected effective scope/report: scope=%q report=%#v", report.Navigation.ScopeRoot, report)
 			}
 		})
 	}

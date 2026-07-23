@@ -15,6 +15,12 @@ type pinnedSource struct {
 	info fs.FileInfo
 }
 
+const (
+	legacySourcePayloadRoot = "memory-bank"
+	targetSourcePayloadRoot = "memory-bank-template"
+	downstreamPayloadRoot   = "memory-bank"
+)
+
 func pinSourceRoot(root string) (pinnedSource, error) {
 	if root == "" {
 		return pinnedSource{}, errors.New("source root is required")
@@ -93,21 +99,25 @@ func verifySourceCheckout(root, expectedRef string) error {
 	if status != "" {
 		return errors.New("source checkout is dirty; commit or discard changes before init/update")
 	}
-	payloadStatus, err := gitOutput(root, "status", "--porcelain=v1", "--untracked-files=all", "--ignored=matching", "--", "memory-bank")
+	payloadRoot, err := selectGitSourcePayloadRoot(root, expectedRef)
+	if err != nil {
+		return err
+	}
+	payloadStatus, err := gitOutput(root, "status", "--porcelain=v1", "--untracked-files=all", "--ignored=matching", "--", payloadRoot)
 	if err != nil {
 		return fmt.Errorf("inspect source template status: %w", err)
 	}
 	if payloadStatus != "" {
 		return errors.New("source memory-bank tree contains uncommitted or ignored payloads")
 	}
-	if err := verifySourcePayload(root, expectedRef); err != nil {
+	if err := verifySourcePayload(root, expectedRef, payloadRoot); err != nil {
 		return err
 	}
 	return nil
 }
 
-func verifySourcePayload(root, expectedRef string) error {
-	tree, err := gitOutput(root, "ls-tree", "-rz", "--full-tree", expectedRef, "--", "memory-bank")
+func verifySourcePayload(root, expectedRef, payloadRoot string) error {
+	tree, err := gitOutput(root, "ls-tree", "-rz", "--full-tree", expectedRef, "--", payloadRoot)
 	if err != nil {
 		return fmt.Errorf("inspect pinned source payload: %w", err)
 	}
@@ -128,10 +138,53 @@ func verifySourcePayload(root, expectedRef string) error {
 		expected[path] = objectID
 	}
 	if len(expected) == 0 {
-		return errors.New("pinned source commit has no memory-bank payload")
+		return fmt.Errorf("pinned source commit has no %s payload", payloadRoot)
 	}
 
 	return nil
+}
+
+func selectGitSourcePayloadRoot(root, ref string) (string, error) {
+	present := make([]string, 0, 2)
+	for _, candidate := range []string{legacySourcePayloadRoot, targetSourcePayloadRoot} {
+		output, err := gitOutput(root, "ls-tree", "-d", "--name-only", ref, "--", candidate)
+		if err != nil {
+			return "", fmt.Errorf("inspect pinned source payload roots: %w", err)
+		}
+		if output == candidate {
+			present = append(present, candidate)
+		}
+	}
+	return selectSingleSourcePayloadRoot(present)
+}
+
+func selectFilesystemSourcePayloadRoot(root string) (string, error) {
+	present := make([]string, 0, 2)
+	for _, candidate := range []string{legacySourcePayloadRoot, targetSourcePayloadRoot} {
+		info, err := os.Lstat(filepath.Join(root, candidate))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return "", fmt.Errorf("inspect template source payload root %q: %w", candidate, err)
+		}
+		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+			return "", fmt.Errorf("template source payload root is not a directory: %s", candidate)
+		}
+		present = append(present, candidate)
+	}
+	return selectSingleSourcePayloadRoot(present)
+}
+
+func selectSingleSourcePayloadRoot(present []string) (string, error) {
+	switch len(present) {
+	case 1:
+		return present[0], nil
+	case 0:
+		return "", errors.New("source has neither recognized payload root: memory-bank or memory-bank-template")
+	default:
+		return "", errors.New("source has both recognized payload roots: memory-bank and memory-bank-template")
+	}
 }
 
 func gitOutput(root string, arguments ...string) (string, error) {

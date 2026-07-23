@@ -21,7 +21,7 @@ The maintainer needs to adopt a template. A separate clean Git source checkout, 
 
 ## Main Flow
 
-1. The actor runs `memory-bank-cli init` with source, template version and source ref (optionally using `--dry-run`).
+1. The actor runs `memory-bank-cli init` with source, template version and source ref (optionally using `--dry-run`). During the coordinated payload rename, the pinned source checkout contains exactly one recognized source root: legacy `memory-bank/` or target `memory-bank-template/`; the installed destination remains `memory-bank/`.
 2. The CLI validates source/repository boundaries and pins the source.
 3. It builds ownership decisions for template payload and configured agent instruction file.
 4. On a non-dry successful run, it applies the plan atomically and records `memory-bank/.lock`.

@@ -124,6 +124,19 @@ func TestCleanUpdateAndRepeatedUpdateAreIdempotent(t *testing.T) {
 	}
 }
 
+func TestFilesystemSourceReaderTranslatesTargetRoot(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	write(t, source, "memory-bank-template/dna/rule.md", "template\n")
+
+	initialize(t, repo, source)
+	if got := read(t, repo, "memory-bank/dna/rule.md"); got != "template\n" {
+		t.Fatalf("target-root filesystem reader did not translate downstream path: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "memory-bank-template")); !os.IsNotExist(err) {
+		t.Fatalf("source root leaked into downstream: %v", err)
+	}
+}
+
 func TestInitRejectsReservedLockPathInTemplate(t *testing.T) {
 	repo, source := t.TempDir(), t.TempDir()
 	write(t, source, "memory-bank/dna/rule.md", "template\n")

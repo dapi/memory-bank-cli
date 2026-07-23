@@ -94,6 +94,48 @@ func TestSourceRefMustMatchCleanGitCheckout(t *testing.T) {
 	}
 }
 
+func TestPinnedSourceSupportsOneRecognizedRootAndTranslatesToDownstream(t *testing.T) {
+	for _, test := range []struct {
+		name       string
+		roots      []string
+		wantErr    string
+		wantSource string
+	}{
+		{name: "legacy root", roots: []string{"memory-bank"}, wantSource: "memory-bank"},
+		{name: "target root", roots: []string{"memory-bank-template"}, wantSource: "memory-bank-template"},
+		{name: "neither root", wantErr: "neither recognized payload root"},
+		{name: "both roots", roots: []string{"memory-bank", "memory-bank-template"}, wantErr: "both recognized payload roots"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source := t.TempDir()
+			for _, root := range test.roots {
+				write(t, source, root+"/dna/rule.md", root+"\n")
+			}
+			if len(test.roots) == 0 {
+				write(t, source, "README.md", "no payload\n")
+			}
+			commit := commitTestSource(t, source)
+			repo := t.TempDir()
+			report, err := Init(Options{RepoRoot: repo, SourceRoot: source, TemplateVersion: "v1", SourceRef: commit})
+			if test.wantErr != "" {
+				if err == nil || !strings.Contains(err.Error(), test.wantErr) {
+					t.Fatalf("expected %q, got report=%#v err=%v", test.wantErr, report, err)
+				}
+				return
+			}
+			if err != nil || !report.Applied {
+				t.Fatalf("init failed: report=%#v err=%v", report, err)
+			}
+			if got := read(t, repo, "memory-bank/dna/rule.md"); got != test.wantSource+"\n" {
+				t.Fatalf("downstream payload was not translated: %q", got)
+			}
+			if _, err := os.Stat(filepath.Join(repo, "memory-bank-template")); !os.IsNotExist(err) {
+				t.Fatalf("source root leaked into downstream: %v", err)
+			}
+		})
+	}
+}
+
 func TestPinnedSourceObjectsIgnoreHiddenWorktreeChanges(t *testing.T) {
 	for _, test := range []struct {
 		name   string
