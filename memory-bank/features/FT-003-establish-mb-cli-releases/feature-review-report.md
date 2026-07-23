@@ -235,6 +235,31 @@ Updated `.github/workflows/release.yml`, all affected canonical owners, the impl
 
 No new gate before normal release execution. A defect discovered after `v1.0.0` exists blocks FT-003 and requires human approval to alter its mandatory acceptance criteria.
 
+### Cycle 6
+
+#### Review summary
+
+Review feedback found two first-publication defects in the manual release job: a clean GitHub runner lacks identity for an annotated tag, and the initial shell glob was not a complete SemVer validator.
+
+#### Findings
+
+| Priority | Finding | Resolution |
+| --- | --- | --- |
+| important | The release job could fail creating its first annotated tag because no Git identity was configured. | Configured the `github-actions[bot]` name and noreply email immediately before tag creation. |
+| important | The version glob accepted malformed immutable tags. | Replaced it with a complete v-prefixed SemVer regex, including numeric-component leading-zero rules and prerelease/build syntax. |
+
+#### FPF resolutions
+
+None. These are implementation corrections to the already selected exact-commit publication mechanism.
+
+#### Changes made
+
+Updated `.github/workflows/release.yml` and recorded the review closure.
+
+#### Human gate
+
+No new gate.
+
 ## Final status
 
-`done` after 5 review-improve cycles in this reconciliation run. The package is ready for implementation/candidate validation and accurately requires exact-commit validation before either public release boundary. Public tag/release evidence is still intentionally absent until the future approved release execution.
+`done` after 6 review-improve cycles in this reconciliation run. The package is ready for implementation/candidate validation and accurately requires exact-commit validation before either public release boundary. Public tag/release evidence is still intentionally absent until the future approved release execution.
