@@ -7,7 +7,7 @@ derived_from:
   - ../README.md
 source_refs:
   - ../go.mod
-  - ../cmd/mb-cli/main.go
+  - ../cmd/memory-bank-cli/main.go
   - ../internal/cli/cli.go
 status: active
 audience: humans_and_agents
@@ -21,7 +21,7 @@ audience: humans_and_agents
 
 ## Product
 
-`mb-cli` — единственная публичная команда проекта. Она предоставляет четыре подтверждённые capability:
+`memory-bank-cli` — единственная публичная команда проекта. Она предоставляет четыре подтверждённые capability:
 
 - `init` — принимает clean Git checkout шаблона и создаёт/adopts `memory-bank/` вместе с ownership lock;
 - `update` — строит и атомарно применяет безопасный update plan по существующему lock;

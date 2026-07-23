@@ -26,8 +26,8 @@ must_not_define:
 | Workstream | Implements | Result | Owner | Dependencies |
 | --- | --- | --- | --- |
 | `WS-1` | `REQ-01`, `SOL-01`, `SD-01`, `SD-02` | reviewed history-preserving source import | either | `PRE-01` |
-| `WS-2` | `REQ-01`, `REQ-02`, `REQ-03`, `SOL-02`, `SOL-03`, `INV-01`–`INV-03` | standalone `mb-cli` code and tests | either | `WS-1` |
-| `WS-3` | `REQ-04`, `SOL-03` | sole `mb-cli` release-build configuration, no publication | either | `WS-2` |
+| `WS-2` | `REQ-01`, `REQ-02`, `REQ-03`, `SOL-02`, `SOL-03`, `INV-01`–`INV-03` | standalone `memory-bank-cli` code and tests | either | `WS-1` |
+| `WS-3` | `REQ-04`, `SOL-03` | sole `memory-bank-cli` release-build configuration, no publication | either | `WS-2` |
 | `WS-4` | all requirements | recorded verification and issue #3 handoff | either | `WS-2`, `WS-3` |
 
 ## Traceability
@@ -44,9 +44,9 @@ must_not_define:
 | Step ID | Actor | Implements | Goal | Touchpoints | Artifact | Verifies | Evidence IDs | Check command / procedure | Blocked by | Needs approval | Escalate if |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `STEP-01` | either | `SOL-01`, `SD-01`, `SD-02` | prepare filtered import from the fixed source snapshot | disposable source clone, target feature branch | inspected filtered import branch and provenance note | `CHK-06` | `EVID-05` | filter `tools/` to repository root; inspect tree and `git log` before merge | `PRE-01` | none | source SHA differs or filtering does not produce only CLI content |
-| `STEP-02` | either | `REQ-01`, `SOL-02` | merge reviewed import and establish standalone module/entrypoint | `go.mod`, internal imports, `cmd/mb-cli` | compilable standalone source tree | `CHK-01`, `CHK-02` | `EVID-01`, `EVID-02` | run Go checks after rename | `STEP-01` | none | import conflict changes target README or retained source is incomplete |
-| `STEP-03` | either | `REQ-02`, `REQ-03`, `SOL-02`, `SOL-03`, `INV-01`–`INV-03` | rename user-facing identity and remove compatibility paths without altering payload paths | CLI code/tests, docs/examples within migrated CLI, old command directory | only `mb-cli` command surface and preserved contract tests | `CHK-03`, `CHK-05` | `EVID-03`, `EVID-04` | classify name matches; run contract tests | `STEP-02` | none | a required compatibility removal changes command/JSON/exit-code contract |
-| `STEP-04` | either | `REQ-04`, `SOL-03`, `SD-03` | configure one release-build artifact, but do not publish | release config | `mb-cli` only build configuration | `CHK-04` | `EVID-03` | inspect config and build output | `STEP-03` | none | configuration requires a tag, external credential or publication action |
+| `STEP-02` | either | `REQ-01`, `SOL-02` | merge reviewed import and establish standalone module/entrypoint | `go.mod`, internal imports, `cmd/memory-bank-cli` | compilable standalone source tree | `CHK-01`, `CHK-02` | `EVID-01`, `EVID-02` | run Go checks after rename | `STEP-01` | none | import conflict changes target README or retained source is incomplete |
+| `STEP-03` | either | `REQ-02`, `REQ-03`, `SOL-02`, `SOL-03`, `INV-01`–`INV-03` | rename user-facing identity and remove compatibility paths without altering payload paths | CLI code/tests, docs/examples within migrated CLI, old command directory | only `memory-bank-cli` command surface and preserved contract tests | `CHK-03`, `CHK-05` | `EVID-03`, `EVID-04` | classify name matches; run contract tests | `STEP-02` | none | a required compatibility removal changes command/JSON/exit-code contract |
+| `STEP-04` | either | `REQ-04`, `SOL-03`, `SD-03` | configure one release-build artifact, but do not publish | release config | `memory-bank-cli` only build configuration | `CHK-04` | `EVID-03` | inspect config and build output | `STEP-03` | none | configuration requires a tag, external credential or publication action |
 | `STEP-05` | either | all requirements | execute final profile checks and record release handoff | repository and `artifacts/` evidence | FT-001 evidence and issue #3 dependency note | `CHK-01`–`CHK-06` | `EVID-01`–`EVID-05` | execute brief Verify; review evidence independently | `STEP-04` | human approval only for any release/publication action in issue #3 | any required check fails or an out-of-scope issue #2/#3 change becomes necessary |
 
 ## Checkpoints

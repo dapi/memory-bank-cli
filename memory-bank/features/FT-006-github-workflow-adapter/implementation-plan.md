@@ -31,7 +31,7 @@ must_not_define:
 | --- | --- | --- | --- |
 | adapter planner | `REQ-01`–`REQ-05`, `SOL-02`–`SOL-03`, `CTR-01`–`CTR-04`, `FM-01`–`FM-02` | create/idempotence, dry-run, custom template, drift conflict, symlink | `go test ./internal/githubadapter` |
 | CLI boundary | `REQ-01`, `REQ-03`, `SOL-01` | JSON dry-run output and no mutation | `go test ./internal/cli` |
-| repository regression | all applicable refs | full Go suite, vet, documentation navigation | `go test ./...`; `go vet ./...`; `go run ./cmd/mb-cli lint --repo-root .` |
+| repository regression | all applicable refs | full Go suite, vet, documentation navigation | `go test ./...`; `go vet ./...`; `go run ./cmd/memory-bank-cli lint --repo-root .` |
 
 ## Open Questions / Ambiguities
 

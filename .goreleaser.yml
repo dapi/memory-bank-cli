@@ -1,18 +1,18 @@
-# GoReleaser configuration for the standalone mb-cli binary.
+# GoReleaser configuration for the standalone memory-bank-cli binary.
 # https://goreleaser.com
 
 version: 2
 
-project_name: mb-cli
+project_name: memory-bank-cli
 
 before:
   hooks:
     - go mod tidy
 
 builds:
-  - id: mb-cli
-    main: ./cmd/mb-cli
-    binary: mb-cli
+  - id: memory-bank-cli
+    main: ./cmd/memory-bank-cli
+    binary: memory-bank-cli
     env:
       - CGO_ENABLED=0
     ldflags:
@@ -25,12 +25,12 @@ builds:
       - windows_amd64
 
 archives:
-  - id: mb-cli
+  - id: memory-bank-cli
     ids:
-      - mb-cli
+      - memory-bank-cli
     formats:
       - binary
-    name_template: "mb-cli-{{ .Os }}-{{ .Arch }}"
+    name_template: "memory-bank-cli-{{ .Os }}-{{ .Arch }}"
 
 checksum:
   name_template: checksums.txt
@@ -66,11 +66,11 @@ changelog:
       order: 999
 
 homebrew_casks:
-  - name: mb-cli
+  - name: memory-bank-cli
     ids:
-      - mb-cli
+      - memory-bank-cli
     binaries:
-      - mb-cli
+      - memory-bank-cli
     repository:
       owner: dapi
       name: homebrew-tap
@@ -90,40 +90,40 @@ release:
 
     ### Go
     ```bash
-    go install github.com/dapi/memory-bank-cli/cmd/mb-cli@{{ .Tag }}
+    go install github.com/dapi/memory-bank-cli/cmd/memory-bank-cli@{{ .Tag }}
     ```
 
     ### Homebrew
     ```bash
-    brew install dapi/tap/mb-cli
+    brew install dapi/tap/memory-bank-cli
     ```
 
     ### macOS (Apple Silicon)
     ```bash
-    curl -L -o mb-cli https://github.com/dapi/memory-bank-cli/releases/download/{{ .Tag }}/mb-cli-darwin-arm64
-    chmod +x mb-cli
-    sudo mv mb-cli /usr/local/bin/
+    curl -L -o memory-bank-cli https://github.com/dapi/memory-bank-cli/releases/download/{{ .Tag }}/memory-bank-cli-darwin-arm64
+    chmod +x memory-bank-cli
+    sudo mv memory-bank-cli /usr/local/bin/
     ```
 
     ### macOS (Intel)
     ```bash
-    curl -L -o mb-cli https://github.com/dapi/memory-bank-cli/releases/download/{{ .Tag }}/mb-cli-darwin-amd64
-    chmod +x mb-cli
-    sudo mv mb-cli /usr/local/bin/
+    curl -L -o memory-bank-cli https://github.com/dapi/memory-bank-cli/releases/download/{{ .Tag }}/memory-bank-cli-darwin-amd64
+    chmod +x memory-bank-cli
+    sudo mv memory-bank-cli /usr/local/bin/
     ```
 
     ### Linux (amd64)
     ```bash
-    curl -L -o mb-cli https://github.com/dapi/memory-bank-cli/releases/download/{{ .Tag }}/mb-cli-linux-amd64
-    chmod +x mb-cli
-    sudo mv mb-cli /usr/local/bin/
+    curl -L -o memory-bank-cli https://github.com/dapi/memory-bank-cli/releases/download/{{ .Tag }}/memory-bank-cli-linux-amd64
+    chmod +x memory-bank-cli
+    sudo mv memory-bank-cli /usr/local/bin/
     ```
 
     ### Windows
-    Download `mb-cli-windows-amd64.exe` from the assets below and add it to `PATH`.
+    Download `memory-bank-cli-windows-amd64.exe` from the assets below and add it to `PATH`.
 
     ## Breaking changes
 
-    `mb-cli` is the only supported executable. `memory-bank` was intentionally renamed and `memory-bank-lint` was removed; no compatibility binaries or aliases are published.
+    `memory-bank-cli` is the only supported executable. No compatibility binaries or aliases are published.
 
     **Full Changelog**: https://github.com/dapi/memory-bank-cli/compare/{{ .PreviousTag }}...{{ .Tag }}

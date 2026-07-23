@@ -70,7 +70,7 @@ must_not_define:
 
 | Contract ID | Connector / direction | Roles and sync boundary | Guarantees / failure / evolution semantics |
 | --- | --- | --- | --- |
-| `CTR-01` | filesystem read: `mb-cli doctor` -> `<repo-root>/.memory-bank-template` | CLI initiator, repository file provider; synchronous local read | Regular root file only; the single line `memory-bank-template-v1` with LF or CRLF termination means template. Missing, unreadable, non-regular, or different content means downstream. `memory-bank/.lock` has precedence. Future formats require a new accepted version rule. |
+| `CTR-01` | filesystem read: `memory-bank-cli doctor` -> `<repo-root>/.memory-bank-template` | CLI initiator, repository file provider; synchronous local read | Regular root file only; the single line `memory-bank-template-v1` with LF or CRLF termination means template. Missing, unreadable, non-regular, or different content means downstream. `memory-bank/.lock` has precedence. Future formats require a new accepted version rule. |
 
 ## Invariants
 

@@ -1,10 +1,10 @@
 ---
-title: "FT-003: Establish mb-cli Releases"
+title: "FT-003: Establish memory-bank-cli Releases"
 doc_kind: feature
 doc_function: canonical
-purpose: "Canonical brief для CI, первого stable Go release и install/upgrade документации standalone `mb-cli`."
+purpose: "Canonical brief для CI, первого stable Go release и install/upgrade документации standalone `memory-bank-cli`."
 derived_from:
-  - ../../prd/PRD-001-standalone-mb-cli.md
+  - ../../prd/PRD-001-standalone-memory-bank-cli.md
   - ../../ops/release.md
 source_refs:
   - "https://github.com/dapi/memory-bank-cli/issues/3"
@@ -16,27 +16,30 @@ must_not_define:
   - implementation_sequence
 ---
 
-# FT-003: Establish mb-cli Releases
+# FT-003: Establish memory-bank-cli Releases
 
 ## What
 
 ### Problem
 
-The standalone module has a GoReleaser configuration for `mb-cli`, but no repository CI workflow, tag, GitHub release, installation/upgrade documentation, or release procedure is documented. Issue #3 requires the first stable release while preserving `mb-cli` as the only distributed executable identity.
+The standalone module has release automation and a prior public module
+version, but the current `memory-bank-cli` executable identity has not been
+published. The rename requires a new major release while preserving
+`memory-bank-cli` as the only distributed executable identity.
 
 ### Outcome
 
 | Metric ID | Metric | Baseline | Target | Measurement method |
 | --- | --- | --- | --- | --- |
-| `MET-01` | Automated release validation | no `.github` workflow existed at the feature baseline | a repository workflow runs tests, vet and a release build before tag and GitHub Release publication | inspect workflow and its successful run |
-| `MET-02` | Stable Go module availability | no tags or releases | tagged `v1.0.0` is installable through the issue-specified `go install` command | execute install and version/help smoke check |
-| `MET-03` | Public release identities | release config names only `mb-cli`, but nothing has been published | release assets and documentation expose only `mb-cli`; removed identities have no compatibility artifact | inspect release, assets and docs |
+| `MET-01` | Automated release validation | validation workflow exists | the workflow runs tests, vet and a release build before tag and GitHub Release publication | inspect workflow and its successful run |
+| `MET-02` | Stable Go module availability | no released version contains the current entrypoint | tagged `v1.0.0` is installable through the documented `go install` command | execute install and version/help smoke check |
+| `MET-03` | Public release identities | current identity is configured but unpublished | release assets and documentation expose only `memory-bank-cli` | inspect release, assets and docs |
 
 ### Scope
 
-- `REQ-01` Add repository automation that validates Go tests, static analysis and the configured release build before publication of the release tag or GitHub Release.
-- `REQ-02` Define and execute the first semantic-version release as tag `v1.0.0`, publishing `mb-cli` through the existing GitHub/GoReleaser release surface only after the required validation succeeds.
-- `REQ-03` Add repository installation and upgrade documentation using `go install github.com/dapi/memory-bank-cli/cmd/mb-cli@vX.Y.Z` and document the intentional breaking rename/removal in the first release notes.
+- `REQ-01` Maintain repository automation that validates Go tests, static analysis and the configured release build before publication of the release tag or GitHub Release.
+- `REQ-02` Define and execute the first release under the current executable identity as tag `v1.0.0`, publishing `memory-bank-cli` through the existing GitHub/GoReleaser release surface only after the required validation succeeds.
+- `REQ-03` Provide installation and upgrade documentation using `go install github.com/dapi/memory-bank-cli/cmd/memory-bank-cli@vX.Y.Z` and document the breaking executable-identity change in the release notes.
 - `REQ-04` Ensure the release workflow, release assets, documentation and release notes contain no compatibility artifact or supported installation path for `memory-bank` or `memory-bank-lint`.
 
 ### Non-Scope
@@ -48,8 +51,8 @@ The standalone module has a GoReleaser configuration for `mb-cli`, but no reposi
 
 ### Constraints / Assumptions
 
-- `ASM-01` Issue #3 is open and explicitly requires a tagged, Go-installable `v1.0.0`; the repository currently has no tag or GitHub release.
-- `ASM-02` `.goreleaser.yml` is the existing release-build configuration: it has one `mb-cli` build, GitHub release settings and a Homebrew cask that requires `HOMEBREW_TAP_GITHUB_TOKEN`.
+- `ASM-01` The current executable rename requires a tagged, Go-installable `v1.0.0`; existing public versions do not contain `cmd/memory-bank-cli`.
+- `ASM-02` `.goreleaser.yml` is the existing release-build configuration: it has one `memory-bank-cli` build, GitHub release settings and a Homebrew cask that requires `HOMEBREW_TAP_GITHUB_TOKEN`.
 - `CON-01` Creating a public tag, using GitHub credentials and publishing external assets are irreversible external effects. A pushed semantic tag makes that Go module version publicly retrievable by `go install` and may be cached by Go proxies; it must not be repointed. The protected release workflow validates the exact `main` commit before its approval-gated job creates the tag and GitHub Release.
 - `CON-02` The release must be independently installable with the exact Go command from issue #3; local/snapshot builds cannot prove that criterion.
 - `CON-03` `memory-bank/` remains payload terminology; the prohibition in `REQ-04` applies to executable identities, release artifacts and installation paths.
@@ -79,8 +82,8 @@ The standalone module has a GoReleaser configuration for `mb-cli`, but no reposi
 ### Exit Criteria
 
 - `EC-01` Automation runs Go tests, `go vet ./...`, GoReleaser configuration validation and a release build on the exact commit before it is tagged or published as a GitHub Release.
-- `EC-02` GitHub contains the stable `v1.0.0` release and its assets contain only `mb-cli` executable names.
-- `EC-03` `go install github.com/dapi/memory-bank-cli/cmd/mb-cli@v1.0.0` succeeds from a clean Go module cache and the installed command reports `mb-cli v1.0.0`.
+- `EC-02` GitHub contains the stable `v1.0.0` release and its assets contain only `memory-bank-cli` executable names.
+- `EC-03` `go install github.com/dapi/memory-bank-cli/cmd/memory-bank-cli@v1.0.0` succeeds from a clean Go module cache and the installed command reports `memory-bank-cli v1.0.0`.
 - `EC-04` Repository documentation and `v1.0.0` release notes state the intentional breaking rename and removal, without presenting a compatibility installation path.
 
 ### Traceability matrix
@@ -95,7 +98,7 @@ The standalone module has a GoReleaser configuration for `mb-cli`, but no reposi
 ### Acceptance Scenarios
 
 - `SC-01` A maintainer starts the `v1.0.0` release from `main`; automation completes tests, vet and release-build validation on that exact commit before the approval-gated job creates its tag or GitHub Release.
-- `SC-02` After approved publication of `v1.0.0`, a user installs the module with the issue-specified Go command and invokes `mb-cli`.
+- `SC-02` After approved publication of `v1.0.0`, a user installs the module with the issue-specified Go command and invokes `memory-bank-cli`.
 - `SC-03` A user reads the repository/release documentation and can identify the breaking rename without being offered a removed executable as an installable compatibility path.
 
 ### Checks
@@ -104,8 +107,8 @@ The standalone module has a GoReleaser configuration for `mb-cli`, but no reposi
 | --- | --- | --- | --- | --- |
 | `CHK-01` | `EC-01`, `SC-01` | Inspect the validation and release workflow definitions; run the validation workflow or its equivalent commands. | tests, vet, release-config validation and snapshot release build succeed before publish step. | `artifacts/ft-003/verify/chk-01/` |
 | `CHK-02` | `EC-01`, `SC-01` | Inspect the release workflow job dependency and run record. | approval-gated tag/release job cannot run until validation succeeds on its exact workflow commit. | `artifacts/ft-003/verify/chk-02/` |
-| `CHK-03` | `EC-02`, `REQ-04`, `SC-03` | Inspect tag `v1.0.0`, GitHub release and asset names. | release exists; assets have only `mb-cli` executable identity. | `artifacts/ft-003/verify/chk-03/` |
-| `CHK-04` | `EC-03`, `SC-02` | From a clean Go module cache run `go install github.com/dapi/memory-bank-cli/cmd/mb-cli@v1.0.0`, then run `mb-cli --version`. | install exits 0 and the command prints `mb-cli v1.0.0`. | `artifacts/ft-003/verify/chk-04/` |
+| `CHK-03` | `EC-02`, `REQ-04`, `SC-03` | Inspect tag `v1.0.0`, GitHub release and asset names. | release exists; assets have only `memory-bank-cli` executable identity. | `artifacts/ft-003/verify/chk-03/` |
+| `CHK-04` | `EC-03`, `SC-02` | From a clean Go module cache run `go install github.com/dapi/memory-bank-cli/cmd/memory-bank-cli@v1.0.0`, then run `memory-bank-cli --version`. | install exits 0 and the command prints `memory-bank-cli v1.0.0`. | `artifacts/ft-003/verify/chk-04/` |
 | `CHK-05` | `EC-04`, `REQ-04`, `SC-03` | Review repository install/upgrade docs and generated `v1.0.0` release notes. | required install command and breaking-change statement exist; no compatibility install path exists. | `artifacts/ft-003/verify/chk-05/` |
 | `CHK-06` | `REQ-02`, `AG-01`, `CP-03` | Inspect the manual release run: validation succeeds on the selected `main` commit, then the GitHub `release` environment approves the job that creates the tag and publishes the release. | the approval record and workflow commit SHA precede tag creation; neither is replaced by a release URL or asset inventory. | `artifacts/ft-003/verify/chk-06/` |
 

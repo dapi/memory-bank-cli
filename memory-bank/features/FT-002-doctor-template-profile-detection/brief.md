@@ -37,7 +37,7 @@ must_not_define:
 ### Scope
 
 - `REQ-01` Define an explicit, stable template-source marker, its owner, and its location in `dapi/memory-bank`; the marker must be outside the copied `memory-bank/` payload.
-- `REQ-02` Make `mb-cli doctor --profile auto` classify the template source from that marker rather than from `tools/go.mod`.
+- `REQ-02` Make `memory-bank-cli doctor --profile auto` classify the template source from that marker rather than from `tools/go.mod`.
 - `REQ-03` Add and maintain fixtures covering: template source without `tools/go.mod`, downstream repository with `memory-bank/.lock`, and downstream repository without that lock but with a similarly named non-marker file.
 - `REQ-04` Preserve explicit `--profile template` and `--profile downstream` behavior.
 - `REQ-05` Document the detection rules and marker contract in the repositories that own them.
@@ -99,7 +99,7 @@ must_not_define:
 
 ### Acceptance Scenarios
 
-- `SC-01` A contributor runs `mb-cli doctor --profile auto` in the template-source fixture after the CLI source has been extracted; the fixture lacks `tools/go.mod`, contains the accepted marker, and is classified as template.
+- `SC-01` A contributor runs `memory-bank-cli doctor --profile auto` in the template-source fixture after the CLI source has been extracted; the fixture lacks `tools/go.mod`, contains the accepted marker, and is classified as template.
 - `SC-02` A contributor runs auto profile in a downstream fixture with `memory-bank/.lock`; it is classified as downstream.
 - `SC-03` A contributor runs auto profile in a downstream fixture without `memory-bank/.lock` but with a similarly named non-marker file; it remains downstream.
 - `SC-04` A user supplies each explicit profile; the selected explicit profile is honored independently of auto detection.

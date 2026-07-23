@@ -21,7 +21,7 @@ The actor wants to inspect a repository-local documentation tree. The default sc
 
 ## Main Flow
 
-1. The actor invokes `mb-cli lint` for navigation integrity or `mb-cli doctor` for broader diagnosis.
+1. The actor invokes `memory-bank-cli lint` for navigation integrity or `memory-bank-cli doctor` for broader diagnosis.
 2. The CLI resolves the repository and normalized scope.
 3. It emits text or JSON findings and summary.
 

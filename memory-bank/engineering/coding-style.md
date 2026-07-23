@@ -11,7 +11,7 @@ status: active
 
 # Coding Style
 
-- Write Go packages under `internal/` for non-public implementation; keep `cmd/mb-cli` thin.
+- Write Go packages under `internal/` for non-public implementation; keep `cmd/memory-bank-cli` thin.
 - Expose command behavior through `cli.Run(arguments, version, stdout, stderr)` so tests can assert output and exit codes without spawning the binary.
 - Use explicit typed report/option structures for machine-readable contracts.
 - Keep filesystem and Git operations validated before mutation; preserve rollback/error paths with regression tests.

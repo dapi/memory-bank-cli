@@ -18,7 +18,7 @@ audience: humans_and_agents
 
 - [Product](product/README.md) — продуктовая цель, пользователи, outcomes, позиционирование и известные неопределённости.
 - [Domain](domain/README.md) — язык шаблонов, ownership lock, диагностики и правила безопасного обновления.
-- [PRD](prd/README.md) — первая продуктовая инициатива: самостоятельный CLI `mb-cli`.
+- [PRD](prd/README.md) — первая продуктовая инициатива: самостоятельный CLI `memory-bank-cli`.
 - [Use cases](use-cases/README.md) — устойчивые flows установки, обновления и аудита документации.
 - [Engineering](engineering/README.md) — Go-архитектура, package boundaries, quality attributes и тестирование.
 - [Operations](ops/README.md) — локальная разработка, конфигурация и ограниченная информация о сборке/release.

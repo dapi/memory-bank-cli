@@ -8,7 +8,7 @@ derived_from:
   - ../dna/governance.md
 source_refs:
   - ../../go.mod
-  - ../../cmd/mb-cli/main.go
+  - ../../cmd/memory-bank-cli/main.go
   - ../../internal/cli/cli.go
 status: active
 ---
@@ -17,10 +17,10 @@ status: active
 
 ## Runtime shape
 
-One executable, `cmd/mb-cli`, imports `internal/cli` and exits with its result. The module path is `github.com/dapi/memory-bank-cli`; the module declares Go 1.21 and depends on `golang.org/x/sys` and `gopkg.in/yaml.v3`.
+One executable, `cmd/memory-bank-cli`, imports `internal/cli` and exits with its result. The module path is `github.com/dapi/memory-bank-cli`; the module declares Go 1.21 and depends on `golang.org/x/sys` and `gopkg.in/yaml.v3`.
 
 ```text
-cmd/mb-cli -> internal/cli
+cmd/memory-bank-cli -> internal/cli
 internal/cli -> internal/{ownership, doctor, lint, repository}
 internal/doctor -> ownership + lint/governance inspection
 internal/ownership -> Git source + local filesystem + memory-bank/.lock

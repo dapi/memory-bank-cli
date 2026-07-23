@@ -6,13 +6,14 @@ CLI for installing, updating, validating, and diagnosing Memory Bank templates
 Install a released version with Go:
 
 ```sh
-go install github.com/dapi/memory-bank-cli/cmd/mb-cli@vX.Y.Z
+go install github.com/dapi/memory-bank-cli/cmd/memory-bank-cli@vX.Y.Z
 ```
 
-The first stable standalone release is `v1.0.0`. After installing it, run:
+The first release under the `memory-bank-cli` executable identity will be
+`v1.0.0`. After it is published and installed, run:
 
 ```sh
-mb-cli --version
+memory-bank-cli --version
 ```
 
 ## Upgrade
@@ -20,9 +21,10 @@ mb-cli --version
 Install the desired newer semantic version with the same command:
 
 ```sh
-go install github.com/dapi/memory-bank-cli/cmd/mb-cli@vX.Y.Z
+go install github.com/dapi/memory-bank-cli/cmd/memory-bank-cli@vX.Y.Z
 ```
 
 ## Breaking release change
 
-`mb-cli` is the only supported executable. The former `memory-bank` name is intentionally breaking, and `memory-bank-lint` has been removed. Neither has a compatibility binary, alias, or installation path.
+`memory-bank-cli` is the only supported executable. No compatibility binary,
+alias, or alternative installation path is provided.

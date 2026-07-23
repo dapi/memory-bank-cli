@@ -1,4 +1,4 @@
-// Package cli defines the shared command contract for the mb-cli binary.
+// Package cli defines the shared command contract for the memory-bank-cli binary.
 package cli
 
 import (
@@ -36,7 +36,7 @@ func (values *entrypointFlags) Set(value string) error {
 	return nil
 }
 
-// Run executes the primary, subcommand-based mb-cli CLI.
+// Run executes the primary, subcommand-based memory-bank-cli CLI.
 func Run(arguments []string, version string, stdout, stderr io.Writer) int {
 	if len(arguments) == 0 {
 		printRootUsage(stderr)
@@ -45,7 +45,7 @@ func Run(arguments []string, version string, stdout, stderr io.Writer) int {
 
 	switch arguments[0] {
 	case "lint":
-		return runLint(arguments[1:], "mb-cli lint", version, stdout, stderr)
+		return runLint(arguments[1:], "memory-bank-cli lint", version, stdout, stderr)
 	case "init":
 		return runOwnership(arguments[1:], "init", stdout, stderr)
 	case "update":
@@ -56,20 +56,20 @@ func Run(arguments []string, version string, stdout, stderr io.Writer) int {
 		return runGitHubAdapter(arguments[1:], stdout, stderr)
 	case "--version", "-version":
 		if len(arguments) != 1 {
-			fmt.Fprintf(stderr, "mb-cli: unexpected arguments: %v\n", arguments[1:])
+			fmt.Fprintf(stderr, "memory-bank-cli: unexpected arguments: %v\n", arguments[1:])
 			return exitUsage
 		}
-		fmt.Fprintf(stdout, "mb-cli %s\n", version)
+		fmt.Fprintf(stdout, "memory-bank-cli %s\n", version)
 		return exitSuccess
 	case "--help", "-h", "-help", "help":
 		if len(arguments) != 1 {
-			fmt.Fprintf(stderr, "mb-cli: unexpected arguments: %v\n", arguments[1:])
+			fmt.Fprintf(stderr, "memory-bank-cli: unexpected arguments: %v\n", arguments[1:])
 			return exitUsage
 		}
 		printRootUsage(stdout)
 		return exitSuccess
 	default:
-		fmt.Fprintf(stderr, "mb-cli: unknown command %q\n\n", arguments[0])
+		fmt.Fprintf(stderr, "memory-bank-cli: unknown command %q\n\n", arguments[0])
 		printRootUsage(stderr)
 		return exitUsage
 	}
@@ -78,7 +78,7 @@ func Run(arguments []string, version string, stdout, stderr io.Writer) int {
 func printRootUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "Memory Bank documentation tooling.")
 	fmt.Fprintln(writer)
-	fmt.Fprintln(writer, "Usage: mb-cli <command> [options]")
+	fmt.Fprintln(writer, "Usage: memory-bank-cli <command> [options]")
 	fmt.Fprintln(writer)
 	fmt.Fprintln(writer, "Commands:")
 	fmt.Fprintln(writer, "  init    Adopt or install a template and create its ownership lock")
@@ -94,10 +94,10 @@ func printRootUsage(writer io.Writer) {
 
 func runGitHubAdapter(arguments []string, stdout, stderr io.Writer) int {
 	if len(arguments) == 0 || (arguments[0] != "init" && arguments[0] != "update") {
-		fmt.Fprintln(stderr, "Usage: mb-cli github <init|update> [--repo-root DIR] [--dry-run] [--json]")
+		fmt.Fprintln(stderr, "Usage: memory-bank-cli github <init|update> [--repo-root DIR] [--dry-run] [--json]")
 		return exitUsage
 	}
-	flags := flag.NewFlagSet("mb-cli github "+arguments[0], flag.ContinueOnError)
+	flags := flag.NewFlagSet("memory-bank-cli github "+arguments[0], flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	repoRootArgument := addRepoRootFlag(flags)
 	dryRun := flags.Bool("dry-run", false, "print the adapter mutation plan without applying it")
@@ -109,7 +109,7 @@ func runGitHubAdapter(arguments []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 	if flags.NArg() != 0 {
-		fmt.Fprintf(stderr, "mb-cli github %s: unexpected arguments: %v\n", arguments[0], flags.Args())
+		fmt.Fprintf(stderr, "memory-bank-cli github %s: unexpected arguments: %v\n", arguments[0], flags.Args())
 		return exitUsage
 	}
 	repoRoot, err := repository.ResolveRoot(*repoRootArgument)
@@ -144,10 +144,10 @@ func runGitHubAdapter(arguments []string, stdout, stderr io.Writer) int {
 }
 
 func runOwnership(arguments []string, command string, stdout, stderr io.Writer) int {
-	flags := flag.NewFlagSet("mb-cli "+command, flag.ContinueOnError)
+	flags := flag.NewFlagSet("memory-bank-cli "+command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
-		fmt.Fprintf(stderr, "Usage: mb-cli %s --source DIR --template-version VERSION --source-ref REF [options]\n", command)
+		fmt.Fprintf(stderr, "Usage: memory-bank-cli %s --source DIR --template-version VERSION --source-ref REF [options]\n", command)
 		flags.PrintDefaults()
 	}
 	repoRootArgument := addRepoRootFlag(flags)
@@ -164,11 +164,11 @@ func runOwnership(arguments []string, command string, stdout, stderr io.Writer) 
 		return exitUsage
 	}
 	if flags.NArg() > 0 {
-		fmt.Fprintf(stderr, "mb-cli %s: unexpected arguments: %v\n", command, flags.Args())
+		fmt.Fprintf(stderr, "memory-bank-cli %s: unexpected arguments: %v\n", command, flags.Args())
 		return exitUsage
 	}
 	if *sourceRootArgument == "" || *templateVersion == "" || *sourceRef == "" {
-		fmt.Fprintf(stderr, "mb-cli %s: --source, --template-version, and --source-ref are required\n", command)
+		fmt.Fprintf(stderr, "memory-bank-cli %s: --source, --template-version, and --source-ref are required\n", command)
 		return exitUsage
 	}
 	repoRoot, err := repository.ResolveRoot(*repoRootArgument)
@@ -235,10 +235,10 @@ func printOwnershipReport(writer io.Writer, report ownership.Report) {
 }
 
 func runDoctor(arguments []string, stdout, stderr io.Writer) int {
-	flags := flag.NewFlagSet("mb-cli doctor", flag.ContinueOnError)
+	flags := flag.NewFlagSet("memory-bank-cli doctor", flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
-		fmt.Fprintln(stderr, "Usage: mb-cli doctor [options]")
+		fmt.Fprintln(stderr, "Usage: memory-bank-cli doctor [options]")
 		flags.PrintDefaults()
 	}
 	repoRootArgument := addRepoRootFlag(flags)
@@ -254,11 +254,11 @@ func runDoctor(arguments []string, stdout, stderr io.Writer) int {
 		return exitUsage
 	}
 	if flags.NArg() > 0 {
-		fmt.Fprintf(stderr, "mb-cli doctor: unexpected arguments: %v\n", flags.Args())
+		fmt.Fprintf(stderr, "memory-bank-cli doctor: unexpected arguments: %v\n", flags.Args())
 		return exitUsage
 	}
 	if *maxDepth < 0 {
-		fmt.Fprintln(stderr, "mb-cli doctor: --max-depth must be greater than or equal to 0")
+		fmt.Fprintln(stderr, "memory-bank-cli doctor: --max-depth must be greater than or equal to 0")
 		return exitUsage
 	}
 	profile, err := doctor.NormalizeProfile(*profileArgument)
@@ -307,7 +307,7 @@ func printDoctorReport(writer io.Writer, report doctor.Report) {
 	fmt.Fprintf(writer, "Result: %d error(s), %d warning(s), %d info\n", report.Summary.Errors, report.Summary.Warnings, report.Summary.Info)
 }
 
-// runLint executes the mb-cli lint command.
+// runLint executes the memory-bank-cli lint command.
 func runLint(arguments []string, commandName, version string, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet(commandName, flag.ContinueOnError)
 	flags.SetOutput(stderr)

@@ -2,7 +2,7 @@
 title: "FT-001: Design"
 doc_kind: feature
 doc_function: canonical
-purpose: "Feature-local решение для history-preserving переноса Go CLI и замены его единственной публичной исполняемой идентичности на `mb-cli`."
+purpose: "Feature-local решение для history-preserving переноса Go CLI и замены его единственной публичной исполняемой идентичности на `memory-bank-cli`."
 derived_from:
   - brief.md
 status: active
@@ -46,8 +46,8 @@ The source snapshot in `brief.md` packages the CLI below `tools/` with module pa
 ## Selected Solution
 
 - `SOL-01` Create a history-filtered import of the `tools/` subtree from source SHA `0957f3c495f2c0518c8a81448694cf0e231d3209`, removing the `tools/` path prefix in the imported branch. Merge that import into the target history, retaining the target's initial repository commit. This preserves the meaningful CLI lineage while making its files native to the standalone repository.
-- `SOL-02` Change internal imports and `go.mod` to `github.com/dapi/memory-bank-cli`; rename `cmd/memory-bank` to `cmd/mb-cli`; route all primary CLI strings, help, errors, version output and examples through `mb-cli`.
-- `SOL-03` Delete the compatibility entrypoint and `RunLint` compatibility path, tests dedicated to it, and every `legacy compatibility executable` release-build/archive/package configuration. Configure the remaining release build to emit only `mb-cli`; do not perform publication in this feature.
+- `SOL-02` Change internal imports and `go.mod` to `github.com/dapi/memory-bank-cli`; rename `cmd/memory-bank` to `cmd/memory-bank-cli`; route all primary CLI strings, help, errors, version output and examples through `memory-bank-cli`.
+- `SOL-03` Delete the compatibility entrypoint and `RunLint` compatibility path, tests dedicated to it, and every `legacy compatibility executable` release-build/archive/package configuration. Configure the remaining release build to emit only `memory-bank-cli`; do not perform publication in this feature.
 
 ## Alternatives Considered
 
@@ -68,13 +68,13 @@ The source snapshot in `brief.md` packages the CLI below `tools/` with module pa
 
 - `SD-01` The source snapshot is fixed to the SHA recorded in `brief.md`; a newer source revision requires updating the brief, decision log and verification baseline before import.
 - `SD-02` The history import is performed in a disposable clone and inspected before it is merged into the target. This keeps source and target histories recoverable if the filtered tree is wrong.
-- `SD-03` Release configuration is changed only far enough to make `mb-cli` the sole build artifact. Tagging, publishing, CI release automation and installation documentation remain issue #3 work.
+- `SD-03` Release configuration is changed only far enough to make `memory-bank-cli` the sole build artifact. Tagging, publishing, CI release automation and installation documentation remain issue #3 work.
 
 ## Contracts
 
 | Contract ID | Connector / direction | Roles and sync boundary | Guarantees / failure / evolution semantics |
 | --- | --- | --- | --- |
-| `CTR-01` | user or automation → `mb-cli` process | synchronous CLI invocation | `lint`, `doctor`, `init`, `update`, exit codes and versioned JSON contracts are preserved; only executable/usage identity changes. |
+| `CTR-01` | user or automation → `memory-bank-cli` process | synchronous CLI invocation | `lint`, `doctor`, `init`, `update`, exit codes and versioned JSON contracts are preserved; only executable/usage identity changes. |
 
 ## Invariants
 

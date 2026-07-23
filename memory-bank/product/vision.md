@@ -18,7 +18,7 @@ status: active
 - Безопасность обновления важнее безусловного применения: conflicts сообщаются, а mutations применяются атомарно.
 - Диагностика отделена от изменения: `doctor` не должен менять worktree.
 - Machine-readable reports versioned alongside text output.
-- `mb-cli` остаётся единственной публичной executable identity.
+- `memory-bank-cli` остаётся единственной публичной executable identity.
 
 ## Non-Goals
 

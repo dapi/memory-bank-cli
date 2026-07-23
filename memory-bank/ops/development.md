@@ -16,8 +16,8 @@ Prerequisites confirmed by `go.mod` and the CLI implementation: Go 1.21, Git (fo
 ```sh
 go test -count=1 -race ./...
 go vet ./...
-go run ./cmd/mb-cli --help
-go run ./cmd/mb-cli lint --repo-root .
+go run ./cmd/memory-bank-cli --help
+go run ./cmd/memory-bank-cli lint --repo-root .
 ```
 
 `init` and `update` additionally require a separate clean template checkout, `--template-version`, and `--source-ref` matching its HEAD. No `.env`, database, service dependency or container workflow is documented.

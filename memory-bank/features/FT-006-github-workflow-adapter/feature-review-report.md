@@ -65,13 +65,13 @@ No `critical` or `important` findings remain. Minor: the adapter supplies valida
 
 ### Open questions closed through FPF
 
-- `DEC-01`: closed as `mb-cli github init|update` with embedded marker-managed assets; recorded in [design.md](design.md) and [decision-log.md](decision-log.md).
+- `DEC-01`: closed as `memory-bank-cli github init|update` with embedded marker-managed assets; recorded in [design.md](design.md) and [decision-log.md](decision-log.md).
 - `DEC-02`: closed as `standard` validation; recorded in [brief.md](brief.md) and [decision-log.md](decision-log.md).
 
 ### Changes made
 
 - Added `internal/githubadapter` with safe marker reconciliation, user-owned preservation, drift conflicts, dry-run and symlink rejection.
-- Added the `mb-cli github init|update` CLI surface and JSON/text reports.
+- Added the `memory-bank-cli github init|update` CLI surface and JSON/text reports.
 - Added Go tests for empty-tree install, custom template preservation, managed drift, dry-run, symlink rejection and CLI JSON.
 - Added design and implementation-plan owners and reconciled the feature brief/decision log.
 
@@ -83,5 +83,5 @@ No. The migrated source issue explicitly supplies the facts needed to select and
 
 - `go test ./...` passed.
 - `go vet ./...` passed.
-- `go run ./cmd/mb-cli lint --repo-root .` passed.
+- `go run ./cmd/memory-bank-cli lint --repo-root .` passed.
 - PR #8 is ready for review, reports no merge conflict and has no required CI checks configured on the repository.

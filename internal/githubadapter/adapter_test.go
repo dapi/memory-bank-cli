@@ -28,7 +28,7 @@ func TestInitCreatesOptInAdapterAndUpdateIsIdempotent(t *testing.T) {
 	}
 	path := filepath.Join(repo, ".github", "ISSUE_TEMPLATE", "memory-bank-feature.yml")
 	data, err := os.ReadFile(path)
-	if err != nil || !strings.Contains(string(data), "Expected outcome") || !strings.Contains(string(data), "# MB-CLI GITHUB ADAPTER START") {
+	if err != nil || !strings.Contains(string(data), "Expected outcome") || !strings.Contains(string(data), "# MEMORY-BANK-CLI GITHUB ADAPTER START") {
 		t.Fatalf("feature form was not installed: %q, %v", data, err)
 	}
 	var form yaml.Node
@@ -44,7 +44,7 @@ func TestInitCreatesOptInAdapterAndUpdateIsIdempotent(t *testing.T) {
 func TestMalformedReversedMarkerIsAConflict(t *testing.T) {
 	item := defaultAssets()[0]
 	// The end marker appears before the terminator of this deliberately broken start line.
-	malformed := "# MB-CLI GITHUB ADAPTER START: " + item.id + " sha256:missing" + markerSyntax(item).end + item.content
+	malformed := "# MEMORY-BANK-CLI GITHUB ADAPTER START: " + item.id + " sha256:missing" + markerSyntax(item).end + item.content
 	_, action, _ := reconcile(item, malformed)
 	if action != Conflict {
 		t.Fatalf("malformed marker action=%q, want conflict", action)
