@@ -137,6 +137,34 @@ func TestFilesystemSourceReaderTranslatesTargetRoot(t *testing.T) {
 	}
 }
 
+func TestUpdateFromTargetRootPreservesDownstreamPathAndIsIdempotent(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	path := "memory-bank/dna/rule.md"
+	write(t, source, "memory-bank-template/dna/rule.md", "one\n")
+	initialize(t, repo, source)
+
+	write(t, source, "memory-bank-template/dna/rule.md", "two\n")
+	report, err := Update(opts(repo, source, "b"))
+	if err != nil || !report.Applied || decisionFor(t, report, path).Action != UpdateFile {
+		t.Fatalf("target-root update failed: report=%#v err=%v", report, err)
+	}
+	if got := read(t, repo, path); got != "two\n" {
+		t.Fatalf("target-root update wrote unexpected downstream payload: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "memory-bank-template")); !os.IsNotExist(err) {
+		t.Fatalf("source root leaked into downstream after update: %v", err)
+	}
+
+	lockBefore := read(t, repo, LockFileName)
+	report, err = Update(opts(repo, source, "b"))
+	if err != nil || report.Applied || decisionFor(t, report, path).Action != Preserve {
+		t.Fatalf("target-root repeated update was not idempotent: report=%#v err=%v", report, err)
+	}
+	if lockAfter := read(t, repo, LockFileName); lockAfter != lockBefore {
+		t.Fatal("target-root no-op update rewrote the lock")
+	}
+}
+
 func TestInitRejectsReservedLockPathInTemplate(t *testing.T) {
 	repo, source := t.TempDir(), t.TempDir()
 	write(t, source, "memory-bank/dna/rule.md", "template\n")
