@@ -49,13 +49,21 @@ func Run(options Options) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	scopeRoot, err := lint.NormalizeScopeRoot(options.ScopeRoot)
-	if err != nil {
-		return Report{}, err
-	}
 	profile := options.Profile
 	if profile == ProfileAuto {
 		profile = detectProfile(repoRoot)
+	}
+	scopeRoot := options.ScopeRoot
+	if scopeRoot == "" {
+		if profile == ProfileTemplate {
+			scopeRoot = "memory-bank-template"
+		} else {
+			scopeRoot = "memory-bank"
+		}
+	}
+	scopeRoot, err = lint.NormalizeScopeRoot(scopeRoot)
+	if err != nil {
+		return Report{}, err
 	}
 	navigation, err := lint.Run(lint.Options{RepoRoot: repoRoot, ScopeRoot: scopeRoot, MaxDepth: options.MaxDepth})
 	if err != nil {
@@ -63,7 +71,7 @@ func Run(options Options) (Report, error) {
 	}
 	report := Report{FormatVersion: ReportFormatVersion, Profile: profile, RepoRoot: repoRoot, Navigation: navigation, Findings: []Finding{}}
 	report.addNavigationFindings()
-	report.checkIdentityAndDrift(options.AgentFile)
+	report.checkIdentityAndDrift(options.AgentFile, scopeRoot)
 	report.checkGovernance(scopeRoot)
 	report.checkCI()
 	sort.SliceStable(report.Findings, func(i, j int) bool {
@@ -109,7 +117,7 @@ func detectProfile(repoRoot string) Profile {
 
 func (report *Report) add(finding Finding) { report.Findings = append(report.Findings, finding) }
 
-func (report *Report) checkIdentityAndDrift(agentFile string) {
+func (report *Report) checkIdentityAndDrift(agentFile, scopeRoot string) {
 	lock, exists, lockErr := ownership.ReadLock(report.RepoRoot)
 	if lockErr != nil {
 		report.add(Finding{Code: "manifest.invalid", Severity: Error, Group: "manifest", Path: ownership.LockFileName, Message: lockErr.Error(), Remediation: "Repair or recreate the ownership lock with memory-bank-cli init from a trusted template checkout."})
@@ -130,9 +138,9 @@ func (report *Report) checkIdentityAndDrift(agentFile string) {
 		if !os.IsNotExist(err) {
 			message = fmt.Sprintf("Cannot read agent instruction entrypoint: %v", err)
 		}
-		report.add(Finding{Code: "agent.entrypoint_missing", Severity: severity, Group: "agent_integration", Path: agentFile, Message: message, Remediation: "Create the agent instruction file and link it to memory-bank/README.md."})
-	} else if !strings.Contains(string(contents), "memory-bank/README.md") {
-		report.add(Finding{Code: "agent.memory_bank_link_missing", Severity: Error, Group: "agent_integration", Path: agentFile, Message: "Agent instructions do not route readers to memory-bank/README.md.", Remediation: "Add a repository-relative link to memory-bank/README.md or run memory-bank-cli update with the same --agent-file."})
+		report.add(Finding{Code: "agent.entrypoint_missing", Severity: severity, Group: "agent_integration", Path: agentFile, Message: message, Remediation: fmt.Sprintf("Create the agent instruction file and link it to %s/README.md.", scopeRoot)})
+	} else if !strings.Contains(string(contents), scopeRoot+"/README.md") {
+		report.add(Finding{Code: "agent.memory_bank_link_missing", Severity: Error, Group: "agent_integration", Path: agentFile, Message: fmt.Sprintf("Agent instructions do not route readers to %s/README.md.", scopeRoot), Remediation: fmt.Sprintf("Add a repository-relative link to %s/README.md or run memory-bank-cli update with the same --agent-file.", scopeRoot)})
 	}
 	if exists && lockErr == nil {
 		agentReport, err := ownership.InspectAgentInstructions(report.RepoRoot, agentFile)

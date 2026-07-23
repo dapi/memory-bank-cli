@@ -151,7 +151,7 @@ func runOwnership(arguments []string, command string, stdout, stderr io.Writer) 
 		flags.PrintDefaults()
 	}
 	repoRootArgument := addRepoRootFlag(flags)
-	sourceRootArgument := flags.String("source", "", "clean template Git checkout containing memory-bank/")
+	sourceRootArgument := flags.String("source", "", "clean template Git checkout containing exactly one payload root: memory-bank-template/ or legacy memory-bank/")
 	templateVersion := flags.String("template-version", "", "human-readable template version")
 	sourceRef := flags.String("source-ref", "", "full commit SHA matching the source checkout HEAD")
 	dryRun := flags.Bool("dry-run", false, "print the complete mutation plan without applying it")
@@ -266,10 +266,20 @@ func runDoctor(arguments []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return exitUsage
 	}
-	scopeRoot, err := lint.NormalizeScopeRoot(*scopeRootArgument)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return exitFailure
+	scopeRoot := ""
+	scopeWasExplicit := false
+	flags.Visit(func(flag *flag.Flag) {
+		if flag.Name == "scope-root" {
+			scopeWasExplicit = true
+		}
+	})
+	if scopeWasExplicit {
+		var err error
+		scopeRoot, err = lint.NormalizeScopeRoot(*scopeRootArgument)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return exitFailure
+		}
 	}
 	repoRoot, err := repository.ResolveRoot(*repoRootArgument)
 	if err != nil {

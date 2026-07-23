@@ -13,7 +13,7 @@ derived_from:
   - "https://github.com/dapi/memory-bank-cli/issues/14"
   - "https://github.com/dapi/memory-bank/issues/63"
 status: active
-delivery_status: planned
+delivery_status: in_progress
 audience: humans_and_agents
 must_not_define:
   - implementation_sequence

@@ -267,9 +267,13 @@ func readSource(source pinnedSource) (map[string]payload, error) {
 		return nil, err
 	}
 	root := source.root
-	memoryBankRoot := filepath.Join(root, "memory-bank")
+	payloadRoot, err := selectFilesystemSourcePayloadRoot(root)
+	if err != nil {
+		return nil, err
+	}
+	sourcePayloadRoot := filepath.Join(root, payloadRoot)
 	result := make(map[string]payload)
-	err := filepath.WalkDir(memoryBankRoot, func(path string, entry fs.DirEntry, walkErr error) error {
+	err = filepath.WalkDir(sourcePayloadRoot, func(path string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
@@ -290,15 +294,15 @@ func readSource(source pinnedSource) (map[string]payload, error) {
 		if err != nil {
 			return err
 		}
-		relative, err := filepath.Rel(root, path)
+		relative, err := filepath.Rel(sourcePayloadRoot, path)
 		if err != nil {
 			return err
 		}
-		result[filepath.ToSlash(relative)] = payload{data: data, digest: digest(data), mode: gitMode(info.Mode().Perm())}
+		result[downstreamPayloadPath(filepath.ToSlash(relative))] = payload{data: data, digest: digest(data), mode: gitMode(info.Mode().Perm())}
 		return nil
 	})
 	if errors.Is(err, os.ErrNotExist) {
-		return nil, fmt.Errorf("template source has no memory-bank directory: %s", root)
+		return nil, fmt.Errorf("template source has no %s directory: %s", payloadRoot, root)
 	}
 	if err != nil {
 		return nil, err
@@ -313,7 +317,11 @@ func readGitSource(source pinnedSource, ref string) (map[string]payload, error) 
 	if err := inspectSourceRoot(source); err != nil {
 		return nil, err
 	}
-	tree, err := gitBytes(source.root, "ls-tree", "-rz", "--full-tree", ref, "--", "memory-bank")
+	payloadRoot, err := selectGitSourcePayloadRoot(source.root, ref)
+	if err != nil {
+		return nil, err
+	}
+	tree, err := gitBytes(source.root, "ls-tree", "-rz", "--full-tree", ref, "--", payloadRoot)
 	if err != nil {
 		return nil, fmt.Errorf("read pinned source tree: %w", err)
 	}
@@ -331,15 +339,23 @@ func readGitSource(source pinnedSource, ref string) (map[string]payload, error) 
 		if err != nil {
 			return nil, fmt.Errorf("read pinned source file %q: %w", filePath, err)
 		}
-		result[filePath] = payload{data: data, digest: digest(data), mode: fields[0]}
+		relative := strings.TrimPrefix(filePath, payloadRoot+"/")
+		if relative == filePath || relative == "" {
+			return nil, fmt.Errorf("read pinned source tree: invalid payload path %q", filePath)
+		}
+		result[downstreamPayloadPath(relative)] = payload{data: data, digest: digest(data), mode: fields[0]}
 	}
 	if len(result) == 0 {
-		return nil, errors.New("template source has no memory-bank payload")
+		return nil, fmt.Errorf("template source has no %s payload", payloadRoot)
 	}
 	if err := inspectSourceRoot(source); err != nil {
 		return nil, err
 	}
 	return result, nil
+}
+
+func downstreamPayloadPath(relative string) string {
+	return downstreamPayloadRoot + "/" + strings.TrimPrefix(filepath.ToSlash(relative), "/")
 }
 
 func gitMode(mode fs.FileMode) string {
