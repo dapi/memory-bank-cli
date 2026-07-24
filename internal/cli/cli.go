@@ -197,11 +197,7 @@ func runOwnership(arguments []string, command string, stdout, stderr io.Writer) 
 	flags := flag.NewFlagSet("memory-bank-cli "+command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
-		if command == "update" {
-			fmt.Fprintln(stderr, "Usage: memory-bank-cli update [--source DIR --template-version VERSION --source-ref REF] [options]")
-		} else {
-			fmt.Fprintln(stderr, "Usage: memory-bank-cli init --source DIR --template-version VERSION --source-ref REF [options]")
-		}
+		fmt.Fprintf(stderr, "Usage: memory-bank-cli %s [--source DIR --template-version VERSION --source-ref REF] [options]\n", command)
 		flags.PrintDefaults()
 	}
 	repoRootArgument := addRepoRootFlag(flags)
@@ -222,7 +218,7 @@ func runOwnership(arguments []string, command string, stdout, stderr io.Writer) 
 		return exitUsage
 	}
 	explicitSource := *sourceRootArgument != "" || *templateVersion != "" || *sourceRef != ""
-	if (command == "init" && !explicitSource) || (explicitSource && (*sourceRootArgument == "" || *templateVersion == "" || *sourceRef == "")) {
+	if explicitSource && (*sourceRootArgument == "" || *templateVersion == "" || *sourceRef == "") {
 		fmt.Fprintf(stderr, "memory-bank-cli %s: --source, --template-version, and --source-ref are required\n", command)
 		return exitUsage
 	}
