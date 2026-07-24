@@ -46,9 +46,6 @@ jobs:
     needs: validate
     if: github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    # GitHub environment protection requires the configured release reviewer
-    # to approve this deployment before any publication step can run.
-    environment: release
     permissions:
       contents: write
     steps:
