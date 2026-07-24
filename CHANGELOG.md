@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [1.7.3] - 2026-07-24
+
+### Fixed
+
+- Reduce human-readable `init` and `update` output to planned changes and
+  conflicts, with a concise final result summary; retain the complete plan in
+  JSON output.
+
 ## [1.7.2] - 2026-07-24
 
 ### Fixed
