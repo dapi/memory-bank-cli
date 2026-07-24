@@ -120,7 +120,7 @@ func TestImplicitScopeFollowsResolvedProfile(t *testing.T) {
 		profile   Profile
 		wantScope string
 	}{
-		{name: "template", profile: ProfileTemplate, wantScope: "memory-bank-template"},
+		{name: "template", profile: ProfileTemplate, wantScope: "template/memory-bank"},
 		{name: "downstream", profile: ProfileDownstream, wantScope: "memory-bank"},
 	} {
 		t.Run(test.name, func(t *testing.T) {

@@ -18,15 +18,15 @@ fail() { printf 'FAIL %s: %s\n' "${case_name:-setup}" "$*" >&2; exit 1; }
 require() { "$@" || fail "command failed: $*"; }
 expect_fail() { if "$@"; then fail "command unexpectedly succeeded: $*"; fi; }
 file() { printf '%s/%s' "$downstream" "$1"; }
-source_file() { printf '%s/memory-bank-template/%s' "$source" "$1"; }
+source_file() { printf '%s/template/memory-bank/%s' "$source" "$1"; }
 lock_file() { file memory-bank/.lock; }
 
 test -n "$binary" || { printf 'E2E_BINARY must name a pre-built memory-bank-cli executable\n' >&2; exit 2; }
 test -x "$binary" || { printf 'E2E_BINARY is not executable: %s\n' "$binary" >&2; exit 2; }
 
 write_template_v1() {
-  mkdir -p "$template_work/memory-bank-template/flows" "$template_work/memory-bank-template/dna" "$template_work/memory-bank-template/domain"
-  cat >"$template_work/memory-bank-template/README.md" <<'EOF'
+  mkdir -p "$template_work/template/memory-bank/flows" "$template_work/template/memory-bank/dna" "$template_work/template/memory-bank/domain"
+  cat >"$template_work/template/memory-bank/README.md" <<'EOF'
 ---
 title: Fixture Memory Bank
 doc_kind: guide
@@ -36,24 +36,24 @@ status: active
 ---
 # Fixture
 EOF
-  printf 'managed v1\n' >"$template_work/memory-bank-template/dna/managed.md"
-  printf 'local-only v1\n' >"$template_work/memory-bank-template/dna/local-only.md"
-  printf 'unchanged v1\n' >"$template_work/memory-bank-template/domain/unchanged.md"
-  printf 'delete v1\n' >"$template_work/memory-bank-template/dna/delete.md"
-  printf 'rename v1\n' >"$template_work/memory-bank-template/dna/rename-old.md"
-  printf 'mode payload\n' >"$template_work/memory-bank-template/dna/mode.md"
-  printf 'unrelated v1\n' >"$template_work/memory-bank-template/flows/unrelated.md"
+  printf 'managed v1\n' >"$template_work/template/memory-bank/dna/managed.md"
+  printf 'local-only v1\n' >"$template_work/template/memory-bank/dna/local-only.md"
+  printf 'unchanged v1\n' >"$template_work/template/memory-bank/domain/unchanged.md"
+  printf 'delete v1\n' >"$template_work/template/memory-bank/dna/delete.md"
+  printf 'rename v1\n' >"$template_work/template/memory-bank/dna/rename-old.md"
+  printf 'mode payload\n' >"$template_work/template/memory-bank/dna/mode.md"
+  printf 'unrelated v1\n' >"$template_work/template/memory-bank/flows/unrelated.md"
 }
 
 write_template_v2() {
 
-  mkdir -p "$template_work/memory-bank-template/dna/new-dir"
-  printf 'managed v2\n' >"$template_work/memory-bank-template/dna/managed.md"
-  printf 'created v2\n' >"$template_work/memory-bank-template/dna/created.md"
-  printf 'nested v2\n' >"$template_work/memory-bank-template/dna/new-dir/item.md"
-  rm "$template_work/memory-bank-template/dna/delete.md"
-  mv "$template_work/memory-bank-template/dna/rename-old.md" "$template_work/memory-bank-template/dna/rename-new.md"
-  printf 'unrelated v2\n' >"$template_work/memory-bank-template/flows/unrelated.md"
+  mkdir -p "$template_work/template/memory-bank/dna/new-dir"
+  printf 'managed v2\n' >"$template_work/template/memory-bank/dna/managed.md"
+  printf 'created v2\n' >"$template_work/template/memory-bank/dna/created.md"
+  printf 'nested v2\n' >"$template_work/template/memory-bank/dna/new-dir/item.md"
+  rm "$template_work/template/memory-bank/dna/delete.md"
+  mv "$template_work/template/memory-bank/dna/rename-old.md" "$template_work/template/memory-bank/dna/rename-new.md"
+  printf 'unrelated v2\n' >"$template_work/template/memory-bank/flows/unrelated.md"
 }
 
 setup_case() {

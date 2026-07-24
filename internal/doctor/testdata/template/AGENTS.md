@@ -1,3 +1,3 @@
 # Agent instructions
 
-Read [Memory Bank](memory-bank-template/README.md) before delivery work.
+Read [Memory Bank](template/memory-bank/README.md) before delivery work.
