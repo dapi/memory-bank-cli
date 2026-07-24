@@ -63,6 +63,7 @@ setup_case() {
   remote="$case_root/template.git"; template_work="$case_root/template-work"; source="$case_root/source"; downstream="$case_root/downstream"
   mkdir -p "$case_root" "$template_work" "$downstream"
   require git init --quiet "$template_work"
+  require git -C "$template_work" branch -M main
   require git -C "$template_work" config user.name 'E2E Fixture'
   require git -C "$template_work" config user.email 'fixture@example.invalid'
   write_template_v1
@@ -84,6 +85,7 @@ setup_case() {
   require git init --bare --quiet "$remote"
   require git -C "$template_work" remote add origin "$remote"
   require git -C "$template_work" push --quiet --tags origin HEAD
+  require git -C "$remote" symbolic-ref HEAD refs/heads/main
   require git clone --quiet "$remote" "$source"
   require git -C "$source" checkout --quiet --detach "$v1_sha"
   require git init --quiet "$downstream"
@@ -137,6 +139,7 @@ scenario_24() { setup_case E2E-24; init_v1; printf 'conflict\n' >"$(file memory-
 scenario_25() { setup_case E2E-25; init_v1; snapshot; expect_fail "$binary" update --repo-root "$downstream" --source "$source" --template-version bad --source-ref 0000000000000000000000000000000000000000; assert_unchanged; }
 scenario_26() { setup_case E2E-26; init_v1; printf 'conflict\n' >"$(file memory-bank/dna/managed.md)"; checkout_v2; snapshot; expect_fail update_v2; assert_unchanged; snapshot; expect_fail update_v2; assert_unchanged; }
 scenario_27() { setup_case E2E-27; init_v1; printf 'local edit\n' >"$(file memory-bank/dna/managed.md)"; checkout_v2; expect_fail update_v2; printf 'managed v2\n' >"$(file memory-bank/dna/managed.md)"; require update_v2; assert_lock_v2; }
+scenario_28() { setup_case E2E-28; init_v1; require git clone --quiet "$remote" "$(file memory-bank/.repo)"; local repo_head; repo_head="$(git -C "$(file memory-bank/.repo)" rev-parse HEAD)"; checkout_v2; require git -C "$source" push --quiet origin HEAD:main; require "$binary" update --repo-root "$downstream"; assert_contains "$(file memory-bank/dna/managed.md)" 'managed v2'; assert_contains "$(lock_file)" "$v2_sha"; assert_contains "$(lock_file)" "main@${v2_sha:0:12}"; test "$(git -C "$(file memory-bank/.repo)" rev-parse HEAD)" = "$repo_head"; }
 
 run_case() { local requested="$1"; case_name="$requested"; printf 'RUN %s\n' "$requested"; "scenario_${requested#E2E-}"; printf 'PASS %s\n' "$requested"; }
 
@@ -146,7 +149,7 @@ elif [ "$scope" = release ]; then
   run_case E2E-01
   run_case E2E-03
 else
-  for number in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27; do run_case "E2E-$number"; done
+  for number in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27 28; do run_case "E2E-$number"; done
 fi
 
 printf 'All requested local E2E scenarios passed.\n'
