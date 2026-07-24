@@ -554,7 +554,7 @@ func TestDoctorFixWithoutSourceUsesRepoUpstreamMain(t *testing.T) {
 	}
 }
 
-func TestDoctorFixWithoutSourcePreservesConflictingManagedContent(t *testing.T) {
+func TestDoctorFixWithoutSourceAdoptsConflictingManagedContent(t *testing.T) {
 	repo, source := t.TempDir(), t.TempDir()
 	readme := "---\ndoc_function: index\npurpose: Test index for doctor.\nstatus: active\n---\n# Memory Bank\n"
 	if err := os.MkdirAll(filepath.Join(source, "template", "memory-bank"), 0o755); err != nil {
@@ -583,16 +583,16 @@ func TestDoctorFixWithoutSourcePreservesConflictingManagedContent(t *testing.T) 
 
 	var stdout, stderr bytes.Buffer
 	if exitCode := Run([]string{"doctor", "--fix", "--repo-root", repo}, "test", &stdout, &stderr); exitCode != exitFailure {
-		t.Fatalf("conflicting repair exit = %d, stderr=%s", exitCode, stderr.String())
+		t.Fatalf("repair with unrelated doctor findings exit = %d, stderr=%s", exitCode, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "existing managed file does not match initialization source") {
-		t.Fatalf("conflicting managed content was not reported: %s", stdout.String())
+	if !strings.Contains(stdout.String(), "adopt existing managed file as downstream-owned without overwriting it") {
+		t.Fatalf("conflicting managed content was not adopted safely: %s", stdout.String())
 	}
 	if data, err := os.ReadFile(filepath.Join(repo, "memory-bank", "README.md")); err != nil || string(data) != "local customization\n" {
-		t.Fatalf("conflicting managed content changed: %q, %v", data, err)
+		t.Fatalf("adopted managed content changed: %q, %v", data, err)
 	}
-	if _, err := os.Stat(filepath.Join(repo, "memory-bank", ".lock")); !os.IsNotExist(err) {
-		t.Fatalf("conflicting repair created a lock: %v", err)
+	if _, err := os.Stat(filepath.Join(repo, "memory-bank", ".lock")); err != nil {
+		t.Fatalf("repair did not create an ownership lock: %v", err)
 	}
 }
 

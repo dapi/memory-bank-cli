@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [1.7.2] - 2026-07-24
+
+### Fixed
+
+- Preserve existing conflicting managed files during `init` as downstream-owned
+  instead of rejecting adoption or overwriting project-specific content.
+
 ## [1.7.1] - 2026-07-24
 
 ### Fixed
