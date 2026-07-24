@@ -1,11 +1,13 @@
 package push
 
 import (
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 func git(t *testing.T, dir string, args ...string) string {
@@ -16,6 +18,100 @@ func git(t *testing.T, dir string, args ...string) string {
 		t.Fatalf("git %v: %v\n%s", args, err, out)
 	}
 	return strings.TrimSpace(string(out))
+}
+
+func TestRunCreatesBranchCopiesManagedFileAndReturnsPR(t *testing.T) {
+	root := pushFixture(t)
+	checkout := filepath.Join(root, "memory-bank", ".repo")
+	var calls []string
+	run := func(dir, name string, args ...string) (string, error) {
+		call := name + " " + strings.Join(args, " ")
+		calls = append(calls, call)
+		switch call {
+		case "git rev-parse --show-toplevel", "git rev-parse --is-inside-work-tree", "git status --porcelain", "git diff --name-only --diff-filter=U", "git add -- memory-bank/dna/rule.md", "git commit -m Publish managed Memory Bank changes", "git push -u origin memory-bank-cli/push-20260724-120000":
+			return "", nil
+		case "git remote get-url origin":
+			return "https://github.com/example/upstream.git", nil
+		case "git status --porcelain --untracked-files=all -- memory-bank":
+			return " M memory-bank/dna/rule.md\n M memory-bank/product/note.md\n", nil
+		case "git checkout -b memory-bank-cli/push-20260724-120000":
+			if dir != checkout {
+				t.Fatalf("branch created outside checkout: %q", dir)
+			}
+			return "", nil
+		case "gh pr create --head memory-bank-cli/push-20260724-120000 --fill":
+			return "https://github.com/example/upstream/pull/1", nil
+		default:
+			return "", errors.New("unexpected command: " + call)
+		}
+	}
+	report, err := Run(Options{RepoRoot: root, Now: func() time.Time { return time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC) }, Run: run})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Branch != "memory-bank-cli/push-20260724-120000" || report.PRURL != "https://github.com/example/upstream/pull/1" {
+		t.Fatalf("unexpected report: %#v", report)
+	}
+	data, err := os.ReadFile(filepath.Join(checkout, "memory-bank", "dna", "rule.md"))
+	if err != nil || string(data) != "changed\n" {
+		t.Fatalf("managed file was not copied: %q, %v", data, err)
+	}
+	if _, err := os.Stat(filepath.Join(checkout, "memory-bank", "product", "note.md")); !os.IsNotExist(err) {
+		t.Fatalf("excluded path was copied: %v", err)
+	}
+	for _, call := range calls {
+		if call == "git checkout -" {
+			t.Fatalf("successful run restored checkout: %v", calls)
+		}
+	}
+}
+
+func TestRunCompensatesRemoteBranchWhenPRCreationFails(t *testing.T) {
+	root := pushFixture(t)
+	var calls []string
+	run := func(_ string, name string, args ...string) (string, error) {
+		call := name + " " + strings.Join(args, " ")
+		calls = append(calls, call)
+		switch call {
+		case "git rev-parse --show-toplevel", "git rev-parse --is-inside-work-tree", "git status --porcelain", "git diff --name-only --diff-filter=U", "git add -- memory-bank/dna/rule.md", "git commit -m Publish managed Memory Bank changes", "git push -u origin memory-bank-cli/push-20260724-120000", "git push origin --delete memory-bank-cli/push-20260724-120000", "git checkout -":
+			return "", nil
+		case "git remote get-url origin":
+			return "https://github.com/example/upstream.git", nil
+		case "git status --porcelain --untracked-files=all -- memory-bank":
+			return " M memory-bank/dna/rule.md\n", nil
+		case "git checkout -b memory-bank-cli/push-20260724-120000":
+			return "", nil
+		case "gh pr create --head memory-bank-cli/push-20260724-120000 --fill":
+			return "", errors.New("forbidden")
+		default:
+			return "", errors.New("unexpected command: " + call)
+		}
+	}
+	_, err := Run(Options{RepoRoot: root, Now: func() time.Time { return time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC) }, Run: run})
+	if err == nil || !strings.Contains(err.Error(), "remote branch was deleted") {
+		t.Fatalf("want compensated failure, got %v", err)
+	}
+	joined := strings.Join(calls, "\n")
+	for _, want := range []string{"git push origin --delete memory-bank-cli/push-20260724-120000", "git checkout -"} {
+		if !strings.Contains(joined, want) {
+			t.Fatalf("missing compensation %q in %v", want, calls)
+		}
+	}
+}
+
+func pushFixture(t *testing.T) string {
+	t.Helper()
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, "memory-bank", "dna"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(root, "memory-bank", ".repo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(root, "memory-bank", "dna", "rule.md"), []byte("changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	return root
 }
 
 func TestDryRunIncludesOnlyManagedPaths(t *testing.T) {
