@@ -64,7 +64,9 @@ wants to propose them upstream.
 
 - On success, an upstream PR targets the default branch from a dedicated
   non-default branch and contains only managed Memory Bank paths.
-- On dry-run or preflight failure, local and remote state is unchanged.
+- On dry-run or preflight failure, no working-tree files, upstream branch or
+  commit, remote branch, or GitHub PR is created. A non-dry validation may
+  refresh the local `origin/<default-branch>` tracking ref.
 - The upstream default branch is never a direct push target.
 
 ## Business Rules

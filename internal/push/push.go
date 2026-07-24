@@ -82,11 +82,6 @@ func Run(options Options) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	if !options.DryRun {
-		if _, err := run(checkout, "git", "fetch", "origin", defaultBranch+":refs/remotes/origin/"+defaultBranch); err != nil {
-			return Report{}, fmt.Errorf("refresh upstream default branch: %w", err)
-		}
-	}
 	payloadRoot, err := selectPayloadRootAt(run, checkout, "origin/"+defaultBranch)
 	if err != nil {
 		return Report{}, err
@@ -128,6 +123,16 @@ func Run(options Options) (Report, error) {
 	}
 	if len(included) == 0 {
 		return report, errors.New("no managed Memory Bank changes to publish; edit a managed path or inspect exclusions with --dry-run")
+	}
+	if _, err := run(checkout, "git", "fetch", "origin", defaultBranch+":refs/remotes/origin/"+defaultBranch); err != nil {
+		return report, fmt.Errorf("refresh upstream default branch: %w", err)
+	}
+	refreshedPayloadRoot, err := selectPayloadRootAt(run, checkout, "origin/"+defaultBranch)
+	if err != nil {
+		return report, err
+	}
+	if refreshedPayloadRoot != payloadRoot {
+		return report, fmt.Errorf("upstream payload root changed from %q to %q while refreshing the default branch; retry the command", payloadRoot, refreshedPayloadRoot)
 	}
 	makeBranch := options.BranchName
 	if makeBranch == nil {
@@ -316,6 +321,19 @@ func defaultBranch(run func(string, string, ...string) (string, error), checkout
 }
 
 func selectPayloadRoot(checkout string) (string, error) {
+	canonical := filepath.Join(checkout, "template", "memory-bank")
+	if info, err := os.Lstat(canonical); err == nil {
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return "", errors.New("upstream payload root \"template/memory-bank\" must be a real directory")
+		}
+		template, err := os.Lstat(filepath.Join(checkout, "template"))
+		if err != nil || !template.IsDir() || template.Mode()&os.ModeSymlink != 0 {
+			return "", errors.New("upstream payload root \"template/memory-bank\" has an unsafe parent directory")
+		}
+		return "template/memory-bank", nil
+	} else if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
 	var roots []string
 	for _, candidate := range []string{"memory-bank-template", "memory-bank"} {
 		info, err := os.Lstat(filepath.Join(checkout, candidate))
@@ -331,12 +349,20 @@ func selectPayloadRoot(checkout string) (string, error) {
 		roots = append(roots, candidate)
 	}
 	if len(roots) != 1 {
-		return "", fmt.Errorf("upstream checkout must contain exactly one payload root (memory-bank-template or memory-bank), found %v; check out the upstream default branch and fix its payload layout", roots)
+		return "", fmt.Errorf("upstream checkout must contain template/memory-bank or exactly one legacy payload root (memory-bank-template or memory-bank), found %v; check out the upstream default branch and fix its payload layout", roots)
 	}
 	return roots[0], nil
 }
 
 func selectPayloadRootAt(run func(string, string, ...string) (string, error), checkout, ref string) (string, error) {
+	canonical := "template/memory-bank"
+	out, err := run(checkout, "git", "ls-tree", "-d", "--name-only", ref, "--", canonical)
+	if err != nil {
+		return "", fmt.Errorf("inspect upstream payload root %q: %w", canonical, err)
+	}
+	if strings.TrimSpace(out) == canonical {
+		return canonical, nil
+	}
 	var roots []string
 	for _, candidate := range []string{"memory-bank-template", "memory-bank"} {
 		out, err := run(checkout, "git", "ls-tree", "-d", "--name-only", ref, "--", candidate)
@@ -348,7 +374,7 @@ func selectPayloadRootAt(run func(string, string, ...string) (string, error), ch
 		}
 	}
 	if len(roots) != 1 {
-		return "", fmt.Errorf("default branch must contain exactly one payload root (memory-bank-template or memory-bank), found %v; verify the upstream repository payload layout", roots)
+		return "", fmt.Errorf("default branch must contain template/memory-bank or exactly one legacy payload root (memory-bank-template or memory-bank), found %v; verify the upstream repository payload layout", roots)
 	}
 	return roots[0], nil
 }
