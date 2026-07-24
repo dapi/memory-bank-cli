@@ -80,13 +80,13 @@ The CLI reads downstream source, validates and temporarily mutates only the name
 - `SD-01` A path is publishable only when safely normalized below `memory-bank/` and its current class is exactly `managed`; every other class is reported as excluded. Failed normalization/classification aborts before mutation.
 - `SD-02` Preflight first; use only a fresh non-default branch; after failure restore original local branch/HEAD and attempt remote deletion only for the command-created branch. Failed compensation is a diagnosed failed outcome, never a default-branch write.
 - `SD-03` `standard` validation requires targeted contract tests, full Go suite, vet, navigation audit and one approved live PR result; the latter is a closure gate, not a unit-test substitute.
-- `SD-04` The source namespace is always downstream `memory-bank/`; before mutation `.repo` must resolve as its own Git worktree and the selected `origin/default` tree must contain exactly one real payload root, `memory-bank-template/` or legacy `memory-bank/`. The planner translates only the leading namespace and rejects missing, duplicate or symlink payload roots.
+- `SD-04` The source namespace is always downstream `memory-bank/`; before mutation `.repo` must resolve as its own Git worktree and the selected `origin/default` tree must contain canonical `template/memory-bank/` or exactly one legacy payload root, `memory-bank-template/` or `memory-bank/`. The canonical root wins when present; the planner translates only the leading namespace and rejects missing, duplicate or symlink legacy payload roots.
 
 ## Contracts
 
 | Contract ID | Connector / direction | Roles and sync boundary | Guarantees / failure / evolution semantics |
 | --- | --- | --- | --- |
-| `CTR-01` | Filesystem: downstream `memory-bank/` → selection planner → upstream payload root | CLI reads current repository synchronously | Only exactly-`managed` normalized paths enter plan; `.lock`, `.repo` and all other classes are excluded. The source prefix translates to exactly one validated upstream `memory-bank-template/` or `memory-bank/` root; invalid topology aborts. |
+| `CTR-01` | Filesystem: downstream `memory-bank/` → selection planner → upstream payload root | CLI reads current repository synchronously | Only exactly-`managed` normalized paths enter plan; `.lock`, `.repo` and all other classes are excluded. The source prefix translates to canonical `template/memory-bank/`, with `memory-bank-template/` or `memory-bank/` as validated legacy fallbacks; invalid topology aborts. |
 | `CTR-02` | Local Git and remote Git: CLI → `.repo` → configured upstream | Synchronous local/remote boundary | Preflight validates repository, safe path, clean state, conflicts, remote identity and default branch; writes only fresh branch; failure runs `SD-02`. |
 | `CTR-03` | GitHub PR: CLI → configured upstream repository | External authenticated boundary after push | Success returns URL; failure triggers `CTR-02` compensation; dry-run never crosses boundary. |
 
@@ -111,13 +111,13 @@ The CLI reads downstream source, validates and temporarily mutates only the name
 
 | Analysis | Required | Method | Result / evidence |
 | --- | --- | --- | --- |
-| Contract compatibility | yes | FPF consequence review plus contract tests | `decision-log.md`; `CHK-01`–`CHK-05` evidence required before closure |
-| State / transition completeness | yes | Walk through preflight → branch → commit → push → PR → compensate | all outcomes recorded in `SD-02`, `FM-*`; validate with `CHK-04` |
-| Failure propagation | yes | Failure-mode review and injected-failure tests | `FM-01`–`FM-03`, `CHK-02`, `CHK-04` |
-| Concurrency / ordering | yes | Pin/revalidate preconditions and sequential Git-command tests | reject state changes before mutation; `CHK-04` |
-| Security boundaries | yes | Path/remote validation review and negative tests | `CTR-02`, `FM-01`, `CHK-02` |
+| Contract compatibility | yes | FPF consequence review plus contract tests | passed; `decision-log.md` and `brief.md` `EVID-01`–`EVID-05` |
+| State / transition completeness | yes | Walk through preflight → branch → commit → push → PR → compensate | passed; `SD-02`, `FM-*`, `EVID-04` |
+| Failure propagation | yes | Failure-mode review and injected-failure tests | passed; `FM-01`–`FM-03`, `EVID-02`, `EVID-04` |
+| Concurrency / ordering | yes | Pin/revalidate preconditions and sequential Git-command tests | passed; pre-mutation rejection and `EVID-04` |
+| Security boundaries | yes | Path/remote validation review and negative tests | passed; `CTR-02`, `FM-01`, `EVID-02` |
 | Capacity / latency | no | One bounded operator-triggered Git operation; no new service/load path | N/A |
-| Migration / evolution safety | yes | CLI regression and non-default-upstream tests | `CHK-01`, full suite |
+| Migration / evolution safety | yes | CLI regression and non-default-upstream tests | passed; `EVID-01` and completion PR #34 |
 
 ## ADR / External Design Dependencies
 

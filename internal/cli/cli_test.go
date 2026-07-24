@@ -73,6 +73,19 @@ func TestRootHelpAndVersion(t *testing.T) {
 		if !strings.Contains(stdout.String(), test.want) {
 			t.Fatalf("unexpected stdout for %v: %q", test.arguments, stdout.String())
 		}
+		if test.arguments[0] == "--help" && !strings.Contains(stdout.String(), "push    Publish managed Memory Bank changes upstream through a PR") {
+			t.Fatalf("root help does not document push: %q", stdout.String())
+		}
+	}
+}
+
+func TestPushHelpDocumentsDryRun(t *testing.T) {
+	var stdout, stderr bytes.Buffer
+	if exitCode := Run([]string{"push", "--help"}, "test", &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("help exit=%d stderr=%q", exitCode, stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "Usage: memory-bank-cli push") || !strings.Contains(stderr.String(), "without mutating checkout, remotes, or GitHub") {
+		t.Fatalf("push help is incomplete: %q", stderr.String())
 	}
 }
 

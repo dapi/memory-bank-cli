@@ -7,6 +7,15 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Fixed
+
+- Publish to the canonical upstream `template/memory-bank/` payload root,
+  retaining legacy-root fallback for compatible upstream repositories.
+- Reject all unresolved downstream Git conflict statuses before an upstream
+  publication plan can mutate state.
+- Reject symlinked `memory-bank/` and `.repo` checkout ancestry, and provide
+  corrective next steps in push preflight diagnostics.
+
 ## [1.4.0] - 2026-07-24
 
 ### Added
