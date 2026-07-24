@@ -46,8 +46,8 @@ internal/ownership -> Git source + local filesystem + memory-bank/.lock
 
 ## Doctor template-profile detection
 
-For `doctor --profile auto`, a repository is the template source when it has a real root directory `memory-bank-template/` and no `memory-bank/.lock`. The lock takes precedence and always selects downstream; a missing, non-directory or symlinked source root also selects downstream. Explicit `--profile template` and `--profile downstream` bypass this detector.
+For `doctor --profile auto`, a repository is the template source when it has a real root directory `template/memory-bank/` and no `memory-bank/.lock`. The lock takes precedence and always selects downstream; a missing, non-directory or symlinked source root also selects downstream. Explicit `--profile template` and `--profile downstream` bypass this detector.
 
-During the coordinated rename, source inspection accepts exactly one payload root—legacy `memory-bank/` or target `memory-bank-template/`—and translates each accepted source-relative path to downstream `memory-bank/<suffix>` before ownership planning. A source with neither root or both roots is rejected; locks, installed navigation and generated agent guidance remain downstream `memory-bank/` contracts.
+During the coordinated rename, source inspection accepts exactly one payload root—legacy `memory-bank/`, legacy `memory-bank-template/`, or target `template/memory-bank/`—and translates each accepted source-relative path to downstream `memory-bank/<suffix>` before ownership planning. A source with none or multiple recognized roots is rejected; locks, installed navigation and generated agent guidance remain downstream `memory-bank/` contracts.
 
 `memory-bank/` denotes payload data, not an executable name.

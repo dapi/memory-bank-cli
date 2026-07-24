@@ -17,12 +17,12 @@ audience: humans_and_agents
 
 ## Trigger and Preconditions
 
-The actor wants to inspect a repository-local documentation tree. Lint defaults to `memory-bank`; doctor derives `memory-bank-template` for a detected template source and `memory-bank` for a downstream repository unless a valid repository-relative scope is supplied explicitly.
+The actor wants to inspect a repository-local documentation tree. Lint defaults to `memory-bank`; doctor derives `template/memory-bank` for a detected template source and `memory-bank` for a downstream repository unless a valid repository-relative scope is supplied explicitly.
 
 ## Main Flow
 
 1. The actor invokes `memory-bank-cli lint` for navigation integrity or `memory-bank-cli doctor` for broader diagnosis.
-2. The CLI resolves the repository, profile and effective normalized scope. Template CI invokes lint with explicit `--scope-root memory-bank-template`.
+2. The CLI resolves the repository, profile and effective normalized scope. Template CI invokes lint with explicit `--scope-root template/memory-bank`.
 3. It emits text or JSON findings and summary.
 
 ## Outcomes

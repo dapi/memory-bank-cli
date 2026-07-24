@@ -21,7 +21,7 @@ An adopted repository has an ownership lock; a clean, pinned template source and
 
 ## Main Flow
 
-1. The actor runs `memory-bank-cli update`, optionally first with `--dry-run`. During the coordinated payload rename, the pinned source contains exactly one recognized root—legacy `memory-bank/` or target `memory-bank-template/`—while the existing locked destination stays `memory-bank/`.
+1. The actor runs `memory-bank-cli update`, optionally first with `--dry-run`. During the coordinated payload rename, the pinned source contains exactly one recognized root—legacy `memory-bank/`, legacy `memory-bank-template/`, or target `template/memory-bank/`—while the existing locked destination stays `memory-bank/`.
 2. The CLI validates the source and reads the existing lock.
 3. It classifies changes and produces decisions for managed, adapted, user-owned and generated content.
 4. If the plan has no conflict, mutations and lock changes are applied atomically.
