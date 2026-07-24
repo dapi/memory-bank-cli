@@ -28,10 +28,7 @@ var shellErrexitPattern = regexp.MustCompile(`(?:^|\s)-[A-Za-z]*e[A-Za-z]*(?:\s|
 var shellPipefailPattern = regexp.MustCompile(`(?:^|\s)-o\s+pipefail(?:\s|$)|(?:^|\s)pipefail(?:\s|$)`)
 var workflowFalseExpressionPattern = regexp.MustCompile(`^\$\{\{\s*false\s*\}\}$`)
 
-const (
-	templateMarkerPath = ".memory-bank-template"
-	templateMarkerLine = "memory-bank-template-v1"
-)
+const templatePayloadRoot = "memory-bank-template"
 
 func NormalizeProfile(value string) (Profile, error) {
 	profile := Profile(strings.ToLower(strings.TrimSpace(value)))
@@ -104,15 +101,11 @@ func detectProfile(repoRoot string) Profile {
 	if _, err := os.Lstat(filepath.Join(repoRoot, ownership.LockFileName)); err == nil {
 		return ProfileDownstream
 	}
-	marker, _, err := readRegularWithinRoot(repoRoot, templateMarkerPath)
-	if err != nil {
+	info, err := os.Lstat(filepath.Join(repoRoot, templatePayloadRoot))
+	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return ProfileDownstream
 	}
-	content := string(marker)
-	if content == templateMarkerLine+"\n" || content == templateMarkerLine+"\r\n" {
-		return ProfileTemplate
-	}
-	return ProfileDownstream
+	return ProfileTemplate
 }
 
 func (report *Report) add(finding Finding) { report.Findings = append(report.Findings, finding) }
