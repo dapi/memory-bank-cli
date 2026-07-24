@@ -19,5 +19,9 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version-file: go.mod
+      - name: Build E2E binary
+        run: go build -o "$RUNNER_TEMP/memory-bank-cli" ./cmd/memory-bank-cli
       - name: Run hermetic local E2E scenarios
+        env:
+          E2E_BINARY: ${{ runner.temp }}/memory-bank-cli
         run: bash scripts/e2e-init-update.sh

@@ -46,7 +46,7 @@ must_not_define:
 | Area | Contract | Failure symptom |
 | --- | --- | --- |
 | setup | POSIX shell, Go, Git and temporary writable filesystem. | Fixture cannot create/tag/clone local Git repositories. |
-| local E2E network | No network service may be used after runner start. | Any non-local URL/tool dependency invalidates `CHK-01`. |
+| local E2E network | A separate setup step builds the binary; the runner receives it through `E2E_BINARY` and uses no network service. | Missing/non-executable `E2E_BINARY` or any non-local URL/tool dependency invalidates `CHK-01`. |
 | CI governance | Repository administrator can configure a required status check on `main`. | `EC-02` remains incomplete. |
 
 ## Preconditions

@@ -4,9 +4,8 @@
 # used after this script starts.
 set -euo pipefail
 
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 work_root="${E2E_WORK_ROOT:-$(mktemp -d)}"
-binary="${E2E_BINARY:-$work_root/bin/memory-bank-cli}"
+binary="${E2E_BINARY:-}"
 scope="${E2E_SCOPE:-full}"
 keep_work="${E2E_KEEP_WORK:-0}"
 
@@ -22,10 +21,7 @@ file() { printf '%s/%s' "$downstream" "$1"; }
 source_file() { printf '%s/memory-bank-template/%s' "$source" "$1"; }
 lock_file() { file memory-bank/.lock; }
 
-if [ -z "${E2E_BINARY:-}" ]; then
-  mkdir -p "$(dirname "$binary")"
-  require go build -o "$binary" "$repo_root/cmd/memory-bank-cli"
-fi
+test -n "$binary" || { printf 'E2E_BINARY must name a pre-built memory-bank-cli executable\n' >&2; exit 2; }
 test -x "$binary" || { printf 'E2E_BINARY is not executable: %s\n' "$binary" >&2; exit 2; }
 
 write_template_v1() {
