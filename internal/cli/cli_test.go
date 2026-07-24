@@ -334,6 +334,9 @@ func TestInitWithoutSourceRejectsInvalidRepoCheckoutWithoutMutation(t *testing.T
 	if _, err := os.Stat(filepath.Join(repo, "memory-bank", ".lock")); !os.IsNotExist(err) {
 		t.Fatalf("failed resolution wrote lock: %v", err)
 	}
+	if got, err := os.ReadFile(filepath.Join(repo, "sentinel")); err != nil || string(got) != "unchanged\n" {
+		t.Fatalf("failed resolution changed repository: %q, %v", got, err)
+	}
 }
 
 func TestInitWithoutSourceRejectsRepoCheckoutWithoutOriginWithoutMutation(t *testing.T) {
