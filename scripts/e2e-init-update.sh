@@ -58,6 +58,7 @@ write_template_v2() {
 
 setup_case() {
   case_name="$1"
+  local include_project_local="${2:-0}"
   case_root="$work_root/$case_name"
   remote="$case_root/template.git"; template_work="$case_root/template-work"; source="$case_root/source"; downstream="$case_root/downstream"
   mkdir -p "$case_root" "$template_work" "$downstream"
@@ -65,6 +66,12 @@ setup_case() {
   require git -C "$template_work" config user.name 'E2E Fixture'
   require git -C "$template_work" config user.email 'fixture@example.invalid'
   write_template_v1
+  if [ "$include_project_local" = 1 ]; then
+    mkdir -p "$template_work/memory-bank/dna"
+    printf 'project local v1\n' >"$template_work/memory-bank/dna/managed.md"
+    printf 'project-local lock\n' >"$template_work/memory-bank/.lock"
+    printf 'do not install\n' >"$template_work/memory-bank/project-local.md"
+  fi
   require git -C "$template_work" add .
   require git -C "$template_work" commit --quiet -m v1
   require git -C "$template_work" tag v1.0.0
@@ -112,6 +119,7 @@ scenario_06() { setup_case E2E-06; init_v1; checkout_v2; snapshot; require "$bin
 scenario_07() { setup_case E2E-07; init_v1; mkdir -p "$downstream/.memory-bank-template"; doctor_profile "$downstream" downstream; }
 scenario_08() { setup_case E2E-08; doctor_profile "$source" template; }
 scenario_09() { setup_case E2E-09; snapshot; expect_fail "$binary" init --repo-root "$downstream" --source "$source" --template-version bad --source-ref 0000000000000000000000000000000000000000; assert_unchanged; }
+scenario_10() { setup_case E2E-10 1; init_v1; assert_contains "$(file memory-bank/dna/managed.md)" 'managed v1'; assert_absent "$(file memory-bank/project-local.md)"; checkout_v2; require update_v2; assert_contains "$(file memory-bank/dna/managed.md)" 'managed v2'; assert_absent "$(file memory-bank/project-local.md)"; assert_lock_v2; }
 scenario_11() { setup_case E2E-11; init_v1; printf 'local unchanged edit\n' >"$(file memory-bank/dna/local-only.md)"; checkout_v2; require update_v2; assert_contains "$(file memory-bank/dna/local-only.md)" 'local unchanged edit'; assert_lock_v2; }
 scenario_12() { setup_case E2E-12; init_v1; printf 'local edit\n' >"$(file memory-bank/dna/managed.md)"; checkout_v2; snapshot; expect_fail update_v2; assert_unchanged; }
 scenario_13() { setup_case E2E-13; init_v1; printf 'managed v2\n' >"$(file memory-bank/dna/managed.md)"; checkout_v2; require update_v2; assert_lock_v2; }
@@ -138,7 +146,7 @@ elif [ "$scope" = release ]; then
   run_case E2E-01
   run_case E2E-03
 else
-  for number in 01 02 03 04 05 06 07 08 09 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27; do run_case "E2E-$number"; done
+  for number in 01 02 03 04 05 06 07 08 09 10 11 12 13 14 15 16 17 18 19 20 21 22 23 24 25 26 27; do run_case "E2E-$number"; done
 fi
 
 printf 'All requested local E2E scenarios passed.\n'
