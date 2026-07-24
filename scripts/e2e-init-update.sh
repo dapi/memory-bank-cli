@@ -25,7 +25,13 @@ test -n "$binary" || { printf 'E2E_BINARY must name a pre-built memory-bank-cli 
 test -x "$binary" || { printf 'E2E_BINARY is not executable: %s\n' "$binary" >&2; exit 2; }
 
 write_template_v1() {
-  mkdir -p "$template_work/template/memory-bank/flows" "$template_work/template/memory-bank/dna" "$template_work/template/memory-bank/domain"
+  mkdir -p "$template_work/template/memory-bank/flows" "$template_work/template/memory-bank/dna" "$template_work/template/memory-bank/domain" "$template_work/template/.start-issue"
+  printf 'fixture prompt\n' >"$template_work/template/.start-issue/prompt.md"
+  printf 'fixture environment\n' >"$template_work/template/.envrc"
+  printf '.fixture/\n' >"$template_work/template/.gitignore"
+  printf '# Fixture workflow\n' >"$template_work/template/WORKFLOW.md"
+  printf '#!/bin/sh\n' >"$template_work/template/run-symphony.sh"
+  printf '#!/bin/sh\n' >"$template_work/template/bootstrap-symphony.sh"
   cat >"$template_work/template/memory-bank/README.md" <<'EOF'
 ---
 title: Fixture Memory Bank
@@ -74,6 +80,7 @@ setup_case() {
     printf 'do not install\n' >"$template_work/memory-bank/project-local.md"
   fi
   require git -C "$template_work" add .
+  require git -C "$template_work" add --force template/.envrc
   require git -C "$template_work" commit --quiet -m v1
   require git -C "$template_work" tag v1.0.0
   v1_sha="$(git -C "$template_work" rev-parse v1.0.0^{commit})"
@@ -112,7 +119,7 @@ doctor_profile() {
   grep -Eq '"profile"[[:space:]]*:[[:space:]]*"'"$expected"'"' "$output" || fail "doctor did not select $expected"
 }
 
-scenario_01() { setup_case E2E-01; init_v1; test -f "$(file memory-bank/dna/managed.md)"; assert_contains "$(lock_file)" '"version": "v1.0.0"'; assert_contains "$(lock_file)" "$v1_sha"; assert_contains "$(lock_file)" '"payload_digest"'; }
+scenario_01() { setup_case E2E-01; init_v1; test -f "$(file memory-bank/dna/managed.md)"; for path in .start-issue/prompt.md .envrc .gitignore WORKFLOW.md run-symphony.sh bootstrap-symphony.sh; do test -f "$(file "$path")" || fail "init did not install $path"; done; assert_contains "$(lock_file)" '"version": "v1.0.0"'; assert_contains "$(lock_file)" "$v1_sha"; assert_contains "$(lock_file)" '"payload_digest"'; }
 scenario_02() { setup_case E2E-02; init_v1; snapshot; expect_fail "$binary" init --repo-root "$downstream" --source "$source" --template-version v1.0.0 --source-ref "$v1_sha"; assert_unchanged; }
 scenario_03() { setup_case E2E-03; init_v1; checkout_v2; require update_v2; assert_contains "$(file memory-bank/dna/managed.md)" 'managed v2'; test -f "$(file memory-bank/dna/created.md)"; assert_absent "$(file memory-bank/dna/delete.md)"; assert_lock_v2; }
 scenario_04() { setup_case E2E-04; init_v1; printf 'local edit\n' >"$(file memory-bank/dna/managed.md)"; checkout_v2; snapshot; expect_fail update_v2; assert_unchanged; }
