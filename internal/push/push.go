@@ -69,14 +69,23 @@ func Run(options Options) (Report, error) {
 	if err != nil || strings.TrimSpace(remote) == "" {
 		return Report{}, fmt.Errorf("upstream checkout has no valid origin remote")
 	}
+	githubRepo, err := githubRepository(strings.TrimSpace(remote))
+	if err != nil {
+		return Report{}, err
+	}
 	if !options.DryRun {
-		if identity, err := run(checkout, "gh", "repo", "view", "--json", "id"); err != nil || strings.TrimSpace(identity) == "" {
+		if identity, err := run(checkout, "gh", "repo", "view", githubRepo, "--json", "id"); err != nil || strings.TrimSpace(identity) == "" {
 			return Report{}, errors.New("upstream origin is not an accessible GitHub repository for PR creation")
 		}
 	}
 	defaultBranch, err := defaultBranch(run, checkout)
 	if err != nil {
 		return Report{}, err
+	}
+	if !options.DryRun {
+		if _, err := run(checkout, "git", "fetch", "origin", defaultBranch+":refs/remotes/origin/"+defaultBranch); err != nil {
+			return Report{}, fmt.Errorf("refresh upstream default branch: %w", err)
+		}
 	}
 	payloadRoot, err := selectPayloadRootAt(run, checkout, "origin/"+defaultBranch)
 	if err != nil {
@@ -203,8 +212,12 @@ func Run(options Options) (Report, error) {
 		return failed(fmt.Errorf("push upstream branch: %w; remote branch ownership is unproven and will not be deleted", err))
 	}
 	remoteCreated = true
-	pr, err := run(checkout, "gh", "pr", "create", "--head", branch, "--base", defaultBranch, "--fill")
+	pr, err := run(checkout, "gh", "pr", "create", "--repo", githubRepo, "--head", branch, "--base", defaultBranch, "--fill")
 	if err != nil {
+		if existing, queryErr := run(checkout, "gh", "pr", "list", "--repo", githubRepo, "--head", branch, "--json", "url", "--jq", ".[0].url"); queryErr == nil && strings.TrimSpace(existing) != "" {
+			remoteCreated = false
+			return failed(fmt.Errorf("create PR returned an error, but PR %s may have been created; remote branch was retained", strings.TrimSpace(existing)))
+		}
 		return failed(fmt.Errorf("create PR: %w", err))
 	}
 	report.PRURL = strings.TrimSpace(pr)
@@ -224,6 +237,22 @@ func safeCheckout(root string) (string, error) {
 		return "", errors.New("memory-bank/.repo must be a real directory, not a symlink")
 	}
 	return path, nil
+}
+
+func githubRepository(remote string) (string, error) {
+	value := strings.TrimSuffix(remote, ".git")
+	if strings.HasPrefix(value, "git@github.com:") {
+		value = strings.TrimPrefix(value, "git@github.com:")
+	} else if strings.HasPrefix(value, "https://github.com/") {
+		value = strings.TrimPrefix(value, "https://github.com/")
+	} else {
+		return "", fmt.Errorf("upstream origin must be a GitHub repository: %q", remote)
+	}
+	parts := strings.Split(value, "/")
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return "", fmt.Errorf("invalid GitHub origin: %q", remote)
+	}
+	return value, nil
 }
 
 func clean(run func(string, string, ...string) (string, error), dir string) error {

@@ -35,12 +35,14 @@ func TestRunCreatesBranchCopiesManagedFileAndReturnsPR(t *testing.T) {
 			return "", nil
 		case "git remote get-url origin":
 			return "https://github.com/example/upstream.git", nil
-		case "gh repo view --json id":
+		case "gh repo view example/upstream --json id":
 			return "{\"id\":\"R_1\"}", nil
 		case "git ls-remote --exit-code --heads origin memory-bank-cli/push-20260724-120000":
 			return "", errors.New("not found")
 		case "git symbolic-ref --short refs/remotes/origin/HEAD":
 			return "origin/main", nil
+		case "git fetch origin main:refs/remotes/origin/main":
+			return "", nil
 		case "git branch --show-current":
 			return "main", nil
 		case "git rev-parse HEAD":
@@ -56,7 +58,7 @@ func TestRunCreatesBranchCopiesManagedFileAndReturnsPR(t *testing.T) {
 				t.Fatalf("branch created outside checkout: %q", dir)
 			}
 			return "", nil
-		case "gh pr create --head memory-bank-cli/push-20260724-120000 --base main --fill":
+		case "gh pr create --repo example/upstream --head memory-bank-cli/push-20260724-120000 --base main --fill":
 			return "https://github.com/example/upstream/pull/1", nil
 		default:
 			return "", errors.New("unexpected command: " + call)
@@ -97,10 +99,12 @@ func TestRunCompensatesRemoteBranchWhenPRCreationFails(t *testing.T) {
 			return "", nil
 		case "git remote get-url origin":
 			return "https://github.com/example/upstream.git", nil
-		case "gh repo view --json id":
+		case "gh repo view example/upstream --json id":
 			return "{\"id\":\"R_1\"}", nil
 		case "git symbolic-ref --short refs/remotes/origin/HEAD":
 			return "origin/main", nil
+		case "git fetch origin main:refs/remotes/origin/main":
+			return "", nil
 		case "git branch --show-current":
 			return "main", nil
 		case "git rev-parse HEAD":
@@ -115,7 +119,7 @@ func TestRunCompensatesRemoteBranchWhenPRCreationFails(t *testing.T) {
 			return "", errors.New("not found")
 		case "git checkout -b memory-bank-cli/push-20260724-120000 origin/main":
 			return "", nil
-		case "gh pr create --head memory-bank-cli/push-20260724-120000 --base main --fill":
+		case "gh pr create --repo example/upstream --head memory-bank-cli/push-20260724-120000 --base main --fill":
 			return "", errors.New("forbidden")
 		default:
 			return "", errors.New("unexpected command: " + call)
