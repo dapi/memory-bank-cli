@@ -156,7 +156,7 @@ func selectGitSourcePayloadRoot(root, ref string) (string, error) {
 			present = append(present, candidate)
 		}
 	}
-	return selectSingleSourcePayloadRoot(present)
+	return selectSourcePayloadRoot(present)
 }
 
 func selectFilesystemSourcePayloadRoot(root string) (string, error) {
@@ -174,11 +174,22 @@ func selectFilesystemSourcePayloadRoot(root string) (string, error) {
 		}
 		present = append(present, candidate)
 	}
-	return selectSingleSourcePayloadRoot(present)
+	return selectSourcePayloadRoot(present)
 }
 
 func sourcePayloadRoots() []string {
 	return []string{legacySourcePayloadRoot, legacyTemplateSourcePayloadRoot, targetSourcePayloadRoot}
+}
+
+func selectSourcePayloadRoot(present []string) (string, error) {
+	legacy := make([]string, 0, 2)
+	for _, root := range present {
+		if root == targetSourcePayloadRoot {
+			return targetSourcePayloadRoot, nil
+		}
+		legacy = append(legacy, root)
+	}
+	return selectSingleSourcePayloadRoot(legacy)
 }
 
 func selectSingleSourcePayloadRoot(present []string) (string, error) {

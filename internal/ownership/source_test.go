@@ -105,7 +105,7 @@ func TestPinnedSourceSupportsOneRecognizedRootAndTranslatesToDownstream(t *testi
 		{name: "legacy template root", roots: []string{"memory-bank-template"}, wantSource: "memory-bank-template"},
 		{name: "target root", roots: []string{"template/memory-bank"}, wantSource: "template/memory-bank"},
 		{name: "neither root", wantErr: "neither recognized payload root"},
-		{name: "multiple roots", roots: []string{"memory-bank-template", "template/memory-bank"}, wantErr: "multiple recognized payload roots"},
+		{name: "multiple legacy roots", roots: []string{legacySourcePayloadRoot, legacyTemplateSourcePayloadRoot}, wantErr: "multiple recognized payload roots"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			source := t.TempDir()
@@ -136,6 +136,67 @@ func TestPinnedSourceSupportsOneRecognizedRootAndTranslatesToDownstream(t *testi
 				}
 			}
 		})
+	}
+}
+
+func TestTargetSourcePayloadRootTakesPrecedenceOverLegacyRoots(t *testing.T) {
+	for _, test := range []struct {
+		name  string
+		roots []string
+	}{
+		{name: "project local locked root", roots: []string{targetSourcePayloadRoot, legacySourcePayloadRoot}},
+		{name: "legacy template root", roots: []string{targetSourcePayloadRoot, legacyTemplateSourcePayloadRoot}},
+		{name: "both legacy roots", roots: []string{targetSourcePayloadRoot, legacySourcePayloadRoot, legacyTemplateSourcePayloadRoot}},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			source := t.TempDir()
+			for _, root := range test.roots {
+				write(t, source, root+"/dna/rule.md", root+"\n")
+			}
+			write(t, source, legacySourcePayloadRoot+"/.lock", "project-local\n")
+			commit := commitTestSource(t, source)
+
+			if got, err := selectFilesystemSourcePayloadRoot(source); err != nil || got != targetSourcePayloadRoot {
+				t.Fatalf("filesystem selector = %q, %v; want target root", got, err)
+			}
+			if got, err := selectGitSourcePayloadRoot(source, commit); err != nil || got != targetSourcePayloadRoot {
+				t.Fatalf("Git selector = %q, %v; want target root", got, err)
+			}
+		})
+	}
+}
+
+func TestPinnedSourceTargetRootWinsOverLockedProjectLocalRootForInitAndUpdate(t *testing.T) {
+	source, repo := t.TempDir(), t.TempDir()
+	write(t, source, targetSourcePayloadRoot+"/dna/rule.md", "target v1\n")
+	write(t, source, legacySourcePayloadRoot+"/dna/rule.md", "project local\n")
+	write(t, source, legacySourcePayloadRoot+"/.lock", "project-local lock\n")
+	write(t, source, legacySourcePayloadRoot+"/project-local.md", "do not install\n")
+	firstCommit := commitTestSource(t, source)
+
+	initOptions := Options{RepoRoot: repo, SourceRoot: source, TemplateVersion: "v1", SourceRef: firstCommit}
+	report, err := Init(initOptions)
+	if err != nil || !report.Applied {
+		t.Fatalf("dual-root init failed: report=%#v err=%v", report, err)
+	}
+	if got := read(t, repo, "memory-bank/dna/rule.md"); got != "target v1\n" {
+		t.Fatalf("init installed non-target payload: %q", got)
+	}
+
+	write(t, source, targetSourcePayloadRoot+"/dna/rule.md", "target v2\n")
+	runGitTest(t, source, "add", "--all")
+	runGitTest(t, source, "-c", "user.name=Memory Bank Tests", "-c", "user.email=tests@example.invalid", "commit", "--quiet", "-m", "target update")
+	secondCommit := runGitTest(t, source, "rev-parse", "HEAD")
+
+	report, err = Update(Options{RepoRoot: repo, SourceRoot: source, TemplateVersion: "v2", SourceRef: secondCommit})
+	if err != nil || !report.Applied {
+		t.Fatalf("dual-root update failed: report=%#v err=%v", report, err)
+	}
+	if got := read(t, repo, "memory-bank/dna/rule.md"); got != "target v2\n" {
+		t.Fatalf("update installed non-target payload: %q", got)
+	}
+	if _, err := os.Stat(filepath.Join(repo, legacySourcePayloadRoot, "project-local.md")); !os.IsNotExist(err) {
+		t.Fatalf("project-local payload leaked into downstream: %v", err)
 	}
 }
 
