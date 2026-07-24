@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-07-24
+
+### Added
+
+- Allow `memory-bank-cli init` to resolve the configured default source without
+  requiring `--source`, `--template-version`, and `--source-ref`, matching
+  `update` behavior. Explicit source flags remain supported as overrides.
+
 ## [1.5.0] - 2026-07-24
 
 ### Added
