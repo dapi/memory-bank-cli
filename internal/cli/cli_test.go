@@ -11,6 +11,7 @@ import (
 
 	"github.com/dapi/memory-bank-cli/internal/doctor"
 	"github.com/dapi/memory-bank-cli/internal/lint"
+	"github.com/dapi/memory-bank-cli/internal/ownership"
 )
 
 func testRepository(t *testing.T) string {
@@ -174,6 +175,27 @@ func TestOwnershipDryRunJSONReportsPlanWithoutMutation(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(repo, "memory-bank", "dna", "rule.md")); !os.IsNotExist(err) {
 		t.Fatalf("dry-run mutated repository: %v", err)
+	}
+}
+
+func TestOwnershipTextReportShowsChangesAndConflictsOnly(t *testing.T) {
+	report := ownership.Report{
+		Applied:       true,
+		ConflictCount: 1,
+		Decisions: []ownership.Decision{
+			{Path: "memory-bank/dna/current.md", Ownership: ownership.Managed, Action: ownership.Preserve, Reason: "managed payload matches incoming template"},
+			{Path: "memory-bank/dna/new.md", Ownership: ownership.Managed, Action: ownership.Create, Reason: "template file is missing"},
+			{Path: ".start-issue/prompt.md", Ownership: ownership.UserOwned, Action: ownership.Conflict, Reason: "unmanaged file blocks managed template path"},
+		},
+	}
+	var output bytes.Buffer
+	printOwnershipReport(&output, report)
+	got := output.String()
+	if strings.Contains(got, "current.md") || !strings.Contains(got, "new.md") || !strings.Contains(got, ".start-issue/prompt.md") {
+		t.Fatalf("text report did not filter no-op decisions: %q", got)
+	}
+	if !strings.Contains(got, "result: not applied (1 conflict(s))") {
+		t.Fatalf("text report did not summarize the result: %q", got)
 	}
 }
 
@@ -585,8 +607,8 @@ func TestDoctorFixWithoutSourceAdoptsConflictingManagedContent(t *testing.T) {
 	if exitCode := Run([]string{"doctor", "--fix", "--repo-root", repo}, "test", &stdout, &stderr); exitCode != exitFailure {
 		t.Fatalf("repair with unrelated doctor findings exit = %d, stderr=%s", exitCode, stderr.String())
 	}
-	if !strings.Contains(stdout.String(), "adopt existing managed file as downstream-owned without overwriting it") {
-		t.Fatalf("conflicting managed content was not adopted safely: %s", stdout.String())
+	if strings.Contains(stdout.String(), "memory-bank/README.md\tadopt existing") {
+		t.Fatalf("repair report included a no-op adoption decision: %s", stdout.String())
 	}
 	if data, err := os.ReadFile(filepath.Join(repo, "memory-bank", "README.md")); err != nil || string(data) != "local customization\n" {
 		t.Fatalf("adopted managed content changed: %q, %v", data, err)

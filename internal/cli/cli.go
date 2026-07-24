@@ -9,6 +9,7 @@ import (
 	"io"
 	"path/filepath"
 	"sort"
+	"strings"
 
 	"github.com/dapi/memory-bank-cli/internal/doctor"
 	"github.com/dapi/memory-bank-cli/internal/githubadapter"
@@ -270,19 +271,49 @@ func runOwnership(arguments []string, command string, stdout, stderr io.Writer) 
 func printOwnershipReport(writer io.Writer, report ownership.Report) {
 	decisions := append([]ownership.Decision(nil), report.Decisions...)
 	sort.Slice(decisions, func(i, j int) bool { return decisions[i].Path < decisions[j].Path })
+	created, updated, deleted := 0, 0, 0
 	for _, decision := range decisions {
+		switch decision.Action {
+		case ownership.Create:
+			created++
+		case ownership.UpdateFile:
+			updated++
+		case ownership.Delete:
+			deleted++
+		case ownership.Conflict:
+		default:
+			continue
+		}
 		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", decision.Action, decision.Ownership, decision.Path, decision.Reason)
 		if decision.Diff != "" {
 			fmt.Fprint(writer, decision.Diff)
 		}
 	}
+	changes := make([]string, 0, 3)
+	if created > 0 {
+		changes = append(changes, fmt.Sprintf("%d created", created))
+	}
+	if updated > 0 {
+		changes = append(changes, fmt.Sprintf("%d updated", updated))
+	}
+	if deleted > 0 {
+		changes = append(changes, fmt.Sprintf("%d deleted", deleted))
+	}
 	switch {
 	case report.ConflictCount > 0:
-		fmt.Fprintf(writer, "update not applied: %d conflict(s)\n", report.ConflictCount)
+		fmt.Fprintf(writer, "result: not applied (%d conflict(s))\n", report.ConflictCount)
 	case report.DryRun:
-		fmt.Fprintln(writer, "dry run: no files changed")
+		if len(changes) == 0 {
+			fmt.Fprintln(writer, "result: dry run (no changes)")
+		} else {
+			fmt.Fprintf(writer, "result: dry run (%s)\n", strings.Join(changes, ", "))
+		}
 	case report.Applied:
-		fmt.Fprintln(writer, "update applied atomically")
+		if len(changes) == 0 {
+			fmt.Fprintln(writer, "result: applied (no changes)")
+		} else {
+			fmt.Fprintf(writer, "result: applied (%s)\n", strings.Join(changes, ", "))
+		}
 	}
 }
 
