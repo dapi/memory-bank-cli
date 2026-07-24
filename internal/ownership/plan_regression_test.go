@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -130,6 +131,41 @@ func TestCollisionWithNewManagedFileIsRejected(t *testing.T) {
 	}
 	if lockAfter := read(t, repo, LockFileName); lockAfter != lockBefore {
 		t.Fatal("collision changed lock")
+	}
+}
+
+func TestExplicitUserOwnedOverwriteReplacesPayloadAndMode(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Windows does not expose Unix executable bits")
+	}
+	repo, source := t.TempDir(), t.TempDir()
+	seed := "memory-bank/dna/seed.md"
+	path := "memory-bank/dna/collision.sh"
+	write(t, source, "template/"+seed, "seed\n")
+	initialize(t, repo, source)
+	write(t, repo, path, "local\n")
+	write(t, source, "template/"+path, "#!/bin/sh\necho source\n")
+	if err := os.Chmod(filepath.Join(source, "template", filepath.FromSlash(path)), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	options := opts(repo, source, "b")
+	options.UserOwnedResolutions = map[string]bool{path: true}
+	report, err := Update(options)
+	decision := decisionFor(t, report, path)
+	if err != nil || !report.Applied || decision.Action != UpdateFile || decision.Ownership != Managed {
+		t.Fatalf("explicit overwrite did not resolve collision: report=%#v err=%v", report, err)
+	}
+	if got := read(t, repo, path); got != "#!/bin/sh\necho source\n" {
+		t.Fatalf("overwrite did not install source payload: %q", got)
+	}
+	info, err := os.Stat(filepath.Join(repo, filepath.FromSlash(path)))
+	if err != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("overwrite did not install source mode: info=%v err=%v", info, err)
+	}
+	lock, exists, err := ReadLock(repo)
+	if err != nil || !exists || lock.Files[path].Ownership != Managed || lock.Files[path].PayloadMode != "100755" {
+		t.Fatalf("overwrite did not record managed ownership: lock=%#v exists=%v err=%v", lock.Files[path], exists, err)
 	}
 }
 
