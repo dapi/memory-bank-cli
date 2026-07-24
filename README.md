@@ -1,6 +1,16 @@
 # memory-bank-cli
 CLI for installing, updating, validating, and diagnosing Memory Bank templates
 
+## Publish managed changes upstream
+
+From a downstream Git repository with a clean upstream checkout at `memory-bank/.repo`, preview the managed changes that can be proposed upstream:
+
+```sh
+memory-bank-cli push --dry-run
+```
+
+Without `--dry-run`, `push` creates a fresh upstream branch, commits only changed `managed` Memory Bank paths, pushes it and creates a GitHub PR. It never pushes the upstream default branch directly. Non-managed paths, including project artifacts, lock/state and `.repo`, are reported as exclusions.
+
 ## Install
 
 Install a released version with Go:

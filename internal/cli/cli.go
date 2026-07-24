@@ -14,6 +14,7 @@ import (
 	"github.com/dapi/memory-bank-cli/internal/githubadapter"
 	"github.com/dapi/memory-bank-cli/internal/lint"
 	"github.com/dapi/memory-bank-cli/internal/ownership"
+	"github.com/dapi/memory-bank-cli/internal/push"
 	"github.com/dapi/memory-bank-cli/internal/repository"
 )
 
@@ -54,6 +55,8 @@ func Run(arguments []string, version string, stdout, stderr io.Writer) int {
 		return runDoctor(arguments[1:], stdout, stderr)
 	case "github":
 		return runGitHubAdapter(arguments[1:], stdout, stderr)
+	case "push":
+		return runPush(arguments[1:], stdout, stderr)
 	case "--version", "-version":
 		if len(arguments) != 1 {
 			fmt.Fprintf(stderr, "memory-bank-cli: unexpected arguments: %v\n", arguments[1:])
@@ -86,10 +89,57 @@ func printRootUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "  doctor  Diagnose adoption, governance, managed drift, and navigation")
 	fmt.Fprintln(writer, "  lint    Audit markdown navigation integrity")
 	fmt.Fprintln(writer, "  github  Install or update the optional GitHub workflow adapter")
+	fmt.Fprintln(writer, "  push    Publish managed Memory Bank changes upstream through a PR")
 	fmt.Fprintln(writer)
 	fmt.Fprintln(writer, "Options:")
 	fmt.Fprintln(writer, "  --help       Show this help")
 	fmt.Fprintln(writer, "  --version    Print the version and exit")
+}
+
+func runPush(arguments []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("memory-bank-cli push", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	flags.Usage = func() {
+		fmt.Fprintln(stderr, "Usage: memory-bank-cli push [--repo-root DIR] [--dry-run] [--json]")
+		flags.PrintDefaults()
+	}
+	repoRootArgument := addRepoRootFlag(flags)
+	dryRun := flags.Bool("dry-run", false, "show inclusion/exclusion plan without mutating checkout, remotes, or GitHub")
+	jsonOutput := addJSONOutputFlag(flags)
+	if err := flags.Parse(arguments); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return exitSuccess
+		}
+		return exitUsage
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintf(stderr, "memory-bank-cli push: unexpected arguments: %v\n", flags.Args())
+		return exitUsage
+	}
+	repoRoot, err := repository.ResolveRoot(*repoRootArgument)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitFailure
+	}
+	report, err := push.Run(push.Options{RepoRoot: repoRoot, DryRun: *dryRun})
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitFailure
+	}
+	if err := writeResult(stdout, *jsonOutput, report, func(writer io.Writer) {
+		for _, d := range report.Decisions {
+			fmt.Fprintf(writer, "%s\t%s\t%s\n", d.Action, d.Path, d.Reason)
+		}
+		if report.DryRun {
+			fmt.Fprintln(writer, "dry run: no files changed")
+		} else {
+			fmt.Fprintf(writer, "PR created: %s\n", report.PRURL)
+		}
+	}); err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitFailure
+	}
+	return exitSuccess
 }
 
 func runGitHubAdapter(arguments []string, stdout, stderr io.Writer) int {
