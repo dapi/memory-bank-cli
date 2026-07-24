@@ -238,6 +238,21 @@ func TestCanonicalTemplateIncludesAllTrackedFiles(t *testing.T) {
 	}
 }
 
+func TestCanonicalTemplateRejectsGitMetadataPath(t *testing.T) {
+	source, repo := t.TempDir(), t.TempDir()
+	write(t, source, "template/.git/hooks/post-commit", "#!/bin/sh\n")
+	_, err := Init(Options{
+		RepoRoot: repo, SourceRoot: source, TemplateVersion: "v1", SourceRef: strings.Repeat("a", 40),
+		verifySource: func(string, string) error { return nil },
+	})
+	if err == nil || !strings.Contains(err.Error(), "reserved metadata path: .git/hooks/post-commit") {
+		t.Fatalf("Init() error = %v, want reserved Git metadata path", err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".git", "hooks", "post-commit")); !os.IsNotExist(err) {
+		t.Fatalf("Git metadata was written: %v", err)
+	}
+}
+
 func TestCanonicalTemplateRejectsTrackedSymlink(t *testing.T) {
 	source, repo := t.TempDir(), t.TempDir()
 	write(t, source, "template/memory-bank/dna/rule.md", "rule\n")

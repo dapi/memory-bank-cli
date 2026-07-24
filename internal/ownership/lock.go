@@ -65,8 +65,7 @@ func readLockSnapshot(repo pinnedRepo) (Lock, bool, string, error) {
 		return Lock{}, false, "", fmt.Errorf("invalid last update in %s", LockFileName)
 	}
 	for filePath, file := range lock.Files {
-		firstComponent := strings.SplitN(filePath, "/", 2)[0]
-		if filePath == LockFileName || path.IsAbs(filePath) || strings.Contains(filePath, "\\") || path.Clean(filePath) != filePath || strings.HasPrefix(filePath, "../") || filePath == "." || strings.EqualFold(firstComponent, ".git") {
+		if filePath == LockFileName || path.IsAbs(filePath) || strings.Contains(filePath, "\\") || path.Clean(filePath) != filePath || strings.HasPrefix(filePath, "../") || filePath == "." || isGitMetadataPath(filePath) {
 			return Lock{}, false, "", fmt.Errorf("invalid path %q in %s", filePath, LockFileName)
 		}
 		switch file.Ownership {
@@ -90,6 +89,15 @@ func readLockSnapshot(repo pinnedRepo) (Lock, bool, string, error) {
 		}
 	}
 	return lock, true, lockDigest, nil
+}
+
+func isGitMetadataPath(filePath string) bool {
+	for _, component := range strings.Split(filePath, "/") {
+		if strings.EqualFold(component, ".git") {
+			return true
+		}
+	}
+	return false
 }
 
 func marshalLock(lock Lock) ([]byte, error) {
