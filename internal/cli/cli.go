@@ -201,7 +201,7 @@ func runOwnership(arguments []string, command string, stdout, stderr io.Writer) 
 		flags.PrintDefaults()
 	}
 	repoRootArgument := addRepoRootFlag(flags)
-	sourceRootArgument := flags.String("source", "", "clean template Git checkout containing exactly one payload root: template/memory-bank/, legacy memory-bank-template/, or legacy memory-bank/")
+	sourceRootArgument := flags.String("source", "", "clean template Git checkout containing template/ (legacy memory-bank-template/ or memory-bank/ is accepted for migration)")
 	templateVersion := flags.String("template-version", "", "human-readable template version")
 	sourceRef := flags.String("source-ref", "", "full commit SHA matching the source checkout HEAD")
 	dryRun := flags.Bool("dry-run", false, "print the complete mutation plan without applying it")

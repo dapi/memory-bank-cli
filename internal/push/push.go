@@ -191,13 +191,14 @@ func Run(options Options) (Report, error) {
 	}
 	for _, item := range included {
 		relative := strings.TrimPrefix(item.path, "memory-bank/")
-		destination := filepath.Join(checkout, payloadRoot, filepath.FromSlash(relative))
-		stagePaths = append(stagePaths, filepath.ToSlash(filepath.Join(payloadRoot, relative)))
+		destinationRoot := payloadDestinationRoot(checkout, payloadRoot)
+		destination := filepath.Join(destinationRoot, filepath.FromSlash(relative))
+		stagePaths = append(stagePaths, filepath.ToSlash(filepath.Join(payloadRootForPath(payloadRoot), relative)))
 		if item.delete {
-			if err := removeRegular(destination, filepath.Join(checkout, payloadRoot)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			if err := removeRegular(destination, destinationRoot); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return failed(fmt.Errorf("delete %s: %w", item.path, err))
 			}
-		} else if err := copyRegular(filepath.Join(options.RepoRoot, filepath.FromSlash(item.path)), destination, filepath.Join(options.RepoRoot, "memory-bank"), filepath.Join(checkout, payloadRoot)); err != nil {
+		} else if err := copyRegular(filepath.Join(options.RepoRoot, filepath.FromSlash(item.path)), destination, filepath.Join(options.RepoRoot, "memory-bank"), destinationRoot); err != nil {
 			return failed(fmt.Errorf("stage %s: %w", item.path, err))
 		}
 	}
@@ -308,7 +309,7 @@ func defaultBranch(run func(string, string, ...string) (string, error), checkout
 
 func selectPayloadRoot(checkout string) (string, error) {
 	var roots []string
-	for _, candidate := range []string{"memory-bank-template", "memory-bank"} {
+	for _, candidate := range []string{"template", "memory-bank-template", "memory-bank"} {
 		info, err := os.Lstat(filepath.Join(checkout, candidate))
 		if errors.Is(err, os.ErrNotExist) {
 			continue
@@ -322,14 +323,14 @@ func selectPayloadRoot(checkout string) (string, error) {
 		roots = append(roots, candidate)
 	}
 	if len(roots) != 1 {
-		return "", fmt.Errorf("upstream checkout must contain exactly one payload root (memory-bank-template or memory-bank), found %v", roots)
+		return "", fmt.Errorf("upstream checkout must contain exactly one payload root (template, memory-bank-template, or memory-bank), found %v", roots)
 	}
 	return roots[0], nil
 }
 
 func selectPayloadRootAt(run func(string, string, ...string) (string, error), checkout, ref string) (string, error) {
 	var roots []string
-	for _, candidate := range []string{"memory-bank-template", "memory-bank"} {
+	for _, candidate := range []string{"template", "memory-bank-template", "memory-bank"} {
 		out, err := run(checkout, "git", "ls-tree", "-d", "--name-only", ref, "--", candidate)
 		if err != nil {
 			return "", fmt.Errorf("inspect upstream payload root %q: %w", candidate, err)
@@ -339,9 +340,25 @@ func selectPayloadRootAt(run func(string, string, ...string) (string, error), ch
 		}
 	}
 	if len(roots) != 1 {
-		return "", fmt.Errorf("default branch must contain exactly one payload root (memory-bank-template or memory-bank), found %v", roots)
+		return "", fmt.Errorf("default branch must contain exactly one payload root (template, memory-bank-template, or memory-bank), found %v", roots)
 	}
 	return roots[0], nil
+}
+
+// payloadDestinationRoot is the inverse of the canonical source projection
+// for downstream memory-bank paths. Legacy roots retain their old layout.
+func payloadDestinationRoot(checkout, payloadRoot string) string {
+	if payloadRoot == "template" {
+		return filepath.Join(checkout, payloadRoot, "memory-bank")
+	}
+	return filepath.Join(checkout, payloadRoot)
+}
+
+func payloadRootForPath(payloadRoot string) string {
+	if payloadRoot == "template" {
+		return filepath.Join(payloadRoot, "memory-bank")
+	}
+	return payloadRoot
 }
 
 func changedPaths(run func(string, string, ...string) (string, error), root string) ([]change, error) {

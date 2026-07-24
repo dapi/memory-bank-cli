@@ -22,6 +22,7 @@ type payload struct {
 	data   []byte
 	digest string
 	mode   string
+	class  Class
 }
 
 type mutation struct {
@@ -298,7 +299,7 @@ func readSource(source pinnedSource) (map[string]payload, error) {
 		if err != nil {
 			return err
 		}
-		result[downstreamPayloadPath(filepath.ToSlash(relative))] = payload{data: data, digest: digest(data), mode: gitMode(info.Mode().Perm())}
+		result[downstreamPayloadPath(payloadRoot, filepath.ToSlash(relative))] = payload{data: data, digest: digest(data), mode: gitMode(info.Mode().Perm()), class: sourcePayloadClass(payloadRoot, filepath.ToSlash(relative))}
 		return nil
 	})
 	if errors.Is(err, os.ErrNotExist) {
@@ -343,7 +344,7 @@ func readGitSource(source pinnedSource, ref string) (map[string]payload, error) 
 		if relative == filePath || relative == "" {
 			return nil, fmt.Errorf("read pinned source tree: invalid payload path %q", filePath)
 		}
-		result[downstreamPayloadPath(relative)] = payload{data: data, digest: digest(data), mode: fields[0]}
+		result[downstreamPayloadPath(payloadRoot, relative)] = payload{data: data, digest: digest(data), mode: fields[0], class: sourcePayloadClass(payloadRoot, relative)}
 	}
 	if len(result) == 0 {
 		return nil, fmt.Errorf("template source has no %s payload", payloadRoot)
@@ -354,8 +355,25 @@ func readGitSource(source pinnedSource, ref string) (map[string]payload, error) 
 	return result, nil
 }
 
-func downstreamPayloadPath(relative string) string {
-	return downstreamPayloadRoot + "/" + strings.TrimPrefix(filepath.ToSlash(relative), "/")
+func downstreamPayloadPath(payloadRoot, relative string) string {
+	relative = strings.TrimPrefix(filepath.ToSlash(relative), "/")
+	if payloadRoot != targetSourcePayloadRoot {
+		return downstreamPayloadRoot + "/" + relative
+	}
+	if relative == downstreamPayloadRoot {
+		return downstreamPayloadRoot
+	}
+	if strings.HasPrefix(relative, downstreamPayloadRoot+"/") {
+		return relative
+	}
+	return relative
+}
+
+func sourcePayloadClass(payloadRoot, relative string) Class {
+	if payloadRoot == targetSourcePayloadRoot {
+		return Managed
+	}
+	return Classify(downstreamPayloadPath(payloadRoot, relative))
 }
 
 func gitMode(mode fs.FileMode) string {
@@ -455,7 +473,7 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 	sort.Strings(paths)
 	for _, path := range paths {
 		incoming := source[path]
-		class := Classify(path)
+		class := incoming.class
 		prior, tracked := old.Files[path]
 		currentDigest, exists, topology, err := inspectDestinationForPlan(repo, path, cleanRemovals)
 		if err != nil {
