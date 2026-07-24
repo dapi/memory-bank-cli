@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [1.4.1] - 2026-07-24
+
 ### Fixed
 
 - Publish to the canonical upstream `template/memory-bank/` payload root,
