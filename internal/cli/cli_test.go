@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -747,6 +748,9 @@ func TestUpdateAskResolvesCollisionsWithoutPartialChanges(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	if err := os.Chmod(filepath.Join(repo, second), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	updatedRef := commitCLISource(t, source, "add collisions")
 	updateArgs := []string{"--repo-root", repo, "--source", source, "--template-version", "v2", "--source-ref", updatedRef, "--ask"}
 	stdout.Reset()
@@ -762,6 +766,11 @@ func TestUpdateAskResolvesCollisionsWithoutPartialChanges(t *testing.T) {
 	}
 	if got, want := string(mustReadFile(t, filepath.Join(repo, second))), "local "+second+"\n"; got != want {
 		t.Fatalf("keep payload=%q want=%q", got, want)
+	}
+	if runtime.GOOS != "windows" {
+		if info, err := os.Stat(filepath.Join(repo, second)); err != nil || info.Mode().Perm() != 0o755 {
+			t.Fatalf("keep mode=%v err=%v, want 0755", info, err)
+		}
 	}
 	lock, exists, err := ownership.ReadLock(repo)
 	if err != nil || !exists || lock.Files[filepath.ToSlash(first)].Ownership != ownership.Managed || lock.Files[filepath.ToSlash(second)].Ownership != ownership.UserOwned {
@@ -779,6 +788,9 @@ func TestUpdateAskResolvesCollisionsWithoutPartialChanges(t *testing.T) {
 	}
 	if got := mustReadFile(t, filepath.Join(repo, "memory-bank", ".lock")); !bytes.Equal(got, lockBefore) {
 		t.Fatal("ask dry-run changed lock")
+	}
+	if !strings.Contains(stdout.String(), "update\tmanaged\t"+filepath.ToSlash(second)+"\treplace user-owned file from source by explicit resolution") {
+		t.Fatalf("ask dry-run did not print resolved plan: %s", stdout.String())
 	}
 
 	third := filepath.Join("memory-bank", "dna", "third.md")

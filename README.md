@@ -9,6 +9,21 @@ Existing locks from the legacy payload roots are migrated conservatively:
 unchanged files adopt canonical ownership, while local customization is
 preserved for explicit resolution.
 
+## Resolve update collisions interactively
+
+`update` preserves user-owned files by default. To decide each managed-file
+collision interactively, run it from a terminal with `--ask`:
+
+```sh
+memory-bank-cli update --ask
+```
+
+Choose `keep` to retain the local file and its ownership, or `overwrite` to
+replace it (including its executable mode) from the source template. All
+answers are collected before changes are applied. `--ask --dry-run` shows the
+resolved plan without changing files; `--ask` is rejected when standard input
+is not a terminal.
+
 ## Publish managed changes upstream
 
 From a downstream Git repository with a clean upstream checkout at `memory-bank/.repo`, preview the managed changes that can be proposed upstream:
