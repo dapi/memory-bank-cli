@@ -147,7 +147,7 @@ func TestTargetSourcePayloadRootTakesPrecedenceOverLegacyRoots(t *testing.T) {
 		{name: "legacy template root", roots: []string{targetSourcePayloadRoot, legacyTemplateSourcePayloadRoot}},
 		{name: "both legacy roots", roots: []string{targetSourcePayloadRoot, legacySourcePayloadRoot, legacyTemplateSourcePayloadRoot}},
 	} {
-		 t.Run(test.name, func(t *testing.T) {
+		t.Run(test.name, func(t *testing.T) {
 			source := t.TempDir()
 			for _, root := range test.roots {
 				path := root + "/dna/rule.md"
@@ -200,7 +200,7 @@ func TestPinnedSourceTargetRootWinsOverLockedProjectLocalRootForInitAndUpdate(t 
 	}
 	if _, err := os.Stat(filepath.Join(repo, legacySourcePayloadRoot, "project-local.md")); !os.IsNotExist(err) {
 		t.Fatalf("project-local payload leaked into downstream: %v", err)
- 	}
+	}
 }
 
 func TestCanonicalTemplateIncludesAllTrackedFiles(t *testing.T) {
