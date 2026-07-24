@@ -28,7 +28,7 @@ var shellErrexitPattern = regexp.MustCompile(`(?:^|\s)-[A-Za-z]*e[A-Za-z]*(?:\s|
 var shellPipefailPattern = regexp.MustCompile(`(?:^|\s)-o\s+pipefail(?:\s|$)|(?:^|\s)pipefail(?:\s|$)`)
 var workflowFalseExpressionPattern = regexp.MustCompile(`^\$\{\{\s*false\s*\}\}$`)
 
-const templatePayloadRoot = "template/memory-bank"
+const templateScopeRoot = "template/memory-bank"
 
 func NormalizeProfile(value string) (Profile, error) {
 	profile := Profile(strings.ToLower(strings.TrimSpace(value)))
@@ -53,7 +53,7 @@ func Run(options Options) (Report, error) {
 	scopeRoot := options.ScopeRoot
 	if scopeRoot == "" {
 		if profile == ProfileTemplate {
-			scopeRoot = templatePayloadRoot
+			scopeRoot = templateScopeRoot
 		} else {
 			scopeRoot = "memory-bank"
 		}
@@ -101,7 +101,7 @@ func detectProfile(repoRoot string) Profile {
 	if _, err := os.Lstat(filepath.Join(repoRoot, ownership.LockFileName)); err == nil {
 		return ProfileDownstream
 	}
-	info, err := os.Lstat(filepath.Join(repoRoot, templatePayloadRoot))
+	info, err := os.Lstat(filepath.Join(repoRoot, ownership.CanonicalTemplateRoot))
 	if err != nil || info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
 		return ProfileDownstream
 	}
@@ -112,18 +112,24 @@ func (report *Report) add(finding Finding) { report.Findings = append(report.Fin
 
 func (report *Report) checkIdentityAndDrift(agentFile, scopeRoot string) {
 	lock, exists, lockErr := ownership.ReadLock(report.RepoRoot)
+	templateOwnsAgentFile := false
 	if lockErr != nil {
 		report.add(Finding{Code: "manifest.invalid", Severity: Error, Group: "manifest", Path: ownership.LockFileName, Message: lockErr.Error(), Remediation: "Repair or recreate the ownership lock with memory-bank-cli init from a trusted template checkout."})
 	} else if exists {
 		report.TemplateIdentity = TemplateIdentity{SchemaVersion: lock.SchemaVersion, Version: lock.Template.Version, SourceRef: lock.Template.SourceRef}
 		report.add(Finding{Code: "template.identity", Severity: Info, Group: "template_identity", Path: ownership.LockFileName, Subject: lock.Template.Version, Message: "Installed template identity is recorded in the ownership lock.", Remediation: "Use memory-bank-cli update --dry-run to compare with a newer pinned template source."})
 		report.checkManagedDrift(lock)
+		agentContract, tracked := lock.Files[filepath.ToSlash(agentFile)]
+		templateOwnsAgentFile = tracked && agentContract.Ownership == ownership.Managed
 	} else if report.Profile == ProfileDownstream {
 		report.add(Finding{Code: "template.identity_missing", Severity: Error, Group: "template_identity", Path: ownership.LockFileName, Message: "The downstream repository has no ownership lock, so its installed template version is unknown.", Remediation: "Adopt the template with memory-bank-cli init and commit memory-bank/.lock."})
 	} else {
 		report.add(Finding{Code: "template.source_repository", Severity: Info, Group: "template_identity", Subject: "template", Message: "Template source profile detected; an installed-template lock is not expected.", Remediation: "Create locks only in downstream repositories through memory-bank-cli init."})
 	}
 
+	if templateOwnsAgentFile {
+		return
+	}
 	contents, _, err := readRegularWithinRoot(report.RepoRoot, agentFile)
 	if err != nil {
 		severity := Error

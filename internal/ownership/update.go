@@ -340,7 +340,7 @@ func readGitSource(source pinnedSource, ref string) (map[string]payload, error) 
 		header, filePath, found := strings.Cut(record, "\t")
 		fields := strings.Fields(header)
 		if !found || len(fields) != 3 || fields[1] != "blob" || fields[0] != "100644" && fields[0] != "100755" {
-			return nil, fmt.Errorf("read pinned source tree: unsupported entry %q", filePath)
+			return nil, fmt.Errorf("read pinned source tree: unsupported Git entry %q; only regular files with modes 100644 or 100755 are supported", filePath)
 		}
 		data, err := gitBytes(source.root, "cat-file", "blob", fields[2])
 		if err != nil {
@@ -366,13 +366,7 @@ func downstreamPayloadPath(payloadRoot, relative string) string {
 	if payloadRoot != targetSourcePayloadRoot {
 		return downstreamPayloadRoot + "/" + relative
 	}
-	if relative == downstreamPayloadRoot {
-		return downstreamPayloadRoot
-	}
-	if strings.HasPrefix(relative, downstreamPayloadRoot+"/") {
-		return relative
-	}
-	return relative
+	return CanonicalDownstreamPath(relative)
 }
 
 func sourcePayloadClass(payloadRoot, relative string) Class {
@@ -411,8 +405,10 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 	if _, err := inspectRepoRoot(repo.root, repo.info); err != nil {
 		return nil, nil, Lock{}, err
 	}
-	if _, exists := source[LockFileName]; exists {
-		return nil, nil, Lock{}, fmt.Errorf("template source contains reserved metadata path: %s", LockFileName)
+	for sourcePath := range source {
+		if sourcePath == LockFileName || isGitMetadataPath(sourcePath) {
+			return nil, nil, Lock{}, fmt.Errorf("template source contains reserved metadata path: %s", sourcePath)
+		}
 	}
 	next := Lock{Files: make(map[string]File)}
 	var removalMutations []mutation
@@ -542,6 +538,21 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 			} else {
 				decision.Action, decision.Reason = Preserve, "untracked existing file is downstream-owned"
 				file = File{Ownership: UserOwned}
+			}
+		case class == Managed && (prior.Ownership == Adapted || prior.Ownership == UserOwned):
+			downstreamChanged := prior.BaseDigest == "" || currentDigest != prior.BaseDigest || !modeMatches(currentMode, priorBaseMode)
+			upstreamChanged := prior.BaseDigest == "" || incoming.digest != prior.BaseDigest || incoming.mode != priorBaseMode
+			switch {
+			case currentDigest == incoming.digest && modeMatches(currentMode, incoming.mode):
+				decision.Action, decision.Reason = Preserve, "adopt matching legacy-owned file as canonical managed payload"
+			case downstreamChanged && upstreamChanged:
+				decision.Action, decision.Reason = Conflict, "legacy-owned file changed both upstream and downstream during canonical migration"
+				file = prior
+			case upstreamChanged:
+				decision.Action, decision.Reason = UpdateFile, "unmodified legacy-owned file follows canonical managed payload"
+			default:
+				decision.Action, decision.Reason = Preserve, "preserve legacy downstream customization during canonical migration"
+				file = prior
 			}
 		case class == UserOwned || prior.Ownership == UserOwned:
 			decision.Action, decision.Reason = Preserve, "user-owned files are never overwritten"

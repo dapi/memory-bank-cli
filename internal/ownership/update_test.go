@@ -85,6 +85,21 @@ func TestReadLockRejectsAbsoluteManagedPath(t *testing.T) {
 	}
 }
 
+func TestReadLockRejectsGitMetadataPath(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	write(t, source, "memory-bank/dna/rule.md", "managed\n")
+	initialize(t, repo, source)
+	lockPath := filepath.Join(repo, filepath.FromSlash(LockFileName))
+	lock := read(t, repo, LockFileName)
+	lock = strings.Replace(lock, "memory-bank/dna/rule.md", ".GiT/config", 1)
+	if err := os.WriteFile(lockPath, []byte(lock), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ReadLock(repo); err == nil || !strings.Contains(err.Error(), "invalid path") {
+		t.Fatalf("Git metadata lock path was accepted: %v", err)
+	}
+}
+
 func TestAgentPlanPreservesExplicitZeroMode(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows does not expose Unix permission bits")
@@ -203,6 +218,46 @@ func TestLegacyLockMigratesToCanonicalTemplateWithoutRemovingManagedFiles(t *tes
 	lock, exists, err := ReadLock(repo)
 	if err != nil || !exists || lock.Files["memory-bank/dna/rule.md"].Ownership != Managed || lock.Files[".config/new"].Ownership != Managed {
 		t.Fatalf("migration lock is incomplete: %#v, exists=%v, err=%v", lock, exists, err)
+	}
+}
+
+func TestLegacyLockMigrationPromotesOnlySafeCanonicalFiles(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	adaptedClean := "memory-bank/domain/model.md"
+	userClean := "memory-bank/features/FT-001/brief.md"
+	userDrift := "memory-bank/features/FT-001/local.md"
+	for _, path := range []string{adaptedClean, userClean, userDrift} {
+		write(t, source, path, "v1\n")
+	}
+	initialize(t, repo, source)
+	write(t, repo, userDrift, "local customization\n")
+
+	if err := os.RemoveAll(filepath.Join(source, "memory-bank")); err != nil {
+		t.Fatal(err)
+	}
+	write(t, source, "template/"+adaptedClean, "v2\n")
+	write(t, source, "template/"+userClean, "v1\n")
+	write(t, source, "template/"+userDrift, "v1\n")
+
+	report, err := Update(opts(repo, source, "b"))
+	if err != nil || !report.Applied || report.ConflictCount != 0 {
+		t.Fatalf("canonical migration failed: report=%#v err=%v", report, err)
+	}
+	if got := read(t, repo, adaptedClean); got != "v2\n" {
+		t.Fatalf("clean adapted file was not updated: %q", got)
+	}
+	if got := read(t, repo, userDrift); got != "local customization\n" {
+		t.Fatalf("legacy user customization was overwritten: %q", got)
+	}
+	lock, exists, err := ReadLock(repo)
+	if err != nil || !exists {
+		t.Fatalf("read migrated lock: exists=%v err=%v", exists, err)
+	}
+	if lock.Files[adaptedClean].Ownership != Managed || lock.Files[userClean].Ownership != Managed {
+		t.Fatalf("safe legacy files were not promoted: %#v", lock.Files)
+	}
+	if lock.Files[userDrift].Ownership != UserOwned {
+		t.Fatalf("drifted legacy file lost its ownership protection: %#v", lock.Files[userDrift])
 	}
 }
 

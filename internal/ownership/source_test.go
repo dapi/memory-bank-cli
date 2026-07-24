@@ -238,6 +238,36 @@ func TestCanonicalTemplateIncludesAllTrackedFiles(t *testing.T) {
 	}
 }
 
+func TestCanonicalTemplateRejectsGitMetadataPath(t *testing.T) {
+	source, repo := t.TempDir(), t.TempDir()
+	write(t, source, "template/.git/hooks/post-commit", "#!/bin/sh\n")
+	_, err := Init(Options{
+		RepoRoot: repo, SourceRoot: source, TemplateVersion: "v1", SourceRef: strings.Repeat("a", 40),
+		verifySource: func(string, string) error { return nil },
+	})
+	if err == nil || !strings.Contains(err.Error(), "reserved metadata path: .git/hooks/post-commit") {
+		t.Fatalf("Init() error = %v, want reserved Git metadata path", err)
+	}
+	if _, err := os.Stat(filepath.Join(repo, ".git", "hooks", "post-commit")); !os.IsNotExist(err) {
+		t.Fatalf("Git metadata was written: %v", err)
+	}
+}
+
+func TestCanonicalTemplateRejectsTrackedSymlink(t *testing.T) {
+	source, repo := t.TempDir(), t.TempDir()
+	write(t, source, "template/memory-bank/dna/rule.md", "rule\n")
+	symlinkForTest(t, "memory-bank/dna/rule.md", filepath.Join(source, "template", "alias"))
+	commit := commitTestSource(t, source)
+
+	report, err := Init(Options{RepoRoot: repo, SourceRoot: source, TemplateVersion: "v1", SourceRef: commit})
+	if err == nil || !strings.Contains(err.Error(), "unsupported Git entry") {
+		t.Fatalf("tracked symlink was accepted: report=%#v err=%v", report, err)
+	}
+	if _, statErr := os.Lstat(filepath.Join(repo, LockFileName)); !os.IsNotExist(statErr) {
+		t.Fatalf("failed init created a lock: %v", statErr)
+	}
+}
+
 func TestCanonicalTemplateOwnsAgentFileWhenPresent(t *testing.T) {
 	source, repo := t.TempDir(), t.TempDir()
 	write(t, source, "template/AGENTS.md", "template instructions\n")

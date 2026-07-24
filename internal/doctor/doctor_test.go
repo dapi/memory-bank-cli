@@ -135,6 +135,16 @@ func TestImplicitScopeFollowsResolvedProfile(t *testing.T) {
 	}
 }
 
+func TestDetectProfileUsesWholeCanonicalTemplateRoot(t *testing.T) {
+	root := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(root, ownership.CanonicalTemplateRoot, ".config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if got := detectProfile(root); got != ProfileTemplate {
+		t.Fatalf("profile with canonical template root = %q, want %q", got, ProfileTemplate)
+	}
+}
+
 func TestProfileDetectionUsesTemplatePayloadRoot(t *testing.T) {
 	for _, test := range []struct {
 		name    string
@@ -273,6 +283,53 @@ func TestManagedDriftProducesStableFinding(t *testing.T) {
 		}
 	}
 	t.Fatalf("managed drift finding missing: %#v", report.Findings)
+}
+
+func TestTemplateOwnedAgentFileUsesLockDriftContract(t *testing.T) {
+	source, repo := t.TempDir(), t.TempDir()
+	writeSource := func(relative, contents string) {
+		t.Helper()
+		target := filepath.Join(source, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(target, []byte(contents), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	writeSource("template/AGENTS.md", "canonical template instructions\n")
+	writeSource("template/memory-bank/README.md", "---\ndoc_function: index\npurpose: Test Memory Bank.\nstatus: active\n---\n# Memory Bank\n")
+	runGit(t, source, "init", "--quiet")
+	runGit(t, source, "add", "--all")
+	runGit(t, source, "-c", "user.name=Doctor Test", "-c", "user.email=doctor@example.invalid", "commit", "--quiet", "-m", "template")
+	ref := strings.TrimSpace(runGit(t, source, "rev-parse", "HEAD"))
+	if _, err := ownership.Init(ownership.Options{RepoRoot: repo, SourceRoot: source, TemplateVersion: "v1", SourceRef: ref}); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Run(Options{RepoRoot: repo, ScopeRoot: "memory-bank", AgentFile: "AGENTS.md", Profile: ProfileAuto, MaxDepth: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, finding := range report.Findings {
+		if strings.HasPrefix(finding.Code, "agent.") {
+			t.Fatalf("template-owned agent file received generated-block finding: %#v", finding)
+		}
+	}
+
+	if err := os.WriteFile(filepath.Join(repo, "AGENTS.md"), []byte("local drift\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	report, err = Run(Options{RepoRoot: repo, ScopeRoot: "memory-bank", AgentFile: "AGENTS.md", Profile: ProfileAuto, MaxDepth: 3})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, finding := range report.Findings {
+		if finding.Code == "manifest.managed_content_drift" && finding.Path == "AGENTS.md" {
+			return
+		}
+	}
+	t.Fatalf("template-owned agent drift was not reported through the lock: %#v", report.Findings)
 }
 
 func TestGovernanceCycleAndLifecycleFindingsHaveStableCodes(t *testing.T) {

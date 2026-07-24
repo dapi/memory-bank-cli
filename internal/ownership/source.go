@@ -18,8 +18,8 @@ type pinnedSource struct {
 const (
 	legacySourcePayloadRoot         = "memory-bank"
 	legacyTemplateSourcePayloadRoot = "memory-bank-template"
-	targetSourcePayloadRoot         = "template"
-	downstreamPayloadRoot           = "memory-bank"
+	targetSourcePayloadRoot         = CanonicalTemplateRoot
+	downstreamPayloadRoot           = DownstreamPayloadRoot
 )
 
 func pinSourceRoot(root string) (pinnedSource, error) {
@@ -109,7 +109,7 @@ func verifySourceCheckout(root, expectedRef string) error {
 		return fmt.Errorf("inspect source template status: %w", err)
 	}
 	if payloadStatus != "" {
-		return errors.New("source memory-bank tree contains uncommitted or ignored payloads")
+		return errors.New("source template tree contains uncommitted or ignored payloads")
 	}
 	if err := verifySourcePayload(root, expectedRef, payloadRoot); err != nil {
 		return err
@@ -134,7 +134,7 @@ func verifySourcePayload(root, expectedRef, payloadRoot string) error {
 		}
 		mode, objectType, objectID := fields[0], fields[1], fields[2]
 		if objectType != "blob" || mode != "100644" && mode != "100755" {
-			return fmt.Errorf("pinned source payload contains unsupported entry: %q", path)
+			return fmt.Errorf("pinned source payload contains unsupported Git entry %q (mode %s, type %s); only regular files with modes 100644 or 100755 are supported", path, mode, objectType)
 		}
 		expected[path] = objectID
 	}

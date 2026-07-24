@@ -1,10 +1,14 @@
 package push
 
 import (
+	"crypto/sha256"
+	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -24,6 +28,14 @@ func git(t *testing.T, dir string, args ...string) string {
 
 func TestRunCreatesBranchCopiesManagedFileAndReturnsPR(t *testing.T) {
 	root := pushFixture(t)
+	tool := filepath.Join(root, ".config", "tool")
+	if err := os.MkdirAll(filepath.Dir(tool), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tool, []byte("#!/bin/sh\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	writeManagedLock(t, root, "memory-bank/dna/rule.md", ".config/tool")
 	checkout := filepath.Join(root, "memory-bank", ".repo")
 	var calls []string
 	run := func(dir, name string, args ...string) (string, error) {
@@ -33,7 +45,7 @@ func TestRunCreatesBranchCopiesManagedFileAndReturnsPR(t *testing.T) {
 			return dir, nil
 		}
 		switch call {
-		case "git rev-parse --is-inside-work-tree", "git status --porcelain", "git diff --name-only --diff-filter=U", "git rev-parse --verify origin/main", "git add -- template/memory-bank/dna/rule.md", "git commit -m Publish managed Memory Bank changes", "git push -u origin memory-bank-cli/push-20260724-120000":
+		case "git rev-parse --is-inside-work-tree", "git status --porcelain", "git diff --name-only --diff-filter=U", "git rev-parse --verify origin/main", "git add -- template/.config/tool template/memory-bank/dna/rule.md", "git commit -m Publish managed Memory Bank changes", "git push -u origin memory-bank-cli/push-20260724-120000":
 			return "", nil
 		case "git remote get-url origin":
 			return "https://github.com/example/upstream.git", nil
@@ -56,7 +68,7 @@ func TestRunCreatesBranchCopiesManagedFileAndReturnsPR(t *testing.T) {
 		case "git ls-tree -d --name-only origin/main -- memory-bank":
 			return "", nil
 		case "git status --porcelain=v1 -z --untracked-files=all":
-			return " M memory-bank/dna/rule.md\x00 M memory-bank/product/note.md\x00", nil
+			return " M .config/tool\x00 M memory-bank/dna/rule.md\x00 M memory-bank/product/note.md\x00", nil
 		case "git checkout -b memory-bank-cli/push-20260724-120000 origin/main":
 			if dir != checkout {
 				t.Fatalf("branch created outside checkout: %q", dir)
@@ -79,7 +91,20 @@ func TestRunCreatesBranchCopiesManagedFileAndReturnsPR(t *testing.T) {
 	if err != nil || string(data) != "changed\n" {
 		t.Fatalf("managed file was not copied: %q, %v", data, err)
 	}
-	if _, err := os.Stat(filepath.Join(checkout, "memory-bank", "product", "note.md")); !os.IsNotExist(err) {
+	data, err = os.ReadFile(filepath.Join(checkout, "template", ".config", "tool"))
+	if err != nil || string(data) != "#!/bin/sh\n" {
+		t.Fatalf("canonical root file was not copied: %q, %v", data, err)
+	}
+	if runtime.GOOS != "windows" {
+		info, statErr := os.Stat(filepath.Join(checkout, "template", ".config", "tool"))
+		if statErr != nil {
+			t.Fatal(statErr)
+		}
+		if info.Mode().Perm() != 0o755 {
+			t.Fatalf("canonical executable mode = %v", info.Mode())
+		}
+	}
+	if _, err := os.Stat(filepath.Join(checkout, "template", "memory-bank", "product", "note.md")); !os.IsNotExist(err) {
 		t.Fatalf("excluded path was copied: %v", err)
 	}
 	for _, call := range calls {
@@ -159,6 +184,44 @@ func pushFixture(t *testing.T) string {
 		t.Fatal(err)
 	}
 	return root
+}
+
+func writeManagedLock(t *testing.T, root string, paths ...string) {
+	t.Helper()
+	files := make(map[string]ownership.File, len(paths))
+	for _, relative := range paths {
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		value := fmt.Sprintf("sha256:%x", sha256.Sum256(data))
+		mode := "100644"
+		info, err := os.Stat(filepath.Join(root, filepath.FromSlash(relative)))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if info.Mode().Perm()&0o111 != 0 {
+			mode = "100755"
+		}
+		files[relative] = ownership.File{Ownership: ownership.Managed, BaseDigest: value, PayloadDigest: value, BaseMode: mode, PayloadMode: mode}
+	}
+	lock := ownership.Lock{
+		SchemaVersion: ownership.CurrentSchemaVersion,
+		Template:      ownership.Template{Version: "v1", SourceRef: strings.Repeat("a", 40)},
+		LastUpdate:    ownership.UpdateRecord{Version: "v1", At: time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC)},
+		Files:         files,
+	}
+	data, err := json.Marshal(lock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	target := filepath.Join(root, filepath.FromSlash(ownership.LockFileName))
+	if err := os.MkdirAll(filepath.Dir(target), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(target, data, 0o644); err != nil {
+		t.Fatal(err)
+	}
 }
 
 func TestDryRunIncludesOnlyManagedPaths(t *testing.T) {

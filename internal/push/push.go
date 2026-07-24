@@ -312,7 +312,7 @@ func defaultBranch(run func(string, string, ...string) (string, error), checkout
 
 func selectPayloadRoot(checkout string) (string, error) {
 	var roots []string
-	for _, candidate := range []string{"template", "memory-bank-template", "memory-bank"} {
+	for _, candidate := range []string{ownership.CanonicalTemplateRoot, "memory-bank-template", ownership.DownstreamPayloadRoot} {
 		info, err := os.Lstat(filepath.Join(checkout, candidate))
 		if errors.Is(err, os.ErrNotExist) {
 			continue
@@ -323,7 +323,7 @@ func selectPayloadRoot(checkout string) (string, error) {
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			return "", fmt.Errorf("upstream payload root %q must be a real directory", candidate)
 		}
-		if candidate == "template" {
+		if candidate == ownership.CanonicalTemplateRoot {
 			return candidate, nil
 		}
 		roots = append(roots, candidate)
@@ -336,13 +336,13 @@ func selectPayloadRoot(checkout string) (string, error) {
 
 func selectPayloadRootAt(run func(string, string, ...string) (string, error), checkout, ref string) (string, error) {
 	var roots []string
-	for _, candidate := range []string{"template", "memory-bank-template", "memory-bank"} {
+	for _, candidate := range []string{ownership.CanonicalTemplateRoot, "memory-bank-template", ownership.DownstreamPayloadRoot} {
 		out, err := run(checkout, "git", "ls-tree", "-d", "--name-only", ref, "--", candidate)
 		if err != nil {
 			return "", fmt.Errorf("inspect upstream payload root %q: %w", candidate, err)
 		}
 		if strings.TrimSpace(out) == candidate {
-			if candidate == "template" {
+			if candidate == ownership.CanonicalTemplateRoot {
 				return candidate, nil
 			}
 			roots = append(roots, candidate)
@@ -354,22 +354,17 @@ func selectPayloadRootAt(run func(string, string, ...string) (string, error), ch
 	return roots[0], nil
 }
 
-// payloadDestinationRoot is the inverse of the canonical source projection
-// for downstream memory-bank paths. Legacy roots retain their old layout.
 func payloadDestinationRoot(checkout, payloadRoot string) string {
-	if payloadRoot == "template" {
-		return filepath.Join(checkout, payloadRoot)
-	}
 	return filepath.Join(checkout, payloadRoot)
 }
 
 func payloadDestinationPath(checkout, payloadRoot, downstreamPath string) (string, string) {
-	if payloadRoot != "template" {
-		relative := strings.TrimPrefix(downstreamPath, "memory-bank/")
+	if payloadRoot != ownership.CanonicalTemplateRoot {
+		relative := strings.TrimPrefix(downstreamPath, ownership.DownstreamPayloadRoot+"/")
 		stagePath := filepath.ToSlash(filepath.Join(payloadRoot, relative))
 		return filepath.Join(checkout, filepath.FromSlash(stagePath)), stagePath
 	}
-	stagePath := filepath.ToSlash(filepath.Join(payloadRoot, downstreamPath))
+	stagePath := ownership.CanonicalTemplatePath(downstreamPath)
 	return filepath.Join(checkout, filepath.FromSlash(stagePath)), stagePath
 }
 

@@ -73,7 +73,7 @@ func TestRootHelpAndVersion(t *testing.T) {
 		if !strings.Contains(stdout.String(), test.want) {
 			t.Fatalf("unexpected stdout for %v: %q", test.arguments, stdout.String())
 		}
-		if test.arguments[0] == "--help" && !strings.Contains(stdout.String(), "push    Publish managed Memory Bank changes upstream through a PR") {
+		if test.arguments[0] == "--help" && !strings.Contains(stdout.String(), "push    Publish locked canonical template changes upstream through a PR") {
 			t.Fatalf("root help does not document push: %q", stdout.String())
 		}
 	}
