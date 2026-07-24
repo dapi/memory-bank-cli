@@ -70,6 +70,21 @@ func TestAgentFileRejectsCaseAliasesOfMemoryBank(t *testing.T) {
 	}
 }
 
+func TestReadLockRejectsAbsoluteManagedPath(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	write(t, source, "memory-bank/dna/rule.md", "managed\n")
+	initialize(t, repo, source)
+	lockPath := filepath.Join(repo, filepath.FromSlash(LockFileName))
+	lock := read(t, repo, LockFileName)
+	lock = strings.Replace(lock, "memory-bank/dna/rule.md", "/outside.md", 1)
+	if err := os.WriteFile(lockPath, []byte(lock), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ReadLock(repo); err == nil || !strings.Contains(err.Error(), "invalid path") {
+		t.Fatalf("absolute lock path was accepted: %v", err)
+	}
+}
+
 func TestAgentPlanPreservesExplicitZeroMode(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows does not expose Unix permission bits")
@@ -132,7 +147,7 @@ func TestFilesystemSourceReaderTranslatesTargetRoot(t *testing.T) {
 	if got := read(t, repo, "memory-bank/dna/rule.md"); got != "template\n" {
 		t.Fatalf("target-root filesystem reader did not translate downstream path: %q", got)
 	}
-	if _, err := os.Stat(filepath.Join(repo, "template", "memory-bank")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(repo, "template")); !os.IsNotExist(err) {
 		t.Fatalf("source root leaked into downstream: %v", err)
 	}
 }
@@ -151,7 +166,7 @@ func TestUpdateFromTargetRootPreservesDownstreamPathAndIsIdempotent(t *testing.T
 	if got := read(t, repo, path); got != "two\n" {
 		t.Fatalf("target-root update wrote unexpected downstream payload: %q", got)
 	}
-	if _, err := os.Stat(filepath.Join(repo, "template", "memory-bank")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(repo, "template")); !os.IsNotExist(err) {
 		t.Fatalf("source root leaked into downstream after update: %v", err)
 	}
 
@@ -162,6 +177,32 @@ func TestUpdateFromTargetRootPreservesDownstreamPathAndIsIdempotent(t *testing.T
 	}
 	if lockAfter := read(t, repo, LockFileName); lockAfter != lockBefore {
 		t.Fatal("target-root no-op update rewrote the lock")
+	}
+}
+
+func TestLegacyLockMigratesToCanonicalTemplateWithoutRemovingManagedFiles(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	write(t, source, "memory-bank/dna/rule.md", "v1\n")
+	initialize(t, repo, source)
+
+	if err := os.RemoveAll(filepath.Join(source, "memory-bank")); err != nil {
+		t.Fatal(err)
+	}
+	write(t, source, "template/memory-bank/dna/rule.md", "v1\n")
+	write(t, source, "template/.config/new", "new\n")
+	report, err := Update(opts(repo, source, "b"))
+	if err != nil || !report.Applied {
+		t.Fatalf("canonical migration failed: report=%#v err=%v", report, err)
+	}
+	if got := read(t, repo, "memory-bank/dna/rule.md"); got != "v1\n" {
+		t.Fatalf("legacy managed file changed during migration: %q", got)
+	}
+	if got := read(t, repo, ".config/new"); got != "new\n" {
+		t.Fatalf("canonical addition was not installed: %q", got)
+	}
+	lock, exists, err := ReadLock(repo)
+	if err != nil || !exists || lock.Files["memory-bank/dna/rule.md"].Ownership != Managed || lock.Files[".config/new"].Ownership != Managed {
+		t.Fatalf("migration lock is incomplete: %#v, exists=%v, err=%v", lock, exists, err)
 	}
 }
 

@@ -1,6 +1,11 @@
 # memory-bank-cli
 CLI for installing, updating, validating, and diagnosing Memory Bank templates
 
+`init` and `update` treat every tracked regular file below an upstream
+`template/` directory as canonical payload. `template/memory-bank/**` installs
+to `memory-bank/**`; every other path retains its repository-relative suffix.
+Dotfiles and executable files are included, while symlinks are rejected.
+
 ## Publish managed changes upstream
 
 From a downstream Git repository with a clean upstream checkout at `memory-bank/.repo`, preview the managed changes that can be proposed upstream:
