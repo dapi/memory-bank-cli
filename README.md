@@ -43,18 +43,17 @@ See [CHANGELOG.md](CHANGELOG.md) for release notes.
 ## Repair a missing ownership lock
 
 `doctor` is read-only by default. If it reports `template.identity_missing`,
-preview the same safe adoption plan used by `init` with pinned template
-provenance:
+preview the same safe adoption plan used by `init`:
 
 ```sh
-memory-bank-cli doctor --fix --dry-run \
-  --source <clean-template-checkout> \
-  --template-version <version> \
-  --source-ref <full-commit-sha>
+memory-bank-cli doctor --fix --dry-run
 ```
 
 Rerun without `--dry-run` to create `memory-bank/.lock`, then commit that lock
-before running `update`. The repair never replaces an existing lock.
+before running `update`. The repair fetches `main` from `memory-bank/.repo`'s
+clean `origin` or the default upstream. To use a specific trusted checkout,
+pass `--source`, `--template-version`, and `--source-ref` together. The repair
+never replaces an existing lock.
 
 ## Upgrade
 

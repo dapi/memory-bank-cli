@@ -227,25 +227,15 @@ func runOwnership(arguments []string, command string, stdout, stderr io.Writer) 
 		fmt.Fprintln(stderr, err)
 		return exitFailure
 	}
-	var sourceRoot string
-	if explicitSource {
-		sourceRoot, err = filepath.Abs(*sourceRootArgument)
-		if err != nil {
-			fmt.Fprintln(stderr, err)
-			return exitFailure
-		}
-	} else {
-		resolved, resolveErr := resolveUpdateUpstream(repoRoot)
-		if resolveErr != nil {
-			fmt.Fprintln(stderr, resolveErr)
-			return exitFailure
-		}
-		defer resolved.cleanup()
-		sourceRoot, *templateVersion, *sourceRef = resolved.sourceRoot, resolved.version, resolved.ref
+	sourceRoot, resolvedVersion, resolvedRef, cleanup, err := resolveSourceInputs(repoRoot, explicitSource, *sourceRootArgument, *templateVersion, *sourceRef)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitFailure
 	}
+	defer cleanup()
 	options := ownership.Options{
-		RepoRoot: repoRoot, SourceRoot: sourceRoot, TemplateVersion: *templateVersion,
-		SourceRef: *sourceRef, DryRun: *dryRun,
+		RepoRoot: repoRoot, SourceRoot: sourceRoot, TemplateVersion: resolvedVersion,
+		SourceRef: resolvedRef, DryRun: *dryRun,
 		AgentFile: *agentFile,
 	}
 	var report ownership.Report
@@ -372,16 +362,13 @@ func runDoctor(arguments []string, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 	if *fix && hasDoctorFinding(report, "template.identity_missing") {
-		if !explicitSource {
-			fmt.Fprintln(stderr, "memory-bank-cli doctor --fix: template.identity_missing requires --source, --template-version, and --source-ref")
-			return exitUsage
-		}
-		sourceRoot, err := filepath.Abs(*sourceRootArgument)
+		sourceRoot, resolvedVersion, resolvedRef, cleanup, err := resolveSourceInputs(repoRoot, explicitSource, *sourceRootArgument, *templateVersion, *sourceRef)
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return exitFailure
 		}
-		plan, err := ownership.Init(ownership.Options{RepoRoot: repoRoot, SourceRoot: sourceRoot, TemplateVersion: *templateVersion, SourceRef: *sourceRef, DryRun: *dryRun, AgentFile: *agentFile})
+		defer cleanup()
+		plan, err := ownership.Init(ownership.Options{RepoRoot: repoRoot, SourceRoot: sourceRoot, TemplateVersion: resolvedVersion, SourceRef: resolvedRef, DryRun: *dryRun, AgentFile: *agentFile})
 		if err != nil {
 			fmt.Fprintln(stderr, err)
 			return exitFailure
@@ -406,6 +393,21 @@ func runDoctor(arguments []string, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 	return exitSuccess
+}
+
+func resolveSourceInputs(repoRoot string, explicit bool, sourceRootArgument, templateVersion, sourceRef string) (string, string, string, func(), error) {
+	if explicit {
+		sourceRoot, err := filepath.Abs(sourceRootArgument)
+		if err != nil {
+			return "", "", "", nil, err
+		}
+		return sourceRoot, templateVersion, sourceRef, func() {}, nil
+	}
+	resolved, err := resolveUpdateUpstream(repoRoot)
+	if err != nil {
+		return "", "", "", nil, err
+	}
+	return resolved.sourceRoot, resolved.version, resolved.ref, resolved.cleanup, nil
 }
 
 func hasDoctorFinding(report doctor.Report, code string) bool {

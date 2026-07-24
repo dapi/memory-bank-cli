@@ -10,7 +10,9 @@ status: active
 
 # Domain Rules
 
-- `init` and `update` require `--source`, `--template-version` and `--source-ref`.
+- `init`, `update`, and `doctor --fix` resolve a clean upstream checkout when
+  source flags are omitted. An explicit `--source`, `--template-version`, and
+  `--source-ref` trio overrides that resolution and must be supplied together.
 - Template source must be a clean Git checkout and the supplied full ref must match its HEAD/payload; source and downstream roots must not overlap.
 - `memory-bank/.lock` is reserved and cannot be supplied as template content.
 - User-owned files are not overwritten or deleted by update. Conflicts prevent successful application.

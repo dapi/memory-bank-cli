@@ -517,7 +517,44 @@ func TestDoctorFixAdoptsMissingLockWithExplicitProvenance(t *testing.T) {
 	}
 }
 
-func TestDoctorFixRequiresProvenanceAndPreservesConflictingManagedContent(t *testing.T) {
+func TestDoctorFixWithoutSourceUsesRepoUpstreamMain(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	readme := "---\ndoc_function: index\npurpose: Test index for doctor.\nstatus: active\n---\n# Memory Bank\n"
+	if err := os.MkdirAll(filepath.Join(source, "template", "memory-bank"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, "memory-bank"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "template", "memory-bank", "README.md"), []byte(readme), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "memory-bank", "README.md"), []byte(readme), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ref := commitCLISource(t, source, "source")
+	remote := filepath.Join(t.TempDir(), "upstream.git")
+	if err := os.MkdirAll(remote, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runCLIGit(t, remote, "init", "--bare", "--quiet")
+	runCLIGit(t, source, "branch", "-M", "main")
+	runCLIGit(t, source, "remote", "add", "origin", remote)
+	runCLIGit(t, source, "push", "--quiet", "origin", "main")
+	checkout := filepath.Join(repo, "memory-bank", ".repo")
+	runCLIGit(t, filepath.Dir(checkout), "clone", "--quiet", remote, ".repo")
+
+	var stdout, stderr bytes.Buffer
+	if exitCode := Run([]string{"doctor", "--fix", "--repo-root", repo}, "test", &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("default repair exit = %d, stderr=%s", exitCode, stderr.String())
+	}
+	lock, err := os.ReadFile(filepath.Join(repo, "memory-bank", ".lock"))
+	if err != nil || !strings.Contains(string(lock), ref) || !strings.Contains(string(lock), "main@"+ref[:12]) {
+		t.Fatalf("default repair did not record fetched main: %q, %v", lock, err)
+	}
+}
+
+func TestDoctorFixWithoutSourcePreservesConflictingManagedContent(t *testing.T) {
 	repo, source := t.TempDir(), t.TempDir()
 	readme := "---\ndoc_function: index\npurpose: Test index for doctor.\nstatus: active\n---\n# Memory Bank\n"
 	if err := os.MkdirAll(filepath.Join(source, "template", "memory-bank"), 0o755); err != nil {
@@ -532,20 +569,20 @@ func TestDoctorFixRequiresProvenanceAndPreservesConflictingManagedContent(t *tes
 	if err := os.WriteFile(filepath.Join(repo, "memory-bank", "README.md"), []byte("local customization\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	sourceRef := commitCLISource(t, source, "source")
+	commitCLISource(t, source, "source")
+	remote := filepath.Join(t.TempDir(), "upstream.git")
+	if err := os.MkdirAll(remote, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runCLIGit(t, remote, "init", "--bare", "--quiet")
+	runCLIGit(t, source, "branch", "-M", "main")
+	runCLIGit(t, source, "remote", "add", "origin", remote)
+	runCLIGit(t, source, "push", "--quiet", "origin", "main")
+	checkout := filepath.Join(repo, "memory-bank", ".repo")
+	runCLIGit(t, filepath.Dir(checkout), "clone", "--quiet", remote, ".repo")
 
 	var stdout, stderr bytes.Buffer
-	if exitCode := Run([]string{"doctor", "--fix", "--repo-root", repo}, "test", &stdout, &stderr); exitCode != exitUsage {
-		t.Fatalf("missing provenance exit = %d, stderr=%s", exitCode, stderr.String())
-	}
-	if !strings.Contains(stderr.String(), "requires --source, --template-version, and --source-ref") {
-		t.Fatalf("missing provenance error is not actionable: %s", stderr.String())
-	}
-
-	stdout.Reset()
-	stderr.Reset()
-	arguments := []string{"doctor", "--fix", "--repo-root", repo, "--source", source, "--template-version", "v1", "--source-ref", sourceRef, "--json"}
-	if exitCode := Run(arguments, "test", &stdout, &stderr); exitCode != exitFailure {
+	if exitCode := Run([]string{"doctor", "--fix", "--repo-root", repo}, "test", &stdout, &stderr); exitCode != exitFailure {
 		t.Fatalf("conflicting repair exit = %d, stderr=%s", exitCode, stderr.String())
 	}
 	if !strings.Contains(stdout.String(), "existing managed file does not match initialization source") {

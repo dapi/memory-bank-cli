@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [1.7.1] - 2026-07-24
+
+### Fixed
+
+- Let `memory-bank-cli doctor --fix` resolve the default upstream without
+  requiring explicit source provenance, matching `init` and `update`.
+
 ## [1.7.0] - 2026-07-24
 
 ### Added

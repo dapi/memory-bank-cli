@@ -122,7 +122,7 @@ func (report *Report) checkIdentityAndDrift(agentFile, scopeRoot string) {
 		agentContract, tracked := lock.Files[filepath.ToSlash(agentFile)]
 		templateOwnsAgentFile = tracked && agentContract.Ownership == ownership.Managed
 	} else if report.Profile == ProfileDownstream {
-		report.add(Finding{Code: "template.identity_missing", Severity: Error, Group: "template_identity", Path: ownership.LockFileName, Message: "The downstream repository has no ownership lock, so its installed template version is unknown.", Remediation: "Run memory-bank-cli doctor --fix with --source, --template-version, and --source-ref from a trusted template checkout, then commit memory-bank/.lock."})
+		report.add(Finding{Code: "template.identity_missing", Severity: Error, Group: "template_identity", Path: ownership.LockFileName, Message: "The downstream repository has no ownership lock, so its installed template version is unknown.", Remediation: "Run memory-bank-cli doctor --fix, then commit memory-bank/.lock. Use --source, --template-version, and --source-ref together to repair from an explicit trusted checkout."})
 	} else {
 		report.add(Finding{Code: "template.source_repository", Severity: Info, Group: "template_identity", Subject: "template", Message: "Template source profile detected; an installed-template lock is not expected.", Remediation: "Create locks only in downstream repositories through memory-bank-cli init."})
 	}
