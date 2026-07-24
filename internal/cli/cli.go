@@ -390,9 +390,7 @@ func runDoctor(arguments []string, stdout, stderr io.Writer) int {
 			fmt.Fprintln(stderr, err)
 			return exitFailure
 		}
-		if plan.ConflictCount == 0 {
-			plan.Decisions = append(plan.Decisions, ownership.Decision{Path: ownership.LockFileName, Action: ownership.Create, Reason: "record successful adoption"})
-		}
+		markInitLockCreation(&plan)
 		report.Repair = &doctor.Repair{Finding: "template.identity_missing", Plan: plan}
 		if plan.Applied {
 			repaired, err := doctor.Run(doctor.Options{RepoRoot: repoRoot, ScopeRoot: scopeRoot, AgentFile: *agentFile, Profile: profile, MaxDepth: *maxDepth})
@@ -421,6 +419,24 @@ func hasDoctorFinding(report doctor.Report, code string) bool {
 		}
 	}
 	return false
+}
+
+// markInitLockCreation gives the shared init plan its adoption-specific
+// presentation: init writes a previously absent lock, rather than updating one.
+func markInitLockCreation(plan *ownership.Report) {
+	for index := len(plan.Decisions) - 1; index >= 0; index-- {
+		if plan.Decisions[index].Path != ownership.LockFileName {
+			continue
+		}
+		plan.Decisions[index].Action = ownership.Create
+		plan.Decisions[index].Reason = "record successful adoption"
+		return
+	}
+	plan.Decisions = append(plan.Decisions, ownership.Decision{
+		Path:   ownership.LockFileName,
+		Action: ownership.Create,
+		Reason: "record successful adoption",
+	})
 }
 
 func printDoctorReport(writer io.Writer, report doctor.Report) {
