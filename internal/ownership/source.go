@@ -18,7 +18,7 @@ type pinnedSource struct {
 const (
 	legacySourcePayloadRoot         = "memory-bank"
 	legacyTemplateSourcePayloadRoot = "memory-bank-template"
-	targetSourcePayloadRoot         = "template/memory-bank"
+	targetSourcePayloadRoot         = "template"
 	downstreamPayloadRoot           = "memory-bank"
 )
 
@@ -181,6 +181,8 @@ func sourcePayloadRoots() []string {
 	return []string{legacySourcePayloadRoot, legacyTemplateSourcePayloadRoot, targetSourcePayloadRoot}
 }
 
+// selectSourcePayloadRoot prefers the canonical template tree. The other
+// roots are accepted only to migrate locks written by earlier CLI releases.
 func selectSourcePayloadRoot(present []string) (string, error) {
 	legacy := make([]string, 0, 2)
 	for _, root := range present {
@@ -197,9 +199,9 @@ func selectSingleSourcePayloadRoot(present []string) (string, error) {
 	case 1:
 		return present[0], nil
 	case 0:
-		return "", errors.New("source has neither recognized payload root: memory-bank, memory-bank-template, or template/memory-bank")
+		return "", errors.New("source has neither recognized payload root: template, memory-bank-template, or memory-bank")
 	default:
-		return "", errors.New("source has multiple recognized payload roots: memory-bank, memory-bank-template, or template/memory-bank")
+		return "", errors.New("source has multiple recognized payload roots: template, memory-bank-template, or memory-bank")
 	}
 }
 

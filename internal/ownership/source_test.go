@@ -103,7 +103,6 @@ func TestPinnedSourceSupportsOneRecognizedRootAndTranslatesToDownstream(t *testi
 	}{
 		{name: "legacy root", roots: []string{"memory-bank"}, wantSource: "memory-bank"},
 		{name: "legacy template root", roots: []string{"memory-bank-template"}, wantSource: "memory-bank-template"},
-		{name: "target root", roots: []string{"template/memory-bank"}, wantSource: "template/memory-bank"},
 		{name: "neither root", wantErr: "neither recognized payload root"},
 		{name: "multiple legacy roots", roots: []string{legacySourcePayloadRoot, legacyTemplateSourcePayloadRoot}, wantErr: "multiple recognized payload roots"},
 	} {
@@ -148,10 +147,14 @@ func TestTargetSourcePayloadRootTakesPrecedenceOverLegacyRoots(t *testing.T) {
 		{name: "legacy template root", roots: []string{targetSourcePayloadRoot, legacyTemplateSourcePayloadRoot}},
 		{name: "both legacy roots", roots: []string{targetSourcePayloadRoot, legacySourcePayloadRoot, legacyTemplateSourcePayloadRoot}},
 	} {
-		t.Run(test.name, func(t *testing.T) {
+		 t.Run(test.name, func(t *testing.T) {
 			source := t.TempDir()
 			for _, root := range test.roots {
-				write(t, source, root+"/dna/rule.md", root+"\n")
+				path := root + "/dna/rule.md"
+				if root == targetSourcePayloadRoot {
+					path = root + "/memory-bank/dna/rule.md"
+				}
+				write(t, source, path, root+"\n")
 			}
 			write(t, source, legacySourcePayloadRoot+"/.lock", "project-local\n")
 			commit := commitTestSource(t, source)
@@ -168,7 +171,7 @@ func TestTargetSourcePayloadRootTakesPrecedenceOverLegacyRoots(t *testing.T) {
 
 func TestPinnedSourceTargetRootWinsOverLockedProjectLocalRootForInitAndUpdate(t *testing.T) {
 	source, repo := t.TempDir(), t.TempDir()
-	write(t, source, targetSourcePayloadRoot+"/dna/rule.md", "target v1\n")
+	write(t, source, targetSourcePayloadRoot+"/memory-bank/dna/rule.md", "target v1\n")
 	write(t, source, legacySourcePayloadRoot+"/dna/rule.md", "project local\n")
 	write(t, source, legacySourcePayloadRoot+"/.lock", "project-local lock\n")
 	write(t, source, legacySourcePayloadRoot+"/project-local.md", "do not install\n")
@@ -183,7 +186,7 @@ func TestPinnedSourceTargetRootWinsOverLockedProjectLocalRootForInitAndUpdate(t 
 		t.Fatalf("init installed non-target payload: %q", got)
 	}
 
-	write(t, source, targetSourcePayloadRoot+"/dna/rule.md", "target v2\n")
+	write(t, source, targetSourcePayloadRoot+"/memory-bank/dna/rule.md", "target v2\n")
 	runGitTest(t, source, "add", "--all")
 	runGitTest(t, source, "-c", "user.name=Memory Bank Tests", "-c", "user.email=tests@example.invalid", "commit", "--quiet", "-m", "target update")
 	secondCommit := runGitTest(t, source, "rev-parse", "HEAD")
@@ -197,6 +200,41 @@ func TestPinnedSourceTargetRootWinsOverLockedProjectLocalRootForInitAndUpdate(t 
 	}
 	if _, err := os.Stat(filepath.Join(repo, legacySourcePayloadRoot, "project-local.md")); !os.IsNotExist(err) {
 		t.Fatalf("project-local payload leaked into downstream: %v", err)
+ 	}
+}
+
+func TestCanonicalTemplateIncludesAllTrackedFiles(t *testing.T) {
+	source, repo := t.TempDir(), t.TempDir()
+	write(t, source, "template/memory-bank/dna/rule.md", "rule\n")
+	write(t, source, "template/.config/hidden", "hidden\n")
+	write(t, source, "template/.github/workflows/check.yml", "name: check\n")
+	tool := filepath.Join(source, "template", "bin", "tool")
+	write(t, source, "template/bin/tool", "#!/bin/sh\n")
+	if err := os.Chmod(tool, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	commit := commitTestSource(t, source)
+	report, err := Init(Options{RepoRoot: repo, SourceRoot: source, TemplateVersion: "v1", SourceRef: commit})
+	if err != nil || !report.Applied {
+		t.Fatalf("init failed: report=%#v err=%v", report, err)
+	}
+	for path, want := range map[string]string{
+		"memory-bank/dna/rule.md":     "rule\n",
+		".config/hidden":              "hidden\n",
+		".github/workflows/check.yml": "name: check\n",
+		"bin/tool":                    "#!/bin/sh\n",
+	} {
+		if got := read(t, repo, path); got != want {
+			t.Fatalf("%s = %q, want %q", path, got, want)
+		}
+	}
+	info, err := os.Stat(filepath.Join(repo, "bin", "tool"))
+	if err != nil || info.Mode().Perm() != 0o755 {
+		t.Fatalf("executable mode = %v, %v", info.Mode(), err)
+	}
+	lock, exists, err := ReadLock(repo)
+	if err != nil || !exists || lock.Files[".config/hidden"].Ownership != Managed {
+		t.Fatalf("canonical paths were not managed in lock: %#v, exists=%v, err=%v", lock, exists, err)
 	}
 }
 

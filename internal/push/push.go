@@ -56,7 +56,7 @@ func Run(options Options) (Report, error) {
 		now = time.Now
 	}
 	if _, err := run(options.RepoRoot, "git", "rev-parse", "--show-toplevel"); err != nil {
-		return Report{}, fmt.Errorf("push must run inside a Git repository; run it from a repository or pass --repo-root: %w", err)
+		return Report{}, fmt.Errorf("push must run inside a Git repository: %w", err)
 	}
 	checkout, err := safeCheckout(options.RepoRoot)
 	if err != nil {
@@ -67,7 +67,7 @@ func Run(options Options) (Report, error) {
 	}
 	remote, err := run(checkout, "git", "remote", "get-url", "origin")
 	if err != nil || strings.TrimSpace(remote) == "" {
-		return Report{}, errors.New("upstream checkout has no valid origin remote; configure memory-bank/.repo origin to the target GitHub repository")
+		return Report{}, fmt.Errorf("upstream checkout has no valid origin remote")
 	}
 	githubRepo, err := githubRepository(strings.TrimSpace(remote))
 	if err != nil {
@@ -75,12 +75,17 @@ func Run(options Options) (Report, error) {
 	}
 	if !options.DryRun {
 		if identity, err := run(checkout, "gh", "repo", "view", githubRepo, "--json", "id"); err != nil || strings.TrimSpace(identity) == "" {
-			return Report{}, fmt.Errorf("upstream origin %q is not accessible for PR creation; run gh auth login and verify repository access", githubRepo)
+			return Report{}, errors.New("upstream origin is not an accessible GitHub repository for PR creation")
 		}
 	}
 	defaultBranch, err := defaultBranch(run, checkout)
 	if err != nil {
 		return Report{}, err
+	}
+	if !options.DryRun {
+		if _, err := run(checkout, "git", "fetch", "origin", defaultBranch+":refs/remotes/origin/"+defaultBranch); err != nil {
+			return Report{}, fmt.Errorf("refresh upstream default branch: %w", err)
+		}
 	}
 	payloadRoot, err := selectPayloadRootAt(run, checkout, "origin/"+defaultBranch)
 	if err != nil {
@@ -122,17 +127,7 @@ func Run(options Options) (Report, error) {
 		}
 	}
 	if len(included) == 0 {
-		return report, errors.New("no managed Memory Bank changes to publish; edit a managed path or inspect exclusions with --dry-run")
-	}
-	if _, err := run(checkout, "git", "fetch", "origin", defaultBranch+":refs/remotes/origin/"+defaultBranch); err != nil {
-		return report, fmt.Errorf("refresh upstream default branch: %w", err)
-	}
-	refreshedPayloadRoot, err := selectPayloadRootAt(run, checkout, "origin/"+defaultBranch)
-	if err != nil {
-		return report, err
-	}
-	if refreshedPayloadRoot != payloadRoot {
-		return report, fmt.Errorf("upstream payload root changed from %q to %q while refreshing the default branch; retry the command", payloadRoot, refreshedPayloadRoot)
+		return report, errors.New("no managed Memory Bank changes to publish")
 	}
 	makeBranch := options.BranchName
 	if makeBranch == nil {
@@ -196,13 +191,14 @@ func Run(options Options) (Report, error) {
 	}
 	for _, item := range included {
 		relative := strings.TrimPrefix(item.path, "memory-bank/")
-		destination := filepath.Join(checkout, payloadRoot, filepath.FromSlash(relative))
-		stagePaths = append(stagePaths, filepath.ToSlash(filepath.Join(payloadRoot, relative)))
+		destinationRoot := payloadDestinationRoot(checkout, payloadRoot)
+		destination := filepath.Join(destinationRoot, filepath.FromSlash(relative))
+		stagePaths = append(stagePaths, filepath.ToSlash(filepath.Join(payloadRootForPath(payloadRoot), relative)))
 		if item.delete {
-			if err := removeRegular(destination, filepath.Join(checkout, payloadRoot)); err != nil && !errors.Is(err, os.ErrNotExist) {
+			if err := removeRegular(destination, destinationRoot); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return failed(fmt.Errorf("delete %s: %w", item.path, err))
 			}
-		} else if err := copyRegular(filepath.Join(options.RepoRoot, filepath.FromSlash(item.path)), destination, filepath.Join(options.RepoRoot, "memory-bank"), filepath.Join(checkout, payloadRoot)); err != nil {
+		} else if err := copyRegular(filepath.Join(options.RepoRoot, filepath.FromSlash(item.path)), destination, filepath.Join(options.RepoRoot, "memory-bank"), destinationRoot); err != nil {
 			return failed(fmt.Errorf("stage %s: %w", item.path, err))
 		}
 	}
@@ -233,24 +229,15 @@ func Run(options Options) (Report, error) {
 }
 
 func safeCheckout(root string) (string, error) {
-	memoryBank := filepath.Join(root, "memory-bank")
-	checkout := filepath.Join(memoryBank, ".repo")
-	for _, candidate := range []struct {
-		path  string
-		label string
-	}{
-		{path: memoryBank, label: "memory-bank"},
-		{path: checkout, label: "memory-bank/.repo"},
-	} {
-		info, err := os.Lstat(candidate.path)
-		if err != nil {
-			return "", fmt.Errorf("inspect %s: %w; clone the upstream repository into memory-bank/.repo", candidate.label, err)
-		}
-		if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
-			return "", fmt.Errorf("%s must be a real directory, not a symlink; replace it with a local upstream checkout", candidate.label)
-		}
+	path := filepath.Join(root, "memory-bank", ".repo")
+	info, err := os.Lstat(path)
+	if err != nil {
+		return "", fmt.Errorf("inspect upstream checkout: %w", err)
 	}
-	return checkout, nil
+	if info.Mode()&os.ModeSymlink != 0 || !info.IsDir() {
+		return "", errors.New("memory-bank/.repo must be a real directory, not a symlink")
+	}
+	return path, nil
 }
 
 func githubRepository(remote string) (string, error) {
@@ -260,11 +247,11 @@ func githubRepository(remote string) (string, error) {
 	} else if strings.HasPrefix(value, "https://github.com/") {
 		value = strings.TrimPrefix(value, "https://github.com/")
 	} else {
-		return "", fmt.Errorf("upstream origin must be a GitHub repository: %q; set memory-bank/.repo origin to a GitHub SSH or HTTPS URL", remote)
+		return "", fmt.Errorf("upstream origin must be a GitHub repository: %q", remote)
 	}
 	parts := strings.Split(value, "/")
 	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
-		return "", fmt.Errorf("invalid GitHub origin: %q; use an owner/repository GitHub URL", remote)
+		return "", fmt.Errorf("invalid GitHub origin: %q", remote)
 	}
 	return value, nil
 }
@@ -288,13 +275,6 @@ func clean(run func(string, string, ...string) (string, error), dir string) erro
 	if filepath.Clean(absDir) != filepath.Clean(absTop) {
 		return fmt.Errorf("memory-bank/.repo must be its own Git worktree (got %q, want %q)", absTop, absDir)
 	}
-	conflicts, err := run(dir, "git", "diff", "--name-only", "--diff-filter=U")
-	if err != nil {
-		return err
-	}
-	if strings.TrimSpace(conflicts) != "" {
-		return errors.New("upstream checkout has unresolved conflicts; resolve them before running push")
-	}
 	status, err := run(dir, "git", "status", "--porcelain")
 	if err != nil {
 		return err
@@ -302,40 +282,34 @@ func clean(run func(string, string, ...string) (string, error), dir string) erro
 	if strings.TrimSpace(status) != "" {
 		return errors.New("upstream checkout is dirty; commit, stash, or discard its changes first")
 	}
+	conflicts, err := run(dir, "git", "diff", "--name-only", "--diff-filter=U")
+	if err != nil {
+		return err
+	}
+	if strings.TrimSpace(conflicts) != "" {
+		return errors.New("upstream checkout has unresolved conflicts")
+	}
 	return nil
 }
 
 func defaultBranch(run func(string, string, ...string) (string, error), checkout string) (string, error) {
 	ref, err := run(checkout, "git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
 	if err != nil {
-		return "", fmt.Errorf("resolve upstream default branch: %w; run git -C memory-bank/.repo remote set-head origin --auto", err)
+		return "", fmt.Errorf("resolve upstream default branch: %w", err)
 	}
 	branch := strings.TrimPrefix(strings.TrimSpace(ref), "origin/")
 	if branch == "" || branch == ref {
-		return "", errors.New("upstream origin/HEAD does not name a default branch; run git -C memory-bank/.repo remote set-head origin --auto")
+		return "", errors.New("upstream origin/HEAD does not name a default branch")
 	}
 	if _, err := run(checkout, "git", "rev-parse", "--verify", "origin/"+branch); err != nil {
-		return "", fmt.Errorf("default branch %q is not available locally: %w; fetch origin and retry", branch, err)
+		return "", fmt.Errorf("default branch %q is not available locally: %w", branch, err)
 	}
 	return branch, nil
 }
 
 func selectPayloadRoot(checkout string) (string, error) {
-	canonical := filepath.Join(checkout, "template", "memory-bank")
-	if info, err := os.Lstat(canonical); err == nil {
-		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return "", errors.New("upstream payload root \"template/memory-bank\" must be a real directory")
-		}
-		template, err := os.Lstat(filepath.Join(checkout, "template"))
-		if err != nil || !template.IsDir() || template.Mode()&os.ModeSymlink != 0 {
-			return "", errors.New("upstream payload root \"template/memory-bank\" has an unsafe parent directory")
-		}
-		return "template/memory-bank", nil
-	} else if !errors.Is(err, os.ErrNotExist) {
-		return "", err
-	}
 	var roots []string
-	for _, candidate := range []string{"memory-bank-template", "memory-bank"} {
+	for _, candidate := range []string{"template", "memory-bank-template", "memory-bank"} {
 		info, err := os.Lstat(filepath.Join(checkout, candidate))
 		if errors.Is(err, os.ErrNotExist) {
 			continue
@@ -349,22 +323,14 @@ func selectPayloadRoot(checkout string) (string, error) {
 		roots = append(roots, candidate)
 	}
 	if len(roots) != 1 {
-		return "", fmt.Errorf("upstream checkout must contain template/memory-bank or exactly one legacy payload root (memory-bank-template or memory-bank), found %v; check out the upstream default branch and fix its payload layout", roots)
+		return "", fmt.Errorf("upstream checkout must contain exactly one payload root (template, memory-bank-template, or memory-bank), found %v", roots)
 	}
 	return roots[0], nil
 }
 
 func selectPayloadRootAt(run func(string, string, ...string) (string, error), checkout, ref string) (string, error) {
-	canonical := "template/memory-bank"
-	out, err := run(checkout, "git", "ls-tree", "-d", "--name-only", ref, "--", canonical)
-	if err != nil {
-		return "", fmt.Errorf("inspect upstream payload root %q: %w", canonical, err)
-	}
-	if strings.TrimSpace(out) == canonical {
-		return canonical, nil
-	}
 	var roots []string
-	for _, candidate := range []string{"memory-bank-template", "memory-bank"} {
+	for _, candidate := range []string{"template", "memory-bank-template", "memory-bank"} {
 		out, err := run(checkout, "git", "ls-tree", "-d", "--name-only", ref, "--", candidate)
 		if err != nil {
 			return "", fmt.Errorf("inspect upstream payload root %q: %w", candidate, err)
@@ -374,9 +340,25 @@ func selectPayloadRootAt(run func(string, string, ...string) (string, error), ch
 		}
 	}
 	if len(roots) != 1 {
-		return "", fmt.Errorf("default branch must contain template/memory-bank or exactly one legacy payload root (memory-bank-template or memory-bank), found %v; verify the upstream repository payload layout", roots)
+		return "", fmt.Errorf("default branch must contain exactly one payload root (template, memory-bank-template, or memory-bank), found %v", roots)
 	}
 	return roots[0], nil
+}
+
+// payloadDestinationRoot is the inverse of the canonical source projection
+// for downstream memory-bank paths. Legacy roots retain their old layout.
+func payloadDestinationRoot(checkout, payloadRoot string) string {
+	if payloadRoot == "template" {
+		return filepath.Join(checkout, payloadRoot, "memory-bank")
+	}
+	return filepath.Join(checkout, payloadRoot)
+}
+
+func payloadRootForPath(payloadRoot string) string {
+	if payloadRoot == "template" {
+		return filepath.Join(payloadRoot, "memory-bank")
+	}
+	return payloadRoot
 }
 
 func changedPaths(run func(string, string, ...string) (string, error), root string) ([]change, error) {
@@ -392,8 +374,8 @@ func changedPaths(run func(string, string, ...string) (string, error), root stri
 			continue
 		}
 		status, paths := line[:2], line[3:]
-		if unmergedStatus(status) {
-			return nil, fmt.Errorf("downstream path has unresolved Git conflict: %q; resolve the conflict before running push", paths)
+		if strings.Contains(status, "U") {
+			return nil, fmt.Errorf("downstream path has unresolved Git conflict: %q", paths)
 		}
 		if strings.Contains(status, "R") {
 			if index+1 >= len(records) || records[index+1] == "" {
@@ -423,15 +405,6 @@ func changedPaths(run func(string, string, ...string) (string, error), root stri
 		return paths[i].path < paths[j].path
 	})
 	return paths, nil
-}
-
-func unmergedStatus(status string) bool {
-	switch status {
-	case "DD", "AU", "UD", "UA", "DU", "AA", "UU":
-		return true
-	default:
-		return false
-	}
 }
 
 func branchName(now time.Time) (string, error) {
