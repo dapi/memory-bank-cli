@@ -177,6 +177,110 @@ func TestOwnershipDryRunJSONReportsPlanWithoutMutation(t *testing.T) {
 	}
 }
 
+func TestUpdateWithoutSourceUsesRepoUpstreamMain(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(source, "memory-bank", "dna"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "memory-bank", "dna", "rule.md"), []byte("v1\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	initialRef := commitCLISource(t, source, "initial source")
+	remote := filepath.Join(t.TempDir(), "upstream.git")
+	if err := os.MkdirAll(remote, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runCLIGit(t, remote, "init", "--bare", "--quiet")
+	runCLIGit(t, source, "branch", "-M", "main")
+	runCLIGit(t, source, "remote", "add", "origin", remote)
+	runCLIGit(t, source, "push", "--quiet", "origin", "main")
+	runCLIGit(t, remote, "symbolic-ref", "HEAD", "refs/heads/main")
+
+	var stdout, stderr bytes.Buffer
+	initArgs := []string{"init", "--repo-root", repo, "--source", source, "--template-version", "v1", "--source-ref", initialRef}
+	if exitCode := Run(initArgs, "test", &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("init failed with %d: %s", exitCode, stderr.String())
+	}
+	checkout := filepath.Join(repo, "memory-bank", ".repo")
+	runCLIGit(t, filepath.Dir(checkout), "clone", "--quiet", remote, ".repo")
+	if err := os.WriteFile(filepath.Join(source, "memory-bank", "dna", "rule.md"), []byte("v2\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	updatedRef := commitCLISource(t, source, "update source")
+	runCLIGit(t, source, "push", "--quiet", "origin", "main")
+
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := Run([]string{"update", "--repo-root", repo}, "test", &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("default update failed with %d: %s", exitCode, stderr.String())
+	}
+	if got, err := os.ReadFile(filepath.Join(repo, "memory-bank", "dna", "rule.md")); err != nil || string(got) != "v2\n" {
+		t.Fatalf("default update did not apply main: %q, %v", got, err)
+	}
+	lock, err := os.ReadFile(filepath.Join(repo, "memory-bank", ".lock"))
+	if err != nil || !strings.Contains(string(lock), updatedRef) || !strings.Contains(string(lock), "main@"+updatedRef[:12]) {
+		t.Fatalf("lock does not record fetched main: %q, %v", lock, err)
+	}
+	if got := runCLIGit(t, checkout, "rev-parse", "HEAD"); got != initialRef {
+		t.Fatalf("user upstream checkout was changed: got %s want %s", got, initialRef)
+	}
+}
+
+func TestResolveUpdateUpstreamUsesFallbackWithoutRepoCheckout(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(source, "memory-bank"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "memory-bank", "README.md"), []byte("template\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ref := commitCLISource(t, source, "source")
+	remote := filepath.Join(t.TempDir(), "upstream.git")
+	if err := os.MkdirAll(remote, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runCLIGit(t, remote, "init", "--bare", "--quiet")
+	runCLIGit(t, source, "branch", "-M", "main")
+	runCLIGit(t, source, "remote", "add", "origin", remote)
+	runCLIGit(t, source, "push", "--quiet", "origin", "main")
+
+	resolved, err := resolveUpdateUpstreamFrom(repo, remote)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer resolved.cleanup()
+	if resolved.ref != ref || resolved.version != "main@"+ref[:12] {
+		t.Fatalf("unexpected resolved upstream: %#v", resolved)
+	}
+	if _, err := os.Stat(filepath.Join(resolved.sourceRoot, "memory-bank", "README.md")); err != nil {
+		t.Fatalf("temporary checkout lacks fetched payload: %v", err)
+	}
+}
+
+func TestUpdateWithoutSourceRejectsDirtyRepoCheckoutWithoutMutation(t *testing.T) {
+	repo := t.TempDir()
+	checkout := filepath.Join(repo, "memory-bank", ".repo")
+	if err := os.MkdirAll(checkout, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	runCLIGit(t, checkout, "init", "--quiet")
+	if err := os.WriteFile(filepath.Join(checkout, "dirty"), []byte("x"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	before := []byte("unchanged\n")
+	if err := os.WriteFile(filepath.Join(repo, "sentinel"), before, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if exitCode := Run([]string{"update", "--repo-root", repo}, "test", &stdout, &stderr); exitCode != 1 || !strings.Contains(stderr.String(), "dirty") {
+		t.Fatalf("unexpected exit=%d stderr=%q", exitCode, stderr.String())
+	}
+	after, err := os.ReadFile(filepath.Join(repo, "sentinel"))
+	if err != nil || !bytes.Equal(before, after) {
+		t.Fatalf("failed resolution changed downstream: %q, %v", after, err)
+	}
+}
+
 func TestDoctorAndAlternativeAgentTarget(t *testing.T) {
 	repo, source := t.TempDir(), t.TempDir()
 	if err := os.MkdirAll(filepath.Join(source, "memory-bank"), 0o755); err != nil {

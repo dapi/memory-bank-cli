@@ -20,4 +20,4 @@ go run ./cmd/memory-bank-cli --help
 go run ./cmd/memory-bank-cli lint --repo-root .
 ```
 
-`init` and `update` additionally require a separate clean template checkout, `--template-version`, and `--source-ref` matching its HEAD. No `.env`, database, service dependency or container workflow is documented.
+`init` requires a separate clean template checkout, `--template-version`, and `--source-ref` matching its HEAD. `update` accepts the same explicit reproducible inputs, or fetches `main` into a disposable checkout from `memory-bank/.repo`'s clean `origin` (or the default `dapi/memory-bank` upstream). No `.env`, database, service dependency or container workflow is documented.

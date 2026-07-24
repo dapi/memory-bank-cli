@@ -197,7 +197,11 @@ func runOwnership(arguments []string, command string, stdout, stderr io.Writer) 
 	flags := flag.NewFlagSet("memory-bank-cli "+command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
-		fmt.Fprintf(stderr, "Usage: memory-bank-cli %s --source DIR --template-version VERSION --source-ref REF [options]\n", command)
+		if command == "update" {
+			fmt.Fprintln(stderr, "Usage: memory-bank-cli update [--source DIR --template-version VERSION --source-ref REF] [options]")
+		} else {
+			fmt.Fprintln(stderr, "Usage: memory-bank-cli init --source DIR --template-version VERSION --source-ref REF [options]")
+		}
 		flags.PrintDefaults()
 	}
 	repoRootArgument := addRepoRootFlag(flags)
@@ -217,7 +221,8 @@ func runOwnership(arguments []string, command string, stdout, stderr io.Writer) 
 		fmt.Fprintf(stderr, "memory-bank-cli %s: unexpected arguments: %v\n", command, flags.Args())
 		return exitUsage
 	}
-	if *sourceRootArgument == "" || *templateVersion == "" || *sourceRef == "" {
+	explicitSource := *sourceRootArgument != "" || *templateVersion != "" || *sourceRef != ""
+	if (command == "init" && !explicitSource) || (explicitSource && (*sourceRootArgument == "" || *templateVersion == "" || *sourceRef == "")) {
 		fmt.Fprintf(stderr, "memory-bank-cli %s: --source, --template-version, and --source-ref are required\n", command)
 		return exitUsage
 	}
@@ -226,10 +231,21 @@ func runOwnership(arguments []string, command string, stdout, stderr io.Writer) 
 		fmt.Fprintln(stderr, err)
 		return exitFailure
 	}
-	sourceRoot, err := filepath.Abs(*sourceRootArgument)
-	if err != nil {
-		fmt.Fprintln(stderr, err)
-		return exitFailure
+	var sourceRoot string
+	if explicitSource {
+		sourceRoot, err = filepath.Abs(*sourceRootArgument)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return exitFailure
+		}
+	} else {
+		resolved, resolveErr := resolveUpdateUpstream(repoRoot)
+		if resolveErr != nil {
+			fmt.Fprintln(stderr, resolveErr)
+			return exitFailure
+		}
+		defer resolved.cleanup()
+		sourceRoot, *templateVersion, *sourceRef = resolved.sourceRoot, resolved.version, resolved.ref
 	}
 	options := ownership.Options{
 		RepoRoot: repoRoot, SourceRoot: sourceRoot, TemplateVersion: *templateVersion,
