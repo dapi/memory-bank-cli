@@ -23,6 +23,7 @@ audience: humans_and_agents
 - [FT-005: Downstream Smoke Tests and Compatibility Canaries](FT-005-downstream-smoke-tests-and-compatibility-canaries/README.md) — active delivery package for issue #5's blocking stable smoke and scheduled/manual compatibility canary.
 - [FT-006: Opt-in GitHub Workflow Adapter](FT-006-github-workflow-adapter/README.md) — active delivery package for issue #6's opt-in, marker-owned GitHub workflow adapter.
 - [FT-014: Source Payload Path Translation](FT-014-source-payload-path-translation/README.md) — planned package for issue #14's source `memory-bank-template/` to downstream `memory-bank/` translation and release handoff.
+- [FT-021: Local Init/Update E2E](FT-021-local-init-update-e2e/README.md) — planned package for issue #21's hermetic CLI/Git lifecycle coverage, required local merge gate and pre-publish release-binary validation.
 
 ## Rules
 

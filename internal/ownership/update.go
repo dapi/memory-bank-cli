@@ -512,8 +512,13 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 				decision.Action, decision.Reason = Preserve, "adopt existing file without overwriting it"
 			}
 		case !tracked:
-			decision.Action, decision.Reason = Preserve, "untracked existing file is downstream-owned"
-			file = File{Ownership: UserOwned}
+			if class == Managed {
+				decision.Action, decision.Reason = Conflict, "unmanaged file blocks managed template path"
+				file = File{Ownership: UserOwned}
+			} else {
+				decision.Action, decision.Reason = Preserve, "untracked existing file is downstream-owned"
+				file = File{Ownership: UserOwned}
+			}
 		case class == UserOwned || prior.Ownership == UserOwned:
 			decision.Action, decision.Reason = Preserve, "user-owned files are never overwritten"
 			file = prior
@@ -526,6 +531,9 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 		case class == Managed:
 			if currentDigest == incoming.digest && modeMatches(currentMode, incoming.mode) {
 				decision.Action, decision.Reason = Preserve, "managed payload matches incoming template"
+			} else if currentDigest != prior.PayloadDigest && modeMatches(currentMode, priorPayloadMode) && incoming.digest == prior.BaseDigest && incoming.mode == priorBaseMode {
+				decision.Action, decision.Reason = Preserve, "preserve local managed content while template is unchanged"
+				file = File{Ownership: Adapted, BaseDigest: incoming.digest, BaseMode: incoming.mode}
 			} else if currentDigest != prior.PayloadDigest || !modeMatches(currentMode, priorPayloadMode) {
 				decision.Action, decision.Reason = Conflict, "managed file has downstream drift"
 			} else if incoming.digest != prior.BaseDigest || incoming.mode != priorBaseMode {

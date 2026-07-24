@@ -287,7 +287,7 @@ func TestInitRejectsAmbiguousMarkersWithoutMutation(t *testing.T) {
 	}
 }
 
-func TestOwnershipDryRunJSONReportsCollisionAsUserOwned(t *testing.T) {
+func TestOwnershipDryRunJSONReportsNewManagedPathCollision(t *testing.T) {
 	repo, source := t.TempDir(), t.TempDir()
 	dna := filepath.Join(source, "memory-bank", "dna")
 	if err := os.MkdirAll(dna, 0o755); err != nil {
@@ -317,7 +317,7 @@ func TestOwnershipDryRunJSONReportsCollisionAsUserOwned(t *testing.T) {
 	stderr.Reset()
 	updateArguments := append([]string{"update"}, baseArguments...)
 	updateArguments = append(updateArguments, "--template-version", "v2", "--source-ref", updatedRef, "--dry-run", "--json")
-	if exitCode := Run(updateArguments, "test", &stdout, &stderr); exitCode != 0 {
+	if exitCode := Run(updateArguments, "test", &stdout, &stderr); exitCode != 1 {
 		t.Fatalf("unexpected update exit %d: %s", exitCode, stderr.String())
 	}
 	var report struct {
@@ -332,8 +332,8 @@ func TestOwnershipDryRunJSONReportsCollisionAsUserOwned(t *testing.T) {
 	}
 	for _, decision := range report.Decisions {
 		if decision.Path == filepath.ToSlash(collision) {
-			if decision.Action != "preserve" || decision.Ownership != "user-owned" {
-				t.Fatalf("collision decision disagrees with persisted ownership: %#v", decision)
+			if decision.Action != "conflict" || decision.Ownership != "user-owned" {
+				t.Fatalf("collision decision disagrees with safety contract: %#v", decision)
 			}
 			return
 		}

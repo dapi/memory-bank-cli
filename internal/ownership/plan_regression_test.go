@@ -67,7 +67,7 @@ func TestInitRegeneratesExistingGeneratedFile(t *testing.T) {
 	}
 }
 
-func TestCollisionReportsAndPersistsUserOwnership(t *testing.T) {
+func TestCollisionWithNewManagedFileIsRejected(t *testing.T) {
 	repo, source := t.TempDir(), t.TempDir()
 	seed := "memory-bank/dna/seed.md"
 	path := "memory-bank/dna/collision.md"
@@ -81,7 +81,7 @@ func TestCollisionReportsAndPersistsUserOwnership(t *testing.T) {
 	dryRunOptions.DryRun = true
 	report, err := Update(dryRunOptions)
 	decision := decisionFor(t, report, path)
-	if err != nil || report.Applied || !report.DryRun || report.ConflictCount != 0 || decision.Action != Preserve || decision.Ownership != UserOwned {
+	if err != nil || report.Applied || !report.DryRun || report.ConflictCount != 1 || decision.Action != Conflict || decision.Ownership != UserOwned {
 		t.Fatalf("dry-run reported the wrong collision ownership: report=%#v err=%v", report, err)
 	}
 	if got := read(t, repo, path); got != "downstream\n" {
@@ -93,24 +93,14 @@ func TestCollisionReportsAndPersistsUserOwnership(t *testing.T) {
 
 	report, err = Update(opts(repo, source, "b"))
 	decision = decisionFor(t, report, path)
-	if err != nil || !report.Applied || report.ConflictCount != 0 || decision.Action != Preserve || decision.Ownership != UserOwned {
+	if err != nil || report.Applied || report.ConflictCount != 1 || decision.Action != Conflict || decision.Ownership != UserOwned {
 		t.Fatalf("update reported the wrong collision ownership: report=%#v err=%v", report, err)
 	}
 	if got := read(t, repo, path); got != "downstream\n" {
 		t.Fatalf("update overwrote the collision: %q", got)
 	}
-	lock, exists, err := ReadLock(repo)
-	if err != nil || !exists {
-		t.Fatalf("could not read updated lock: exists=%v err=%v", exists, err)
-	}
-	if got := lock.Files[path]; got != (File{Ownership: UserOwned}) {
-		t.Fatalf("collision ownership was not persisted: %#v", got)
-	}
-
-	report, err = Update(opts(repo, source, "b"))
-	decision = decisionFor(t, report, path)
-	if err != nil || report.Applied || decision.Action != Preserve || decision.Ownership != UserOwned {
-		t.Fatalf("repeated update reported the wrong collision ownership: report=%#v err=%v", report, err)
+	if lockAfter := read(t, repo, LockFileName); lockAfter != lockBefore {
+		t.Fatal("collision changed lock")
 	}
 }
 
