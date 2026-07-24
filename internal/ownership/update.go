@@ -527,7 +527,8 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 			}
 		case !hasLock:
 			if class == Managed && (currentDigest != incoming.digest || !modeMatches(currentMode, incoming.mode)) {
-				decision.Action, decision.Reason = Conflict, "existing managed file does not match initialization source"
+				decision.Action, decision.Reason = Preserve, "adopt existing managed file as downstream-owned without overwriting it"
+				file = File{Ownership: UserOwned}
 			} else {
 				decision.Action, decision.Reason = Preserve, "adopt existing file without overwriting it"
 			}
@@ -539,6 +540,9 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 				decision.Action, decision.Reason = Preserve, "untracked existing file is downstream-owned"
 				file = File{Ownership: UserOwned}
 			}
+		case class == Managed && prior.Ownership == UserOwned && prior.BaseDigest == "":
+			decision.Action, decision.Reason = Preserve, "initialization-adopted file is never overwritten"
+			file = prior
 		case class == Managed && (prior.Ownership == Adapted || prior.Ownership == UserOwned):
 			downstreamChanged := prior.BaseDigest == "" || currentDigest != prior.BaseDigest || !modeMatches(currentMode, priorBaseMode)
 			upstreamChanged := prior.BaseDigest == "" || incoming.digest != prior.BaseDigest || incoming.mode != priorBaseMode

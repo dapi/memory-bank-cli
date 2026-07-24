@@ -67,6 +67,35 @@ func TestInitRegeneratesExistingGeneratedFile(t *testing.T) {
 	}
 }
 
+func TestInitAdoptsConflictingManagedFileAsUserOwned(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	path := ".envrc"
+	write(t, repo, path, "project-specific validation rules\n")
+	write(t, source, "template/"+path, "template validation rules\n")
+
+	report, err := Init(opts(repo, source, "a"))
+	decision := decisionFor(t, report, path)
+	if err != nil || !report.Applied || report.ConflictCount != 0 || decision.Action != Preserve || decision.Ownership != UserOwned {
+		t.Fatalf("init did not safely adopt the conflicting file: report=%#v err=%v", report, err)
+	}
+	if got := read(t, repo, path); got != "project-specific validation rules\n" {
+		t.Fatalf("init overwrote the project file: %q", got)
+	}
+	lock, exists, err := ReadLock(repo)
+	if err != nil || !exists || lock.Files[path].Ownership != UserOwned {
+		t.Fatalf("init did not record downstream ownership: lock=%#v exists=%v err=%v", lock.Files[path], exists, err)
+	}
+
+	write(t, source, "template/"+path, "new template validation rules\n")
+	report, err = Update(opts(repo, source, "b"))
+	if err != nil || !report.Applied || decisionFor(t, report, path).Action != Preserve {
+		t.Fatalf("update did not preserve the adopted project file: report=%#v err=%v", report, err)
+	}
+	if got := read(t, repo, path); got != "project-specific validation rules\n" {
+		t.Fatalf("update overwrote the adopted project file: %q", got)
+	}
+}
+
 func TestCollisionWithNewManagedFileIsRejected(t *testing.T) {
 	repo, source := t.TempDir(), t.TempDir()
 	seed := "memory-bank/dna/seed.md"
