@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
+	"path"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -103,11 +104,14 @@ func Run(options Options) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
+	lock, hasLock, err := ownership.ReadLock(options.RepoRoot)
+	if err != nil {
+		return Report{}, fmt.Errorf("read ownership lock: %w", err)
+	}
 	report := Report{FormatVersion: 1, DryRun: options.DryRun}
 	for _, item := range changes {
-		class := ownership.Classify(item.path)
-		if class != ownership.Managed {
-			report.Decisions = append(report.Decisions, Decision{Path: item.path, Action: "exclude", Reason: string(class) + " paths are not published"})
+		if !isManagedPath(item.path, lock, hasLock) {
+			report.Decisions = append(report.Decisions, Decision{Path: item.path, Action: "exclude", Reason: "non-managed paths are not published"})
 			continue
 		}
 		action := "include"
@@ -122,7 +126,7 @@ func Run(options Options) (Report, error) {
 	}
 	included := make([]change, 0)
 	for _, item := range changes {
-		if ownership.Classify(item.path) == ownership.Managed {
+		if isManagedPath(item.path, lock, hasLock) {
 			included = append(included, item)
 		}
 	}
@@ -190,15 +194,14 @@ func Run(options Options) (Report, error) {
 		return failed(fmt.Errorf("upstream payload root changed from %q to %q while switching to default branch", payloadRoot, actualPayloadRoot))
 	}
 	for _, item := range included {
-		relative := strings.TrimPrefix(item.path, "memory-bank/")
 		destinationRoot := payloadDestinationRoot(checkout, payloadRoot)
-		destination := filepath.Join(destinationRoot, filepath.FromSlash(relative))
-		stagePaths = append(stagePaths, filepath.ToSlash(filepath.Join(payloadRootForPath(payloadRoot), relative)))
+		destination, stagePath := payloadDestinationPath(checkout, payloadRoot, item.path)
+		stagePaths = append(stagePaths, stagePath)
 		if item.delete {
 			if err := removeRegular(destination, destinationRoot); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return failed(fmt.Errorf("delete %s: %w", item.path, err))
 			}
-		} else if err := copyRegular(filepath.Join(options.RepoRoot, filepath.FromSlash(item.path)), destination, filepath.Join(options.RepoRoot, "memory-bank"), destinationRoot); err != nil {
+		} else if err := copyRegular(filepath.Join(options.RepoRoot, filepath.FromSlash(item.path)), destination, options.RepoRoot, destinationRoot); err != nil {
 			return failed(fmt.Errorf("stage %s: %w", item.path, err))
 		}
 	}
@@ -349,20 +352,31 @@ func selectPayloadRootAt(run func(string, string, ...string) (string, error), ch
 // for downstream memory-bank paths. Legacy roots retain their old layout.
 func payloadDestinationRoot(checkout, payloadRoot string) string {
 	if payloadRoot == "template" {
-		return filepath.Join(checkout, payloadRoot, "memory-bank")
+		return filepath.Join(checkout, payloadRoot)
 	}
 	return filepath.Join(checkout, payloadRoot)
 }
 
-func payloadRootForPath(payloadRoot string) string {
-	if payloadRoot == "template" {
-		return filepath.Join(payloadRoot, "memory-bank")
+func payloadDestinationPath(checkout, payloadRoot, downstreamPath string) (string, string) {
+	if payloadRoot != "template" {
+		relative := strings.TrimPrefix(downstreamPath, "memory-bank/")
+		stagePath := filepath.ToSlash(filepath.Join(payloadRoot, relative))
+		return filepath.Join(checkout, filepath.FromSlash(stagePath)), stagePath
 	}
-	return payloadRoot
+	stagePath := filepath.ToSlash(filepath.Join(payloadRoot, downstreamPath))
+	return filepath.Join(checkout, filepath.FromSlash(stagePath)), stagePath
+}
+
+func isManagedPath(path string, lock ownership.Lock, hasLock bool) bool {
+	if hasLock {
+		file, exists := lock.Files[path]
+		return exists && file.Ownership == ownership.Managed
+	}
+	return ownership.Classify(path) == ownership.Managed
 }
 
 func changedPaths(run func(string, string, ...string) (string, error), root string) ([]change, error) {
-	out, err := run(root, "git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "memory-bank")
+	out, err := run(root, "git", "status", "--porcelain=v1", "-z", "--untracked-files=all")
 	if err != nil {
 		return nil, fmt.Errorf("inspect downstream changes: %w", err)
 	}
@@ -376,6 +390,11 @@ func changedPaths(run func(string, string, ...string) (string, error), root stri
 		status, paths := line[:2], line[3:]
 		if strings.Contains(status, "U") {
 			return nil, fmt.Errorf("downstream path has unresolved Git conflict: %q", paths)
+		}
+		if strings.HasSuffix(paths, "/") {
+			// Git reports nested worktrees as untracked directories even with
+			// --untracked-files=all. They are never publishable files.
+			continue
 		}
 		if strings.Contains(status, "R") {
 			if index+1 >= len(records) || records[index+1] == "" {
@@ -417,7 +436,7 @@ func branchName(now time.Time) (string, error) {
 
 func addChange(set map[string]change, item change) error {
 	item.path = filepath.ToSlash(item.path)
-	if !strings.HasPrefix(item.path, "memory-bank/") || strings.Contains(item.path, "../") {
+	if item.path == "" || filepath.IsAbs(item.path) || strings.Contains(item.path, "\\") || path.Clean(item.path) != item.path || item.path == "." || strings.HasPrefix(item.path, "../") {
 		return fmt.Errorf("ambiguous changed path %q", item.path)
 	}
 	set[item.path] = item
@@ -436,11 +455,18 @@ func copyRegular(source, destination, sourceRoot, destinationRoot string) error 
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	info, err := os.Lstat(source)
+	if err != nil {
+		return err
+	}
 	data, err := os.ReadFile(source)
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(destination, data, 0o644)
+	if err := os.WriteFile(destination, data, info.Mode().Perm()); err != nil {
+		return err
+	}
+	return os.Chmod(destination, info.Mode().Perm())
 }
 
 func removeRegular(path, root string) error {

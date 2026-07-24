@@ -8,6 +8,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/dapi/memory-bank-cli/internal/ownership"
 )
 
 func git(t *testing.T, dir string, args ...string) string {
@@ -53,7 +55,7 @@ func TestRunCreatesBranchCopiesManagedFileAndReturnsPR(t *testing.T) {
 			return "", nil
 		case "git ls-tree -d --name-only origin/main -- memory-bank":
 			return "", nil
-		case "git status --porcelain=v1 -z --untracked-files=all -- memory-bank":
+		case "git status --porcelain=v1 -z --untracked-files=all":
 			return " M memory-bank/dna/rule.md\x00 M memory-bank/product/note.md\x00", nil
 		case "git checkout -b memory-bank-cli/push-20260724-120000 origin/main":
 			if dir != checkout {
@@ -117,7 +119,7 @@ func TestRunCompensatesRemoteBranchWhenPRCreationFails(t *testing.T) {
 			return "", nil
 		case "git ls-tree -d --name-only origin/main -- memory-bank":
 			return "", nil
-		case "git status --porcelain=v1 -z --untracked-files=all -- memory-bank":
+		case "git status --porcelain=v1 -z --untracked-files=all":
 			return " M memory-bank/dna/rule.md\x00", nil
 		case "git ls-remote --exit-code --heads origin memory-bank-cli/push-20260724-120000":
 			return "", errors.New("not found")
@@ -221,6 +223,59 @@ func TestDryRunIncludesOnlyManagedPaths(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(upstream, ".git")); err != nil {
 		t.Fatalf("dry run changed checkout: %v", err)
 	}
+}
+
+func TestDryRunIncludesCanonicalTemplatePathsOutsideMemoryBank(t *testing.T) {
+	source, root := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(source, "template", "memory-bank", "dna"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(source, "template", ".config"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "template", "memory-bank", "dna", "rule.md"), []byte("base\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "template", ".config", "hidden"), []byte("base\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(t, source, "init", "--quiet")
+	git(t, source, "add", ".")
+	git(t, source, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "template")
+	ref := git(t, source, "rev-parse", "HEAD")
+	if _, err := ownership.Init(ownership.Options{RepoRoot: root, SourceRoot: source, TemplateVersion: "v1", SourceRef: ref}); err != nil {
+		t.Fatal(err)
+	}
+	git(t, root, "init", "--quiet")
+	git(t, root, "add", ".")
+	git(t, root, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "downstream")
+	upstream := filepath.Join(root, "memory-bank", ".repo")
+	if err := os.MkdirAll(filepath.Join(upstream, "template", "memory-bank"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(upstream, "template", "memory-bank", ".keep"), []byte("base\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(t, upstream, "init", "--quiet")
+	git(t, upstream, "remote", "add", "origin", "https://github.com/example/upstream.git")
+	git(t, upstream, "add", ".")
+	git(t, upstream, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "base")
+	git(t, upstream, "update-ref", "refs/remotes/origin/master", "HEAD")
+	git(t, upstream, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/master")
+	if err := os.WriteFile(filepath.Join(root, ".config", "hidden"), []byte("changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Run(Options{RepoRoot: root, DryRun: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, decision := range report.Decisions {
+		if decision.Path == ".config/hidden" && decision.Action == "include" {
+			return
+		}
+	}
+	t.Fatalf("canonical path outside memory-bank was not included: %#v", report.Decisions)
 }
 
 func TestRejectsDirtyUpstreamCheckout(t *testing.T) {
