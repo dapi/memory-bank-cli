@@ -191,6 +191,9 @@ func TestDryRunIncludesOnlyManagedPaths(t *testing.T) {
 	git(t, upstream, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "base")
 	git(t, upstream, "update-ref", "refs/remotes/origin/master", "HEAD")
 	git(t, upstream, "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/master")
+	headBefore := git(t, upstream, "rev-parse", "HEAD")
+	branchBefore := git(t, upstream, "branch", "--show-current")
+	statusBefore := git(t, upstream, "status", "--porcelain")
 	if err := os.WriteFile(filepath.Join(root, "memory-bank", "dna", "rule.md"), []byte("changed\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -216,6 +219,15 @@ func TestDryRunIncludesOnlyManagedPaths(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(upstream, ".git")); err != nil {
 		t.Fatalf("dry run changed checkout: %v", err)
+	}
+	if headAfter := git(t, upstream, "rev-parse", "HEAD"); headAfter != headBefore {
+		t.Fatalf("dry run changed upstream HEAD from %s to %s", headBefore, headAfter)
+	}
+	if branchAfter := git(t, upstream, "branch", "--show-current"); branchAfter != branchBefore {
+		t.Fatalf("dry run changed upstream branch from %q to %q", branchBefore, branchAfter)
+	}
+	if statusAfter := git(t, upstream, "status", "--porcelain"); statusAfter != statusBefore {
+		t.Fatalf("dry run changed upstream status from %q to %q", statusBefore, statusAfter)
 	}
 }
 
@@ -269,6 +281,94 @@ func TestChangedPathsRepresentsDeletionAndRename(t *testing.T) {
 	}
 	if !foundNew {
 		t.Fatalf("missing rename destination: %#v", changes)
+	}
+}
+
+func TestChangedPathsRejectsEveryUnmergedStatus(t *testing.T) {
+	for _, status := range []string{"DD", "AU", "UD", "UA", "DU", "AA", "UU"} {
+		t.Run(status, func(t *testing.T) {
+			_, err := changedPaths(func(_ string, _ string, _ ...string) (string, error) {
+				return status + " memory-bank/dna/conflict.md\x00", nil
+			}, "unused")
+			if err == nil || !strings.Contains(err.Error(), "resolve the conflict") {
+				t.Fatalf("status %s should return actionable conflict error, got %v", status, err)
+			}
+		})
+	}
+}
+
+func TestSafeCheckoutRejectsSymlinkedMemoryBankParent(t *testing.T) {
+	root, outside := t.TempDir(), t.TempDir()
+	if err := os.MkdirAll(filepath.Join(outside, ".repo"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "memory-bank")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	_, err := safeCheckout(root)
+	if err == nil || !strings.Contains(err.Error(), "memory-bank must be a real directory") || !strings.Contains(err.Error(), "replace it") {
+		t.Fatalf("want actionable symlink-parent rejection, got %v", err)
+	}
+}
+
+func TestSafeCheckoutRejectsSymlinkedRepo(t *testing.T) {
+	root, outside := t.TempDir(), t.TempDir()
+	if err := os.Mkdir(filepath.Join(root, "memory-bank"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, filepath.Join(root, "memory-bank", ".repo")); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	_, err := safeCheckout(root)
+	if err == nil || !strings.Contains(err.Error(), "memory-bank/.repo must be a real directory") || !strings.Contains(err.Error(), "replace it") {
+		t.Fatalf("want actionable symlink-checkout rejection, got %v", err)
+	}
+}
+
+func TestCleanReportsUpstreamConflictBeforeDirtyState(t *testing.T) {
+	checkout := t.TempDir()
+	run := func(_ string, name string, args ...string) (string, error) {
+		call := name + " " + strings.Join(args, " ")
+		switch call {
+		case "git rev-parse --is-inside-work-tree":
+			return "true", nil
+		case "git rev-parse --show-toplevel":
+			return checkout, nil
+		case "git diff --name-only --diff-filter=U":
+			return "memory-bank/dna/conflict.md", nil
+		case "git status --porcelain":
+			return "UU memory-bank/dna/conflict.md", nil
+		default:
+			return "", errors.New("unexpected command: " + call)
+		}
+	}
+	err := clean(run, checkout)
+	if err == nil || !strings.Contains(err.Error(), "unresolved conflicts") || !strings.Contains(err.Error(), "resolve them") {
+		t.Fatalf("want actionable upstream-conflict error, got %v", err)
+	}
+}
+
+func TestGitHubRepositoryAcceptsDefaultAndCustomUpstreams(t *testing.T) {
+	for _, test := range []struct {
+		remote string
+		want   string
+	}{
+		{remote: "git@github.com:dapi/memory-bank.git", want: "dapi/memory-bank"},
+		{remote: "https://github.com/example/custom-bank.git", want: "example/custom-bank"},
+	} {
+		t.Run(test.want, func(t *testing.T) {
+			got, err := githubRepository(test.remote)
+			if err != nil || got != test.want {
+				t.Fatalf("githubRepository(%q) = %q, %v; want %q", test.remote, got, err, test.want)
+			}
+		})
+	}
+}
+
+func TestGitHubRepositoryRejectsInvalidRemoteWithNextStep(t *testing.T) {
+	_, err := githubRepository("ssh://git@example.invalid/bank.git")
+	if err == nil || !strings.Contains(err.Error(), "set memory-bank/.repo origin") {
+		t.Fatalf("want actionable invalid-remote error, got %v", err)
 	}
 }
 
