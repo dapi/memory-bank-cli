@@ -25,18 +25,20 @@ artifacts, lock/state and `.repo`, are reported as exclusions.
 
 ## Install
 
-Install a released version with Go:
+Install the latest released version with Go:
 
 ```sh
-go install github.com/dapi/memory-bank-cli/cmd/memory-bank-cli@vX.Y.Z
+go install github.com/dapi/memory-bank-cli/cmd/memory-bank-cli@latest
 ```
 
-The first release under the `memory-bank-cli` executable identity will be
-`v1.0.0`. After it is published and installed, run:
+For a reproducible install, replace `latest` with a tag such as `v1.4.0`.
+After installation, run:
 
 ```sh
 memory-bank-cli --version
 ```
+
+See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
 ## Upgrade
 
