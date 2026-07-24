@@ -2,6 +2,8 @@
 package push
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"os"
@@ -29,10 +31,11 @@ type Report struct {
 }
 
 type Options struct {
-	RepoRoot string
-	DryRun   bool
-	Now      func() time.Time
-	Run      func(dir, name string, args ...string) (string, error)
+	RepoRoot   string
+	DryRun     bool
+	Now        func() time.Time
+	BranchName func(time.Time) (string, error)
+	Run        func(dir, name string, args ...string) (string, error)
 }
 
 type change struct {
@@ -65,6 +68,11 @@ func Run(options Options) (Report, error) {
 	remote, err := run(checkout, "git", "remote", "get-url", "origin")
 	if err != nil || strings.TrimSpace(remote) == "" {
 		return Report{}, fmt.Errorf("upstream checkout has no valid origin remote")
+	}
+	if !options.DryRun {
+		if identity, err := run(checkout, "gh", "repo", "view", "--json", "id"); err != nil || strings.TrimSpace(identity) == "" {
+			return Report{}, errors.New("upstream origin is not an accessible GitHub repository for PR creation")
+		}
 	}
 	defaultBranch, err := defaultBranch(run, checkout)
 	if err != nil {
@@ -112,17 +120,24 @@ func Run(options Options) (Report, error) {
 	if len(included) == 0 {
 		return report, errors.New("no managed Memory Bank changes to publish")
 	}
-	branch := fmt.Sprintf("memory-bank-cli/push-%s", now().UTC().Format("20060102-150405"))
-	branchCreated, pushAttempted := false, false
+	makeBranch := options.BranchName
+	if makeBranch == nil {
+		makeBranch = branchName
+	}
+	branch, err := makeBranch(now())
+	if err != nil {
+		return report, err
+	}
+	if _, err := run(checkout, "git", "ls-remote", "--exit-code", "--heads", "origin", branch); err == nil {
+		return report, fmt.Errorf("upstream branch %q already exists; retry the command", branch)
+	}
+	branchCreated, remoteCreated := false, false
 	stagePaths := make([]string, 0, len(included))
 	failed := func(cause error) (Report, error) {
 		var cleanup []string
-		if pushAttempted {
-			_, existsErr := run(checkout, "git", "ls-remote", "--exit-code", "--heads", "origin", branch)
-			if existsErr == nil {
-				if _, err := run(checkout, "git", "push", "origin", "--delete", branch); err != nil {
-					cleanup = append(cleanup, "remote branch remains: "+err.Error())
-				}
+		if remoteCreated {
+			if _, err := run(checkout, "git", "push", "origin", "--delete", branch); err != nil {
+				cleanup = append(cleanup, "remote branch remains: "+err.Error())
 			}
 		}
 		if _, err := run(checkout, "git", "reset", "--hard"); err != nil {
@@ -184,10 +199,10 @@ func Run(options Options) (Report, error) {
 	if _, err := run(checkout, "git", "commit", "-m", "Publish managed Memory Bank changes"); err != nil {
 		return failed(fmt.Errorf("commit upstream changes: %w", err))
 	}
-	pushAttempted = true
 	if _, err := run(checkout, "git", "push", "-u", "origin", branch); err != nil {
-		return failed(fmt.Errorf("push upstream branch: %w", err))
+		return failed(fmt.Errorf("push upstream branch: %w; remote branch ownership is unproven and will not be deleted", err))
 	}
+	remoteCreated = true
 	pr, err := run(checkout, "gh", "pr", "create", "--head", branch, "--base", defaultBranch, "--fill")
 	if err != nil {
 		return failed(fmt.Errorf("create PR: %w", err))
@@ -313,6 +328,9 @@ func changedPaths(run func(string, string, ...string) (string, error), root stri
 			continue
 		}
 		status, paths := line[:2], line[3:]
+		if strings.Contains(status, "U") {
+			return nil, fmt.Errorf("downstream path has unresolved Git conflict: %q", paths)
+		}
 		if strings.Contains(status, "R") {
 			if index+1 >= len(records) || records[index+1] == "" {
 				return nil, fmt.Errorf("ambiguous rename %q", line)
@@ -341,6 +359,14 @@ func changedPaths(run func(string, string, ...string) (string, error), root stri
 		return paths[i].path < paths[j].path
 	})
 	return paths, nil
+}
+
+func branchName(now time.Time) (string, error) {
+	bytes := make([]byte, 6)
+	if _, err := rand.Read(bytes); err != nil {
+		return "", fmt.Errorf("generate unique upstream branch name: %w", err)
+	}
+	return fmt.Sprintf("memory-bank-cli/push-%s-%s", now.UTC().Format("20060102-150405.000000000"), hex.EncodeToString(bytes)), nil
 }
 
 func addChange(set map[string]change, item change) error {

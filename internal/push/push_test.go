@@ -35,6 +35,10 @@ func TestRunCreatesBranchCopiesManagedFileAndReturnsPR(t *testing.T) {
 			return "", nil
 		case "git remote get-url origin":
 			return "https://github.com/example/upstream.git", nil
+		case "gh repo view --json id":
+			return "{\"id\":\"R_1\"}", nil
+		case "git ls-remote --exit-code --heads origin memory-bank-cli/push-20260724-120000":
+			return "", errors.New("not found")
 		case "git symbolic-ref --short refs/remotes/origin/HEAD":
 			return "origin/main", nil
 		case "git branch --show-current":
@@ -58,7 +62,7 @@ func TestRunCreatesBranchCopiesManagedFileAndReturnsPR(t *testing.T) {
 			return "", errors.New("unexpected command: " + call)
 		}
 	}
-	report, err := Run(Options{RepoRoot: root, Now: func() time.Time { return time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC) }, Run: run})
+	report, err := Run(Options{RepoRoot: root, Now: func() time.Time { return time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC) }, BranchName: func(time.Time) (string, error) { return "memory-bank-cli/push-20260724-120000", nil }, Run: run})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -93,6 +97,8 @@ func TestRunCompensatesRemoteBranchWhenPRCreationFails(t *testing.T) {
 			return "", nil
 		case "git remote get-url origin":
 			return "https://github.com/example/upstream.git", nil
+		case "gh repo view --json id":
+			return "{\"id\":\"R_1\"}", nil
 		case "git symbolic-ref --short refs/remotes/origin/HEAD":
 			return "origin/main", nil
 		case "git branch --show-current":
@@ -106,7 +112,7 @@ func TestRunCompensatesRemoteBranchWhenPRCreationFails(t *testing.T) {
 		case "git status --porcelain=v1 -z --untracked-files=all -- memory-bank":
 			return " M memory-bank/dna/rule.md\x00", nil
 		case "git ls-remote --exit-code --heads origin memory-bank-cli/push-20260724-120000":
-			return "ref", nil
+			return "", errors.New("not found")
 		case "git checkout -b memory-bank-cli/push-20260724-120000 origin/main":
 			return "", nil
 		case "gh pr create --head memory-bank-cli/push-20260724-120000 --base main --fill":
@@ -115,7 +121,7 @@ func TestRunCompensatesRemoteBranchWhenPRCreationFails(t *testing.T) {
 			return "", errors.New("unexpected command: " + call)
 		}
 	}
-	_, err := Run(Options{RepoRoot: root, Now: func() time.Time { return time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC) }, Run: run})
+	_, err := Run(Options{RepoRoot: root, Now: func() time.Time { return time.Date(2026, 7, 24, 12, 0, 0, 0, time.UTC) }, BranchName: func(time.Time) (string, error) { return "memory-bank-cli/push-20260724-120000", nil }, Run: run})
 	if err == nil || !strings.Contains(err.Error(), "create PR: forbidden") {
 		t.Fatalf("want compensated failure, got %v", err)
 	}
