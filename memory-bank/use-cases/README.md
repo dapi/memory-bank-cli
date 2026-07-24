@@ -17,3 +17,4 @@ status: active
 | `UC-001` | [Adopt a template](UC-001-adopt-template.md) | A maintainer creates an ownership-tracked Memory Bank from a pinned source. | active | Repository maintainer | none | existing CLI |
 | `UC-002` | [Safely update a template](UC-002-update-template.md) | A maintainer previews or applies a conflict-aware update without overwriting protected content. | active | Repository maintainer | none | existing CLI |
 | `UC-003` | [Audit documentation](UC-003-audit-documentation.md) | A contributor or automation obtains navigation/governance diagnostic findings. | active | Contributor / automation | none | existing CLI |
+| `UC-004` | [Publish managed changes upstream](UC-004-publish-managed-changes-upstream.md) | A maintainer previews or publishes managed downstream changes through a safe upstream PR. | active | Repository maintainer | none | `FT-023` |
