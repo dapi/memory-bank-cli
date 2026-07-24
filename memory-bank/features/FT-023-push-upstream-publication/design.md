@@ -111,13 +111,13 @@ The CLI reads downstream source, validates and temporarily mutates only the name
 
 | Analysis | Required | Method | Result / evidence |
 | --- | --- | --- | --- |
-| Contract compatibility | yes | FPF consequence review plus contract tests | `decision-log.md`; `CHK-01`–`CHK-05` evidence required before closure |
-| State / transition completeness | yes | Walk through preflight → branch → commit → push → PR → compensate | all outcomes recorded in `SD-02`, `FM-*`; validate with `CHK-04` |
-| Failure propagation | yes | Failure-mode review and injected-failure tests | `FM-01`–`FM-03`, `CHK-02`, `CHK-04` |
-| Concurrency / ordering | yes | Pin/revalidate preconditions and sequential Git-command tests | reject state changes before mutation; `CHK-04` |
-| Security boundaries | yes | Path/remote validation review and negative tests | `CTR-02`, `FM-01`, `CHK-02` |
+| Contract compatibility | yes | FPF consequence review plus contract tests | passed; `decision-log.md` and `brief.md` `EVID-01`–`EVID-05` |
+| State / transition completeness | yes | Walk through preflight → branch → commit → push → PR → compensate | passed; `SD-02`, `FM-*`, `EVID-04` |
+| Failure propagation | yes | Failure-mode review and injected-failure tests | passed; `FM-01`–`FM-03`, `EVID-02`, `EVID-04` |
+| Concurrency / ordering | yes | Pin/revalidate preconditions and sequential Git-command tests | passed; pre-mutation rejection and `EVID-04` |
+| Security boundaries | yes | Path/remote validation review and negative tests | passed; `CTR-02`, `FM-01`, `EVID-02` |
 | Capacity / latency | no | One bounded operator-triggered Git operation; no new service/load path | N/A |
-| Migration / evolution safety | yes | CLI regression and non-default-upstream tests | `CHK-01`, full suite |
+| Migration / evolution safety | yes | CLI regression and non-default-upstream tests | passed; `EVID-01` and completion PR #34 |
 
 ## ADR / External Design Dependencies
 

@@ -20,6 +20,7 @@ audience: humans_and_agents
 
 - [brief.md](brief.md) — canonical problem space, validation-profile decision и verify contract.
 - [design.md](design.md) — selected publication, transaction and Git/GitHub boundary design.
-- [implementation-plan.md](implementation-plan.md) — grounded execution, tests and live-validation approval gate.
+- [implementation-plan.md](implementation-plan.md) — archived execution and
+  validation record; all checkpoints are closed.
 - [decision-log.md](decision-log.md) — provenance и FPF-разбор blocking decisions; не владеет требованиями или selected solution.
 - [feature-review-report.md](feature-review-report.md) — результат bounded review–improve.

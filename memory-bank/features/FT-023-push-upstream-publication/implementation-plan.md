@@ -6,7 +6,7 @@ purpose: "Execution and verification record for FT-023; refines canonical brief/
 derived_from:
   - brief.md
   - design.md
-status: active
+status: archived
 audience: humans_and_agents
 must_not_define:
   - ft_023_scope
@@ -30,10 +30,10 @@ must_not_define:
 
 | Surface | Canonical refs | Automated coverage | Command | Manual-only gap |
 | --- | --- | --- | --- | --- |
-| selection and dry-run | `SD-01`, `CTR-01`, `INV-01`, `INV-03` | managed inclusion and adapted exclusion | `go test ./internal/push` | none |
-| preflight | `CTR-02`, `FM-01` | dirty nested checkout rejection | `go test ./internal/push` | real remote/GitHub boundary |
-| CLI regression | `SOL-01`, `SOL-03` | command integration and root help | `go test ./internal/cli` | live PR creation |
-| repository regression | `SD-03` | full suite, vet, navigation | `go test ./...`; `go vet ./...`; `go run ./cmd/memory-bank-cli lint --repo-root .` | approved live PR evidence |
+| selection and dry-run | `SD-01`, `CTR-01`, `INV-01`, `INV-03` | managed inclusion, adapted exclusion and state immutability | `go test ./internal/push` | none |
+| preflight | `CTR-02`, `FM-01` | dirty, unsafe, conflicted and invalid-remote rejection | `go test ./internal/push` | none |
+| CLI regression | `SOL-01`, `SOL-03` | command integration and root/push help | `go test ./internal/cli` | none |
+| repository regression | `SD-03` | full suite, vet, navigation and approved live PR | `go test -count=1 -race ./...`; `go vet ./...`; `go run ./cmd/memory-bank-cli lint --repo-root .` | none; live carrier is dapi/memory-bank#76 |
 
 ## Open Questions / Ambiguities
 
@@ -65,13 +65,15 @@ must_not_define:
 
 | Checkpoint ID | Condition |
 | --- | --- |
-| `CP-01` | managed-only and dirty-checkout tests pass. |
-| `CP-02` | full Go suite, vet and navigation audit pass. |
-| `CP-03` | approved live PR URL or exact recovery evidence is recorded. |
+| `CP-01` | **PASS** — managed-only, dry-run and preflight failure tests pass. |
+| `CP-02` | **PASS** — full race suite, vet, navigation audit and PR CI pass. |
+| `CP-03` | **PASS** — live [dapi/memory-bank#76](https://github.com/dapi/memory-bank/pull/76) and default-branch preservation are recorded in `brief.md`. |
 
 ## Approval Gate
 
-`AG-01`: a real `push` creates an external upstream branch and PR; it requires upstream-owner approval and credentials. This PR does not claim `EVID-01`/`EVID-04` live evidence.
+`AG-01`: the repository owner's completion request authorized controlled live
+validation. [dapi/memory-bank#76](https://github.com/dapi/memory-bank/pull/76)
+was created against `main`, verified, closed without merge and cleaned up.
 
 ## Stop Conditions / Fallback
 
@@ -82,4 +84,11 @@ must_not_define:
 
 ## Plan-local Evidence
 
-- `EVID-06`: local implementation verification recorded in this PR.
+- `EVID-06`: local and CI implementation verification is recorded in
+  [completion PR #34](https://github.com/dapi/memory-bank-cli/pull/34).
+
+## Archive Note
+
+All checkpoints and the manual approval gate are closed. Canonical acceptance
+evidence remains in `brief.md`; this execution plan is archived with
+`delivery_status: done`.
