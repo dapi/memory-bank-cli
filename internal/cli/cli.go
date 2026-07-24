@@ -312,6 +312,11 @@ func runDoctor(arguments []string, stdout, stderr io.Writer) int {
 	profileArgument := flags.String("profile", "auto", "diagnostic profile: auto, template, or downstream")
 	scopeRootArgument := flags.String("scope-root", defaultScopeRoot, "repository-relative Memory Bank directory to diagnose")
 	maxDepth := flags.Int("max-depth", defaultMaxDepth, "maximum navigation depth before a warning")
+	fix := flags.Bool("fix", false, "repair supported findings (currently template.identity_missing)")
+	dryRun := flags.Bool("dry-run", false, "show the complete repair mutation plan without applying it (requires --fix)")
+	sourceRootArgument := flags.String("source", "", "clean template Git checkout containing template/ (legacy memory-bank-template/ or memory-bank/ is accepted for migration)")
+	templateVersion := flags.String("template-version", "", "human-readable template version for a repair")
+	sourceRef := flags.String("source-ref", "", "full commit SHA matching the repair source checkout HEAD")
 	jsonOutput := addJSONOutputFlag(flags)
 	if err := flags.Parse(arguments); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -325,6 +330,19 @@ func runDoctor(arguments []string, stdout, stderr io.Writer) int {
 	}
 	if *maxDepth < 0 {
 		fmt.Fprintln(stderr, "memory-bank-cli doctor: --max-depth must be greater than or equal to 0")
+		return exitUsage
+	}
+	explicitSource := *sourceRootArgument != "" || *templateVersion != "" || *sourceRef != ""
+	if explicitSource && (*sourceRootArgument == "" || *templateVersion == "" || *sourceRef == "") {
+		fmt.Fprintln(stderr, "memory-bank-cli doctor: --source, --template-version, and --source-ref must be provided together")
+		return exitUsage
+	}
+	if *dryRun && !*fix {
+		fmt.Fprintln(stderr, "memory-bank-cli doctor: --dry-run requires --fix")
+		return exitUsage
+	}
+	if explicitSource && !*fix {
+		fmt.Fprintln(stderr, "memory-bank-cli doctor: --source, --template-version, and --source-ref require --fix")
 		return exitUsage
 	}
 	profile, err := doctor.NormalizeProfile(*profileArgument)
@@ -357,6 +375,32 @@ func runDoctor(arguments []string, stdout, stderr io.Writer) int {
 		fmt.Fprintln(stderr, err)
 		return exitFailure
 	}
+	if *fix && hasDoctorFinding(report, "template.identity_missing") {
+		if !explicitSource {
+			fmt.Fprintln(stderr, "memory-bank-cli doctor --fix: template.identity_missing requires --source, --template-version, and --source-ref")
+			return exitUsage
+		}
+		sourceRoot, err := filepath.Abs(*sourceRootArgument)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return exitFailure
+		}
+		plan, err := ownership.Init(ownership.Options{RepoRoot: repoRoot, SourceRoot: sourceRoot, TemplateVersion: *templateVersion, SourceRef: *sourceRef, DryRun: *dryRun, AgentFile: *agentFile})
+		report.Repair = &doctor.Repair{Finding: "template.identity_missing", Plan: plan}
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return exitFailure
+		}
+		if plan.Applied {
+			repaired, err := doctor.Run(doctor.Options{RepoRoot: repoRoot, ScopeRoot: scopeRoot, AgentFile: *agentFile, Profile: profile, MaxDepth: *maxDepth})
+			if err != nil {
+				fmt.Fprintln(stderr, err)
+				return exitFailure
+			}
+			repaired.Repair = report.Repair
+			report = repaired
+		}
+	}
 	if err := writeResult(stdout, *jsonOutput, report, func(writer io.Writer) { printDoctorReport(writer, report) }); err != nil {
 		fmt.Fprintln(stderr, err)
 		return exitFailure
@@ -365,6 +409,15 @@ func runDoctor(arguments []string, stdout, stderr io.Writer) int {
 		return exitFailure
 	}
 	return exitSuccess
+}
+
+func hasDoctorFinding(report doctor.Report, code string) bool {
+	for _, finding := range report.Findings {
+		if finding.Code == code {
+			return true
+		}
+	}
+	return false
 }
 
 func printDoctorReport(writer io.Writer, report doctor.Report) {
@@ -379,6 +432,13 @@ func printDoctorReport(writer io.Writer, report doctor.Report) {
 		}
 		fmt.Fprintf(writer, "%s\t%s\t%s\t%s\n", finding.Severity, finding.Code, subject, finding.Message)
 		fmt.Fprintf(writer, "  remediation: %s\n", finding.Remediation)
+	}
+	if report.Repair != nil {
+		fmt.Fprintf(writer, "Repair plan for %s:\n", report.Repair.Finding)
+		printOwnershipReport(writer, report.Repair.Plan)
+		if report.Repair.Plan.Applied {
+			fmt.Fprintln(writer, "Repair completed: commit memory-bank/.lock before running update.")
+		}
 	}
 	fmt.Fprintf(writer, "Result: %d error(s), %d warning(s), %d info\n", report.Summary.Errors, report.Summary.Warnings, report.Summary.Info)
 }
