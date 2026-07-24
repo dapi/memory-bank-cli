@@ -6,6 +6,7 @@ purpose: "Feature-local solution for safe upstream publication: managed-only sel
 derived_from:
   - brief.md
   - decision-log.md
+  - "https://github.com/dapi/memory-bank-cli/issues/29"
 status: active
 audience: humans_and_agents
 must_not_define:
@@ -36,7 +37,7 @@ must_not_define:
 ```mermaid
 flowchart LR
     operator["Operator"] --> cli["memory-bank-cli push"]
-    cli --> downstream["Current Git repository\nmemory-bank/"]
+    cli --> downstream["Current Git repository\nlock-managed paths"]
     cli --> checkout["Upstream checkout\nmemory-bank/.repo"]
     checkout --> remote["Configured upstream Git remote"]
     cli --> github["GitHub PR boundary"]
@@ -56,7 +57,7 @@ The CLI reads downstream source, validates and temporarily mutates only the name
 
 ## Selected Solution
 
-- `SOL-01` Add `memory-bank-cli push [--dry-run]`. Resolve the current Git root, read changed paths under `memory-bank/`, and produce an inclusion/exclusion plan before mutation.
+- `SOL-01` Add `memory-bank-cli push [--dry-run]`. Resolve the current Git root, read all changed repository-relative paths, and produce an inclusion/exclusion plan from the ownership lock before mutation.
 - `SOL-02` Treat `memory-bank/.repo` as the only upstream checkout. Validate safe path, clean/conflict-free Git state, upstream remote/identity and non-default branch before applying a plan to a newly created branch.
 - `SOL-03` Create the GitHub PR only after push. On any post-preflight failure follow `SD-02`; output includes plan and PR URL, while dry-run has no mutation.
 
@@ -77,22 +78,22 @@ The CLI reads downstream source, validates and temporarily mutates only the name
 
 ## Accepted Local Decisions
 
-- `SD-01` A path is publishable only when safely normalized below `memory-bank/` and its current class is exactly `managed`; every other class is reported as excluded. Failed normalization/classification aborts before mutation.
+- `SD-01` With an ownership lock, a safely normalized repository-relative path is publishable only when its lock entry is exactly `managed`; every other path is reported as excluded. Lockless legacy repositories retain the bounded `memory-bank/` classifier fallback. Failed normalization, lock validation or classification aborts before mutation.
 - `SD-02` Preflight first; use only a fresh non-default branch; after failure restore original local branch/HEAD and attempt remote deletion only for the command-created branch. Failed compensation is a diagnosed failed outcome, never a default-branch write.
 - `SD-03` `standard` validation requires targeted contract tests, full Go suite, vet, navigation audit and one approved live PR result; the latter is a closure gate, not a unit-test substitute.
-- `SD-04` The source namespace is always downstream `memory-bank/`; before mutation `.repo` must resolve as its own Git worktree and the selected `origin/default` tree must contain exactly one real payload root, `memory-bank-template/` or legacy `memory-bank/`. The planner translates only the leading namespace and rejects missing, duplicate or symlink payload roots.
+- `SD-04` The canonical upstream root is the whole `template/` tree. Its shared path model strips `template/` for init/update and prefixes `template/` for push without inspecting any child name; therefore `template/memory-bank/**` round-trips as `memory-bank/**` and every other locked path retains its suffix. Before mutation `.repo` must resolve as its own Git worktree and the selected `origin/default` tree must contain canonical `template/` or exactly one legacy payload root. Canonical root presence takes precedence over legacy project-local trees.
 
 ## Contracts
 
 | Contract ID | Connector / direction | Roles and sync boundary | Guarantees / failure / evolution semantics |
 | --- | --- | --- | --- |
-| `CTR-01` | Filesystem: downstream `memory-bank/` → selection planner → upstream payload root | CLI reads current repository synchronously | Only exactly-`managed` normalized paths enter plan; `.lock`, `.repo` and all other classes are excluded. The source prefix translates to exactly one validated upstream `memory-bank-template/` or `memory-bank/` root; invalid topology aborts. |
+| `CTR-01` | Filesystem: lock-managed downstream paths → selection planner → upstream payload root | CLI reads current repository synchronously | Only exactly-`managed` normalized paths enter the plan. Canonical paths use the shared name-agnostic `template/<downstream-path>` mapping; `.lock`, `.repo` and all other classes are excluded. Legacy upstream roots retain their bounded `memory-bank/`-only translation. |
 | `CTR-02` | Local Git and remote Git: CLI → `.repo` → configured upstream | Synchronous local/remote boundary | Preflight validates repository, safe path, clean state, conflicts, remote identity and default branch; writes only fresh branch; failure runs `SD-02`. |
 | `CTR-03` | GitHub PR: CLI → configured upstream repository | External authenticated boundary after push | Success returns URL; failure triggers `CTR-02` compensation; dry-run never crosses boundary. |
 
 ## Invariants
 
-- `INV-01` No selected source path is outside `memory-bank/` or outside exactly-`managed` ownership.
+- `INV-01` No selected source path is absent from exactly-`managed` ownership, and no canonical destination is outside `template/`.
 - `INV-02` The upstream default branch is never directly checked out for write, committed to or pushed by `push`.
 - `INV-03` `--dry-run` mutates neither local checkout, remote Git nor GitHub.
 - `INV-04` Failure reports residual state and recovery action; success requires a PR URL.

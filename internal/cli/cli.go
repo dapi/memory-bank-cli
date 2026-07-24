@@ -89,7 +89,7 @@ func printRootUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "  doctor  Diagnose adoption, governance, managed drift, and navigation")
 	fmt.Fprintln(writer, "  lint    Audit markdown navigation integrity")
 	fmt.Fprintln(writer, "  github  Install or update the optional GitHub workflow adapter")
-	fmt.Fprintln(writer, "  push    Publish managed Memory Bank changes upstream through a PR")
+	fmt.Fprintln(writer, "  push    Publish locked canonical template changes upstream through a PR")
 	fmt.Fprintln(writer)
 	fmt.Fprintln(writer, "Options:")
 	fmt.Fprintln(writer, "  --help       Show this help")

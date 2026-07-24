@@ -238,6 +238,21 @@ func TestCanonicalTemplateIncludesAllTrackedFiles(t *testing.T) {
 	}
 }
 
+func TestCanonicalTemplateRejectsTrackedSymlink(t *testing.T) {
+	source, repo := t.TempDir(), t.TempDir()
+	write(t, source, "template/memory-bank/dna/rule.md", "rule\n")
+	symlinkForTest(t, "memory-bank/dna/rule.md", filepath.Join(source, "template", "alias"))
+	commit := commitTestSource(t, source)
+
+	report, err := Init(Options{RepoRoot: repo, SourceRoot: source, TemplateVersion: "v1", SourceRef: commit})
+	if err == nil || !strings.Contains(err.Error(), "unsupported Git entry") {
+		t.Fatalf("tracked symlink was accepted: report=%#v err=%v", report, err)
+	}
+	if _, statErr := os.Lstat(filepath.Join(repo, LockFileName)); !os.IsNotExist(statErr) {
+		t.Fatalf("failed init created a lock: %v", statErr)
+	}
+}
+
 func TestCanonicalTemplateOwnsAgentFileWhenPresent(t *testing.T) {
 	source, repo := t.TempDir(), t.TempDir()
 	write(t, source, "template/AGENTS.md", "template instructions\n")

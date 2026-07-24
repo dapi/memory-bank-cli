@@ -5,6 +5,9 @@ CLI for installing, updating, validating, and diagnosing Memory Bank templates
 `template/` directory as canonical payload. `template/memory-bank/**` installs
 to `memory-bank/**`; every other path retains its repository-relative suffix.
 Dotfiles and executable files are included, while symlinks are rejected.
+Existing locks from the legacy payload roots are migrated conservatively:
+unchanged files adopt canonical ownership, while local customization is
+preserved for explicit resolution.
 
 ## Publish managed changes upstream
 
@@ -14,7 +17,11 @@ From a downstream Git repository with a clean upstream checkout at `memory-bank/
 memory-bank-cli push --dry-run
 ```
 
-Without `--dry-run`, `push` creates a fresh upstream branch, commits only changed `managed` Memory Bank paths, pushes it and creates a GitHub PR. It never pushes the upstream default branch directly. Non-managed paths, including project artifacts, lock/state and `.repo`, are reported as exclusions.
+Without `--dry-run`, `push` creates a fresh upstream branch, publishes every
+changed path recorded as `managed` in the ownership lock back below
+`template/`, pushes the branch and creates a GitHub PR. It never pushes the
+upstream default branch directly. Non-managed paths, including project
+artifacts, lock/state and `.repo`, are reported as exclusions.
 
 ## Install
 

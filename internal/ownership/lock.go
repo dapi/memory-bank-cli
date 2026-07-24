@@ -65,7 +65,8 @@ func readLockSnapshot(repo pinnedRepo) (Lock, bool, string, error) {
 		return Lock{}, false, "", fmt.Errorf("invalid last update in %s", LockFileName)
 	}
 	for filePath, file := range lock.Files {
-		if filePath == LockFileName || path.IsAbs(filePath) || strings.Contains(filePath, "\\") || path.Clean(filePath) != filePath || strings.HasPrefix(filePath, "../") || filePath == "." {
+		firstComponent := strings.SplitN(filePath, "/", 2)[0]
+		if filePath == LockFileName || path.IsAbs(filePath) || strings.Contains(filePath, "\\") || path.Clean(filePath) != filePath || strings.HasPrefix(filePath, "../") || filePath == "." || strings.EqualFold(firstComponent, ".git") {
 			return Lock{}, false, "", fmt.Errorf("invalid path %q in %s", filePath, LockFileName)
 		}
 		switch file.Ownership {
