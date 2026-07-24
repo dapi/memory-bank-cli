@@ -102,9 +102,10 @@ func TestPinnedSourceSupportsOneRecognizedRootAndTranslatesToDownstream(t *testi
 		wantSource string
 	}{
 		{name: "legacy root", roots: []string{"memory-bank"}, wantSource: "memory-bank"},
-		{name: "target root", roots: []string{"memory-bank-template"}, wantSource: "memory-bank-template"},
+		{name: "legacy template root", roots: []string{"memory-bank-template"}, wantSource: "memory-bank-template"},
+		{name: "target root", roots: []string{"template/memory-bank"}, wantSource: "template/memory-bank"},
 		{name: "neither root", wantErr: "neither recognized payload root"},
-		{name: "both roots", roots: []string{"memory-bank", "memory-bank-template"}, wantErr: "both recognized payload roots"},
+		{name: "multiple roots", roots: []string{"memory-bank-template", "template/memory-bank"}, wantErr: "multiple recognized payload roots"},
 	} {
 		t.Run(test.name, func(t *testing.T) {
 			source := t.TempDir()
@@ -129,8 +130,10 @@ func TestPinnedSourceSupportsOneRecognizedRootAndTranslatesToDownstream(t *testi
 			if got := read(t, repo, "memory-bank/dna/rule.md"); got != test.wantSource+"\n" {
 				t.Fatalf("downstream payload was not translated: %q", got)
 			}
-			if _, err := os.Stat(filepath.Join(repo, "memory-bank-template")); !os.IsNotExist(err) {
-				t.Fatalf("source root leaked into downstream: %v", err)
+			for _, sourceRoot := range []string{legacyTemplateSourcePayloadRoot, targetSourcePayloadRoot} {
+				if _, err := os.Stat(filepath.Join(repo, sourceRoot)); !os.IsNotExist(err) {
+					t.Fatalf("source root %q leaked into downstream: %v", sourceRoot, err)
+				}
 			}
 		})
 	}

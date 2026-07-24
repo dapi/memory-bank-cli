@@ -16,9 +16,10 @@ type pinnedSource struct {
 }
 
 const (
-	legacySourcePayloadRoot = "memory-bank"
-	targetSourcePayloadRoot = "memory-bank-template"
-	downstreamPayloadRoot   = "memory-bank"
+	legacySourcePayloadRoot         = "memory-bank"
+	legacyTemplateSourcePayloadRoot = "memory-bank-template"
+	targetSourcePayloadRoot         = "template/memory-bank"
+	downstreamPayloadRoot           = "memory-bank"
 )
 
 func pinSourceRoot(root string) (pinnedSource, error) {
@@ -145,8 +146,8 @@ func verifySourcePayload(root, expectedRef, payloadRoot string) error {
 }
 
 func selectGitSourcePayloadRoot(root, ref string) (string, error) {
-	present := make([]string, 0, 2)
-	for _, candidate := range []string{legacySourcePayloadRoot, targetSourcePayloadRoot} {
+	present := make([]string, 0, 3)
+	for _, candidate := range sourcePayloadRoots() {
 		output, err := gitOutput(root, "ls-tree", "-d", "--name-only", ref, "--", candidate)
 		if err != nil {
 			return "", fmt.Errorf("inspect pinned source payload roots: %w", err)
@@ -159,8 +160,8 @@ func selectGitSourcePayloadRoot(root, ref string) (string, error) {
 }
 
 func selectFilesystemSourcePayloadRoot(root string) (string, error) {
-	present := make([]string, 0, 2)
-	for _, candidate := range []string{legacySourcePayloadRoot, targetSourcePayloadRoot} {
+	present := make([]string, 0, 3)
+	for _, candidate := range sourcePayloadRoots() {
 		info, err := os.Lstat(filepath.Join(root, candidate))
 		if errors.Is(err, os.ErrNotExist) {
 			continue
@@ -176,14 +177,18 @@ func selectFilesystemSourcePayloadRoot(root string) (string, error) {
 	return selectSingleSourcePayloadRoot(present)
 }
 
+func sourcePayloadRoots() []string {
+	return []string{legacySourcePayloadRoot, legacyTemplateSourcePayloadRoot, targetSourcePayloadRoot}
+}
+
 func selectSingleSourcePayloadRoot(present []string) (string, error) {
 	switch len(present) {
 	case 1:
 		return present[0], nil
 	case 0:
-		return "", errors.New("source has neither recognized payload root: memory-bank or memory-bank-template")
+		return "", errors.New("source has neither recognized payload root: memory-bank, memory-bank-template, or template/memory-bank")
 	default:
-		return "", errors.New("source has both recognized payload roots: memory-bank and memory-bank-template")
+		return "", errors.New("source has multiple recognized payload roots: memory-bank, memory-bank-template, or template/memory-bank")
 	}
 }
 

@@ -28,7 +28,7 @@ var shellErrexitPattern = regexp.MustCompile(`(?:^|\s)-[A-Za-z]*e[A-Za-z]*(?:\s|
 var shellPipefailPattern = regexp.MustCompile(`(?:^|\s)-o\s+pipefail(?:\s|$)|(?:^|\s)pipefail(?:\s|$)`)
 var workflowFalseExpressionPattern = regexp.MustCompile(`^\$\{\{\s*false\s*\}\}$`)
 
-const templatePayloadRoot = "memory-bank-template"
+const templatePayloadRoot = "template/memory-bank"
 
 func NormalizeProfile(value string) (Profile, error) {
 	profile := Profile(strings.ToLower(strings.TrimSpace(value)))
@@ -53,7 +53,7 @@ func Run(options Options) (Report, error) {
 	scopeRoot := options.ScopeRoot
 	if scopeRoot == "" {
 		if profile == ProfileTemplate {
-			scopeRoot = "memory-bank-template"
+			scopeRoot = templatePayloadRoot
 		} else {
 			scopeRoot = "memory-bank"
 		}
