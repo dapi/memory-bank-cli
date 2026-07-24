@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-07-24
+
+### Added
+
+- Add `memory-bank-cli doctor --repair` support for reconstructing a missing
+  ownership lock from the managed template state, with diagnostics for
+  unresolved conflicts.
+
 ## [1.6.0] - 2026-07-24
 
 ### Added
