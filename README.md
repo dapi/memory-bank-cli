@@ -40,6 +40,22 @@ memory-bank-cli --version
 
 See [CHANGELOG.md](CHANGELOG.md) for release notes.
 
+## Repair a missing ownership lock
+
+`doctor` is read-only by default. If it reports `template.identity_missing`,
+preview the same safe adoption plan used by `init` with pinned template
+provenance:
+
+```sh
+memory-bank-cli doctor --fix --dry-run \
+  --source <clean-template-checkout> \
+  --template-version <version> \
+  --source-ref <full-commit-sha>
+```
+
+Rerun without `--dry-run` to create `memory-bank/.lock`, then commit that lock
+before running `update`. The repair never replaces an existing lock.
+
 ## Upgrade
 
 Install the desired newer semantic version with the same command:

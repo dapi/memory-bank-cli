@@ -354,6 +354,88 @@ func TestDoctorAndAlternativeAgentTarget(t *testing.T) {
 	}
 }
 
+func TestDoctorFixAdoptsMissingLockWithExplicitProvenance(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	readme := "---\ndoc_function: index\npurpose: Test index for doctor.\nstatus: active\n---\n# Memory Bank\n"
+	if err := os.MkdirAll(filepath.Join(source, "memory-bank"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(filepath.Join(repo, "memory-bank"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "memory-bank", "README.md"), []byte(readme), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "memory-bank", "README.md"), []byte(readme), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	sourceRef := commitCLISource(t, source, "source")
+	base := []string{"doctor", "--fix", "--repo-root", repo, "--source", source, "--template-version", "v1", "--source-ref", sourceRef}
+
+	var stdout, stderr bytes.Buffer
+	if exitCode := Run(append(append([]string{}, base...), "--dry-run", "--json"), "test", &stdout, &stderr); exitCode != 1 {
+		t.Fatalf("dry-run exit = %d, stderr=%s", exitCode, stderr.String())
+	}
+	var dryRun struct {
+		Repair struct {
+			Finding string `json:"finding"`
+			Plan    struct {
+				DryRun    bool `json:"dry_run"`
+				Decisions []struct {
+					Path string `json:"path"`
+				} `json:"decisions"`
+			} `json:"plan"`
+		} `json:"repair"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &dryRun); err != nil {
+		t.Fatalf("invalid dry-run report: %v\n%s", err, stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "memory-bank-cli doctor --fix") {
+		t.Fatalf("missing-lock remediation does not guide the repair: %s", stdout.String())
+	}
+	if dryRun.Repair.Finding != "template.identity_missing" || !dryRun.Repair.Plan.DryRun || len(dryRun.Repair.Plan.Decisions) == 0 {
+		t.Fatalf("unexpected dry-run repair: %#v", dryRun)
+	}
+	lockPlanned := false
+	for _, decision := range dryRun.Repair.Plan.Decisions {
+		lockPlanned = lockPlanned || decision.Path == "memory-bank/.lock"
+	}
+	if !lockPlanned {
+		t.Fatalf("dry-run omitted the lock creation: %#v", dryRun.Repair.Plan.Decisions)
+	}
+	if _, err := os.Stat(filepath.Join(repo, "memory-bank", ".lock")); !os.IsNotExist(err) {
+		t.Fatalf("dry-run created a lock: %v", err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := Run(base, "test", &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("repair exit = %d, stderr=%s", exitCode, stderr.String())
+	}
+	if !strings.Contains(stdout.String(), "commit memory-bank/.lock") {
+		t.Fatalf("repair did not recommend committing the lock: %s", stdout.String())
+	}
+	if !strings.Contains(stdout.String(), "create\t\tmemory-bank/.lock\trecord successful adoption") {
+		t.Fatalf("repair report omitted the lock creation: %s", stdout.String())
+	}
+	lock, err := os.ReadFile(filepath.Join(repo, "memory-bank", ".lock"))
+	if err != nil || !strings.Contains(string(lock), sourceRef) {
+		t.Fatalf("repair did not create the pinned lock: %q, %v", lock, err)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := Run([]string{"doctor", "--fix", "--repo-root", repo, "--json"}, "test", &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("repair with an existing lock failed: exit=%d stderr=%s", exitCode, stderr.String())
+	}
+	var existing struct {
+		Repair any `json:"repair"`
+	}
+	if err := json.Unmarshal(stdout.Bytes(), &existing); err != nil || existing.Repair != nil {
+		t.Fatalf("existing lock should not produce a repair: %#v, %v", existing, err)
+	}
+}
+
 func TestDoctorRejectsUnknownProfile(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if exitCode := Run([]string{"doctor", "--profile", "mystery"}, "test", &stdout, &stderr); exitCode != 2 {

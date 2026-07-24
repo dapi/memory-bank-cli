@@ -1,12 +1,14 @@
 // Package doctor diagnoses Memory Bank adoption and governance without mutation.
 package doctor
 
-import "github.com/dapi/memory-bank-cli/internal/lint"
+import (
+	"github.com/dapi/memory-bank-cli/internal/lint"
+	"github.com/dapi/memory-bank-cli/internal/ownership"
+)
 
-// ReportFormatVersion identifies the aggregate doctor JSON schema. Version 2
-// reflects the replacement of the former ownership-style drift/conflict fields
-// with the aggregate summary and findings contract.
-const ReportFormatVersion = 2
+// ReportFormatVersion identifies the aggregate doctor JSON schema. Version 3
+// adds the optional structured repair plan emitted by doctor --fix.
+const ReportFormatVersion = 3
 
 type Profile string
 
@@ -54,6 +56,14 @@ type Report struct {
 	Summary          Summary          `json:"summary"`
 	Findings         []Finding        `json:"findings"`
 	Navigation       lint.Report      `json:"navigation"`
+	Repair           *Repair          `json:"repair,omitempty"`
+}
+
+// Repair records the opt-in ownership operation performed for a finding. The
+// plan is the same validated adoption plan produced by memory-bank-cli init.
+type Repair struct {
+	Finding string           `json:"finding"`
+	Plan    ownership.Report `json:"plan"`
 }
 
 type Options struct {
