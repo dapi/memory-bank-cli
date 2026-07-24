@@ -7,6 +7,23 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [1.5.0] - 2026-07-24
+
+### Added
+
+- Treat every tracked regular file below an upstream `template/` directory as
+  managed payload during `init`, `update`, and `push`, including dotfiles and
+  executable files outside `template/memory-bank/`.
+- Migrate compatible legacy payload ownership locks conservatively, preserving
+  locally customized files for explicit resolution.
+
+### Fixed
+
+- Keep managed template-owned agent files intact while publishing downstream
+  changes upstream.
+- Reject absolute paths in ownership locks and strengthen preflight validation
+  for managed payload locations.
+
 ## [1.4.1] - 2026-07-24
 
 ### Fixed
