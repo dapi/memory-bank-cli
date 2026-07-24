@@ -117,13 +117,19 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 		return Report{}, err
 	}
 	templateMutationCount := len(mutations)
-	agentMutation, agentDecision, err := buildAgentPlan(repo, options.AgentFile)
-	if err != nil {
-		return Report{}, err
+	agentTarget := options.AgentFile
+	if agentTarget == "" {
+		agentTarget = agentinstructions.DefaultTarget
 	}
-	decisions = append(decisions, agentDecision)
-	if agentMutation != nil {
-		mutations = append(mutations, *agentMutation)
+	if _, templateOwnsAgentFile := source[filepath.ToSlash(agentTarget)]; !templateOwnsAgentFile {
+		agentMutation, agentDecision, err := buildAgentPlan(repo, options.AgentFile)
+		if err != nil {
+			return Report{}, err
+		}
+		decisions = append(decisions, agentDecision)
+		if agentMutation != nil {
+			mutations = append(mutations, *agentMutation)
+		}
 	}
 	report := Report{FormatVersion: ReportFormatVersion, DryRun: options.DryRun, Decisions: decisions}
 	for _, decision := range decisions {

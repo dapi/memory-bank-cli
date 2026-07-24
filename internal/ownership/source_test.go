@@ -238,6 +238,40 @@ func TestCanonicalTemplateIncludesAllTrackedFiles(t *testing.T) {
 	}
 }
 
+func TestCanonicalTemplateOwnsAgentFileWhenPresent(t *testing.T) {
+	source, repo := t.TempDir(), t.TempDir()
+	write(t, source, "template/AGENTS.md", "template instructions\n")
+	write(t, source, "template/memory-bank/dna/rule.md", "rule\n")
+	firstCommit := commitTestSource(t, source)
+
+	report, err := Init(Options{RepoRoot: repo, SourceRoot: source, TemplateVersion: "v1", SourceRef: firstCommit})
+	if err != nil || !report.Applied {
+		t.Fatalf("init failed: report=%#v err=%v", report, err)
+	}
+	if got := read(t, repo, "AGENTS.md"); got != "template instructions\n" {
+		t.Fatalf("template agent file = %q", got)
+	}
+	if strings.Contains(read(t, repo, "AGENTS.md"), "MEMORY BANK START") {
+		t.Fatal("template agent file was rewritten by the generated instruction plan")
+	}
+	lock, exists, err := ReadLock(repo)
+	if err != nil || !exists || lock.Files["AGENTS.md"].Ownership != Managed {
+		t.Fatalf("template agent file was not locked as managed: %#v, exists=%v, err=%v", lock, exists, err)
+	}
+
+	write(t, source, "template/AGENTS.md", "updated template instructions\n")
+	runGitTest(t, source, "add", "--all")
+	runGitTest(t, source, "-c", "user.name=Memory Bank Tests", "-c", "user.email=tests@example.invalid", "commit", "--quiet", "-m", "update template instructions")
+	secondCommit := runGitTest(t, source, "rev-parse", "HEAD")
+	report, err = Update(Options{RepoRoot: repo, SourceRoot: source, TemplateVersion: "v2", SourceRef: secondCommit})
+	if err != nil || !report.Applied || decisionFor(t, report, "AGENTS.md").Action != UpdateFile {
+		t.Fatalf("update failed: report=%#v err=%v", report, err)
+	}
+	if got := read(t, repo, "AGENTS.md"); got != "updated template instructions\n" {
+		t.Fatalf("updated template agent file = %q", got)
+	}
+}
+
 func TestPinnedSourceObjectsIgnoreHiddenWorktreeChanges(t *testing.T) {
 	for _, test := range []struct {
 		name   string
