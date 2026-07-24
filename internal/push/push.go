@@ -323,6 +323,9 @@ func selectPayloadRoot(checkout string) (string, error) {
 		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
 			return "", fmt.Errorf("upstream payload root %q must be a real directory", candidate)
 		}
+		if candidate == "template" {
+			return candidate, nil
+		}
 		roots = append(roots, candidate)
 	}
 	if len(roots) != 1 {
@@ -339,6 +342,9 @@ func selectPayloadRootAt(run func(string, string, ...string) (string, error), ch
 			return "", fmt.Errorf("inspect upstream payload root %q: %w", candidate, err)
 		}
 		if strings.TrimSpace(out) == candidate {
+			if candidate == "template" {
+				return candidate, nil
+			}
 			roots = append(roots, candidate)
 		}
 	}

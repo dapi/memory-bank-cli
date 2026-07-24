@@ -278,6 +278,27 @@ func TestDryRunIncludesCanonicalTemplatePathsOutsideMemoryBank(t *testing.T) {
 	t.Fatalf("canonical path outside memory-bank was not included: %#v", report.Decisions)
 }
 
+func TestCanonicalTemplateRootTakesPrecedenceOverLegacyRoots(t *testing.T) {
+	checkout := t.TempDir()
+	for _, directory := range []string{"template", "memory-bank-template", "memory-bank"} {
+		if err := os.Mkdir(filepath.Join(checkout, directory), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got, err := selectPayloadRoot(checkout); err != nil || got != "template" {
+		t.Fatalf("worktree payload root = %q, %v; want template", got, err)
+	}
+	run := func(_ string, name string, args ...string) (string, error) {
+		if name != "git" || len(args) != 6 || args[0] != "ls-tree" {
+			return "", errors.New("unexpected command")
+		}
+		return args[len(args)-1], nil
+	}
+	if got, err := selectPayloadRootAt(run, checkout, "origin/main"); err != nil || got != "template" {
+		t.Fatalf("Git payload root = %q, %v; want template", got, err)
+	}
+}
+
 func TestRejectsDirtyUpstreamCheckout(t *testing.T) {
 	root := t.TempDir()
 	upstream := filepath.Join(root, "memory-bank", ".repo")
