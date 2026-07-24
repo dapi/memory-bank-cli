@@ -594,7 +594,7 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 				decision.Action, decision.Reason = Preserve, "preserve downstream adaptation"
 			}
 		}
-		if resolution, resolved := userOwnedResolutions[path]; class == Managed && exists && file.Ownership == UserOwned && resolved {
+		if resolution, resolved := userOwnedResolutions[path]; resolved && class == Managed && exists && file.Ownership == UserOwned {
 			if resolution {
 				decision.Action, decision.Reason = UpdateFile, "replace user-owned file from source by explicit resolution"
 				file = File{Ownership: Managed, BaseDigest: incoming.digest, PayloadDigest: incoming.digest, BaseMode: incoming.mode, PayloadMode: incoming.mode}
