@@ -46,6 +46,11 @@ jobs:
           candidate="$(find dist -path '*linux_amd64*' -type f -name memory-bank-cli -perm -u+x | head -n 1)"
           test -n "$candidate"
           E2E_BINARY="$candidate" E2E_SCOPE=release bash scripts/e2e-init-update.sh
+      - name: Validate release changelog
+        if: github.event_name == 'workflow_dispatch'
+        env:
+          RELEASE_VERSION: ${{ inputs.version }}
+        run: bash scripts/check-release-changelog.sh "$RELEASE_VERSION"
 
   release:
     name: Publish release
