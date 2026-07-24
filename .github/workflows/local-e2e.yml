@@ -1,0 +1,23 @@
+name: Local init/update E2E
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  local-e2e:
+    name: Local init/update E2E
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+      - name: Run hermetic local E2E scenarios
+        run: bash scripts/e2e-init-update.sh

@@ -259,7 +259,7 @@ func TestAdaptedUpstreamAndDownstreamChangesConflictWithoutPartialApply(t *testi
 	}
 }
 
-func TestManagedDriftIsDetectedDeterministically(t *testing.T) {
+func TestManagedContentDriftIsPreservedWhenTemplateIsUnchanged(t *testing.T) {
 	repo, source := t.TempDir(), t.TempDir()
 	path := "memory-bank/flows/feature.md"
 	write(t, source, path, "base\n")
@@ -268,7 +268,7 @@ func TestManagedDriftIsDetectedDeterministically(t *testing.T) {
 
 	for index := 0; index < 2; index++ {
 		report, err := Update(opts(repo, source, "a"))
-		if err != nil || report.ConflictCount != 1 || decisionFor(t, report, path).Reason != "managed file has downstream drift" {
+		if err != nil || report.ConflictCount != 0 || decisionFor(t, report, path).Reason != "preserve local managed content while template is unchanged" {
 			t.Fatalf("drift run %d: report=%#v err=%v", index, report, err)
 		}
 	}
