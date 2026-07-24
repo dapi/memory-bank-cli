@@ -45,8 +45,8 @@ func TestRunCreatesBranchCopiesManagedFileAndReturnsPR(t *testing.T) {
 			return "memory-bank-template", nil
 		case "git ls-tree -d --name-only origin/main -- memory-bank":
 			return "", nil
-		case "git status --porcelain --untracked-files=all -- memory-bank":
-			return " M memory-bank/dna/rule.md\n M memory-bank/product/note.md\n", nil
+		case "git status --porcelain=v1 -z --untracked-files=all -- memory-bank":
+			return " M memory-bank/dna/rule.md\x00 M memory-bank/product/note.md\x00", nil
 		case "git checkout -b memory-bank-cli/push-20260724-120000 origin/main":
 			if dir != checkout {
 				t.Fatalf("branch created outside checkout: %q", dir)
@@ -89,7 +89,7 @@ func TestRunCompensatesRemoteBranchWhenPRCreationFails(t *testing.T) {
 			return dir, nil
 		}
 		switch call {
-		case "git rev-parse --is-inside-work-tree", "git status --porcelain", "git diff --name-only --diff-filter=U", "git rev-parse --verify origin/main", "git add -- memory-bank-template/dna/rule.md", "git commit -m Publish managed Memory Bank changes", "git push -u origin memory-bank-cli/push-20260724-120000", "git push origin --delete memory-bank-cli/push-20260724-120000", "git reset --hard", "git checkout main", "git reset --hard abc123":
+		case "git rev-parse --is-inside-work-tree", "git status --porcelain", "git diff --name-only --diff-filter=U", "git rev-parse --verify origin/main", "git add -- memory-bank-template/dna/rule.md", "git commit -m Publish managed Memory Bank changes", "git push -u origin memory-bank-cli/push-20260724-120000", "git push origin --delete memory-bank-cli/push-20260724-120000", "git reset --hard", "git checkout main", "git branch -D memory-bank-cli/push-20260724-120000", "git reset --hard abc123", "git clean -fd -- memory-bank-template/dna/rule.md":
 			return "", nil
 		case "git remote get-url origin":
 			return "https://github.com/example/upstream.git", nil
@@ -103,8 +103,10 @@ func TestRunCompensatesRemoteBranchWhenPRCreationFails(t *testing.T) {
 			return "memory-bank-template", nil
 		case "git ls-tree -d --name-only origin/main -- memory-bank":
 			return "", nil
-		case "git status --porcelain --untracked-files=all -- memory-bank":
-			return " M memory-bank/dna/rule.md\n", nil
+		case "git status --porcelain=v1 -z --untracked-files=all -- memory-bank":
+			return " M memory-bank/dna/rule.md\x00", nil
+		case "git ls-remote --exit-code --heads origin memory-bank-cli/push-20260724-120000":
+			return "ref", nil
 		case "git checkout -b memory-bank-cli/push-20260724-120000 origin/main":
 			return "", nil
 		case "gh pr create --head memory-bank-cli/push-20260724-120000 --base main --fill":
@@ -235,7 +237,7 @@ func TestRejectsDirtyUpstreamCheckout(t *testing.T) {
 
 func TestChangedPathsRepresentsDeletionAndRename(t *testing.T) {
 	changes, err := changedPaths(func(_ string, _ string, _ ...string) (string, error) {
-		return " D memory-bank/dna/removed.md\nR  memory-bank/dna/old.md -> memory-bank/dna/new.md\n", nil
+		return " D memory-bank/dna/removed.md\x00R  memory-bank/dna/new.md\x00memory-bank/dna/old.md\x00", nil
 	}, "unused")
 	if err != nil {
 		t.Fatal(err)

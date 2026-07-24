@@ -113,12 +113,16 @@ func Run(options Options) (Report, error) {
 		return report, errors.New("no managed Memory Bank changes to publish")
 	}
 	branch := fmt.Sprintf("memory-bank-cli/push-%s", now().UTC().Format("20060102-150405"))
-	remotePushed := false
+	branchCreated, pushAttempted := false, false
+	stagePaths := make([]string, 0, len(included))
 	failed := func(cause error) (Report, error) {
 		var cleanup []string
-		if remotePushed {
-			if _, err := run(checkout, "git", "push", "origin", "--delete", branch); err != nil {
-				cleanup = append(cleanup, "remote branch remains: "+err.Error())
+		if pushAttempted {
+			_, existsErr := run(checkout, "git", "ls-remote", "--exit-code", "--heads", "origin", branch)
+			if existsErr == nil {
+				if _, err := run(checkout, "git", "push", "origin", "--delete", branch); err != nil {
+					cleanup = append(cleanup, "remote branch remains: "+err.Error())
+				}
 			}
 		}
 		if _, err := run(checkout, "git", "reset", "--hard"); err != nil {
@@ -127,8 +131,19 @@ func Run(options Options) (Report, error) {
 		if _, err := run(checkout, "git", "checkout", strings.TrimSpace(originalBranch)); err != nil {
 			cleanup = append(cleanup, "restore branch failed: "+err.Error())
 		}
+		if branchCreated {
+			if _, err := run(checkout, "git", "branch", "-D", branch); err != nil {
+				cleanup = append(cleanup, "remove local branch failed: "+err.Error())
+			}
+		}
 		if _, err := run(checkout, "git", "reset", "--hard", strings.TrimSpace(originalHead)); err != nil {
 			cleanup = append(cleanup, "restore HEAD failed: "+err.Error())
+		}
+		if len(stagePaths) > 0 {
+			args := append([]string{"clean", "-fd", "--"}, stagePaths...)
+			if _, err := run(checkout, "git", args...); err != nil {
+				cleanup = append(cleanup, "remove untracked staged paths failed: "+err.Error())
+			}
 		}
 		if status, err := run(checkout, "git", "status", "--porcelain"); err != nil || strings.TrimSpace(status) != "" {
 			cleanup = append(cleanup, "checkout restoration is not clean")
@@ -141,6 +156,7 @@ func Run(options Options) (Report, error) {
 	if _, err := run(checkout, "git", "checkout", "-b", branch, "origin/"+defaultBranch); err != nil {
 		return failed(fmt.Errorf("create upstream branch: %w", err))
 	}
+	branchCreated = true
 	report.Branch = branch
 	actualPayloadRoot, err := selectPayloadRoot(checkout)
 	if err != nil {
@@ -149,7 +165,6 @@ func Run(options Options) (Report, error) {
 	if actualPayloadRoot != payloadRoot {
 		return failed(fmt.Errorf("upstream payload root changed from %q to %q while switching to default branch", payloadRoot, actualPayloadRoot))
 	}
-	stagePaths := make([]string, 0, len(included))
 	for _, item := range included {
 		relative := strings.TrimPrefix(item.path, "memory-bank/")
 		destination := filepath.Join(checkout, payloadRoot, filepath.FromSlash(relative))
@@ -169,10 +184,10 @@ func Run(options Options) (Report, error) {
 	if _, err := run(checkout, "git", "commit", "-m", "Publish managed Memory Bank changes"); err != nil {
 		return failed(fmt.Errorf("commit upstream changes: %w", err))
 	}
+	pushAttempted = true
 	if _, err := run(checkout, "git", "push", "-u", "origin", branch); err != nil {
 		return failed(fmt.Errorf("push upstream branch: %w", err))
 	}
-	remotePushed = true
 	pr, err := run(checkout, "gh", "pr", "create", "--head", branch, "--base", defaultBranch, "--fill")
 	if err != nil {
 		return failed(fmt.Errorf("create PR: %w", err))
@@ -286,22 +301,25 @@ func selectPayloadRootAt(run func(string, string, ...string) (string, error), ch
 }
 
 func changedPaths(run func(string, string, ...string) (string, error), root string) ([]change, error) {
-	out, err := run(root, "git", "status", "--porcelain", "--untracked-files=all", "--", "memory-bank")
+	out, err := run(root, "git", "status", "--porcelain=v1", "-z", "--untracked-files=all", "--", "memory-bank")
 	if err != nil {
 		return nil, fmt.Errorf("inspect downstream changes: %w", err)
 	}
 	set := map[string]change{}
-	for _, line := range strings.Split(strings.TrimSuffix(out, "\n"), "\n") {
+	records := strings.Split(out, "\x00")
+	for index := 0; index < len(records); index++ {
+		line := records[index]
 		if len(line) < 4 {
 			continue
 		}
-		status, paths := line[:2], strings.TrimSpace(line[3:])
+		status, paths := line[:2], line[3:]
 		if strings.Contains(status, "R") {
-			old, next, ok := strings.Cut(paths, " -> ")
-			if !ok {
+			if index+1 >= len(records) || records[index+1] == "" {
 				return nil, fmt.Errorf("ambiguous rename %q", line)
 			}
-			for _, item := range []change{{path: strings.TrimSpace(old), delete: true}, {path: strings.TrimSpace(next)}} {
+			old, next := records[index+1], paths
+			index++
+			for _, item := range []change{{path: old, delete: true}, {path: next}} {
 				if err := addChange(set, item); err != nil {
 					return nil, err
 				}
