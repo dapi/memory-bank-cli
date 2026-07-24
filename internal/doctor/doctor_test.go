@@ -135,16 +135,16 @@ func TestImplicitScopeFollowsResolvedProfile(t *testing.T) {
 	}
 }
 
-func TestProfileDetectionUsesExactMarkerContract(t *testing.T) {
+func TestProfileDetectionUsesTemplatePayloadRoot(t *testing.T) {
 	for _, test := range []struct {
 		name    string
 		fixture string
 		profile Profile
 		want    Profile
 	}{
-		{name: "template marker", fixture: "template", profile: ProfileAuto, want: ProfileTemplate},
+		{name: "template source root", fixture: "template", profile: ProfileAuto, want: ProfileTemplate},
 		{name: "downstream lock wins", fixture: "downstream", profile: ProfileAuto, want: ProfileDownstream},
-		{name: "lookalike marker", fixture: "downstream-no-lock", profile: ProfileAuto, want: ProfileDownstream},
+		{name: "downstream without lock", fixture: "downstream-no-lock", profile: ProfileAuto, want: ProfileDownstream},
 		{name: "explicit template bypasses auto", fixture: "downstream-no-lock", profile: ProfileTemplate, want: ProfileTemplate},
 		{name: "explicit downstream bypasses auto", fixture: "template", profile: ProfileDownstream, want: ProfileDownstream},
 	} {
@@ -160,10 +160,9 @@ func TestProfileDetectionUsesExactMarkerContract(t *testing.T) {
 	}
 }
 
-func TestAutoProfileRejectsMalformedMarker(t *testing.T) {
-	root := copyFixture(t, "template")
-	marker := filepath.Join(root, templateMarkerPath)
-	if err := os.WriteFile(marker, []byte("memory-bank-template-v2\n"), 0o644); err != nil {
+func TestAutoProfileIgnoresFormerMarker(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, ".memory-bank-template"), []byte("memory-bank-template-v1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if got := detectProfile(root); got != ProfileDownstream {
@@ -171,14 +170,17 @@ func TestAutoProfileRejectsMalformedMarker(t *testing.T) {
 	}
 }
 
-func TestAutoProfileAcceptsCRLFMarker(t *testing.T) {
+func TestAutoProfileLockWinsOverTemplatePayloadRoot(t *testing.T) {
 	root := copyFixture(t, "template")
-	marker := filepath.Join(root, templateMarkerPath)
-	if err := os.WriteFile(marker, []byte(templateMarkerLine+"\r\n"), 0o644); err != nil {
+	lockPath := filepath.Join(root, ownership.LockFileName)
+	if err := os.MkdirAll(filepath.Dir(lockPath), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if got := detectProfile(root); got != ProfileTemplate {
-		t.Fatalf("profile = %q, want %q", got, ProfileTemplate)
+	if err := os.WriteFile(lockPath, []byte("{}\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := detectProfile(root); got != ProfileDownstream {
+		t.Fatalf("profile = %q, want %q", got, ProfileDownstream)
 	}
 }
 
