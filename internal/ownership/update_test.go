@@ -70,6 +70,21 @@ func TestAgentFileRejectsCaseAliasesOfMemoryBank(t *testing.T) {
 	}
 }
 
+func TestReadLockRejectsAbsoluteManagedPath(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	write(t, source, "memory-bank/dna/rule.md", "managed\n")
+	initialize(t, repo, source)
+	lockPath := filepath.Join(repo, filepath.FromSlash(LockFileName))
+	lock := read(t, repo, LockFileName)
+	lock = strings.Replace(lock, "memory-bank/dna/rule.md", "/outside.md", 1)
+	if err := os.WriteFile(lockPath, []byte(lock), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := ReadLock(repo); err == nil || !strings.Contains(err.Error(), "invalid path") {
+		t.Fatalf("absolute lock path was accepted: %v", err)
+	}
+}
+
 func TestAgentPlanPreservesExplicitZeroMode(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("Windows does not expose Unix permission bits")
