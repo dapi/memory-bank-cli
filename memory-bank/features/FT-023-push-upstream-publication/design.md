@@ -80,7 +80,7 @@ The CLI reads downstream source, validates and temporarily mutates only the name
 - `SD-01` A path is publishable only when safely normalized below `memory-bank/` and its current class is exactly `managed`; every other class is reported as excluded. Failed normalization/classification aborts before mutation.
 - `SD-02` Preflight first; use only a fresh non-default branch; after failure restore original local branch/HEAD and attempt remote deletion only for the command-created branch. Failed compensation is a diagnosed failed outcome, never a default-branch write.
 - `SD-03` `standard` validation requires targeted contract tests, full Go suite, vet, navigation audit and one approved live PR result; the latter is a closure gate, not a unit-test substitute.
-- `SD-04` The source namespace is always downstream `memory-bank/`; before mutation the upstream checkout must contain exactly one real payload root, `memory-bank-template/` or legacy `memory-bank/`. The planner translates only the leading namespace and rejects missing, duplicate or symlink payload roots.
+- `SD-04` The source namespace is always downstream `memory-bank/`; before mutation `.repo` must resolve as its own Git worktree and the selected `origin/default` tree must contain exactly one real payload root, `memory-bank-template/` or legacy `memory-bank/`. The planner translates only the leading namespace and rejects missing, duplicate or symlink payload roots.
 
 ## Contracts
 

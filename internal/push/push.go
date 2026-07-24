@@ -66,11 +66,11 @@ func Run(options Options) (Report, error) {
 	if err != nil || strings.TrimSpace(remote) == "" {
 		return Report{}, fmt.Errorf("upstream checkout has no valid origin remote")
 	}
-	payloadRoot, err := selectPayloadRoot(checkout)
+	defaultBranch, err := defaultBranch(run, checkout)
 	if err != nil {
 		return Report{}, err
 	}
-	defaultBranch, err := defaultBranch(run, checkout)
+	payloadRoot, err := selectPayloadRootAt(run, checkout, "origin/"+defaultBranch)
 	if err != nil {
 		return Report{}, err
 	}
@@ -113,10 +113,6 @@ func Run(options Options) (Report, error) {
 		return report, errors.New("no managed Memory Bank changes to publish")
 	}
 	branch := fmt.Sprintf("memory-bank-cli/push-%s", now().UTC().Format("20060102-150405"))
-	if _, err := run(checkout, "git", "checkout", "-b", branch, "origin/"+defaultBranch); err != nil {
-		return report, fmt.Errorf("create upstream branch: %w", err)
-	}
-	report.Branch = branch
 	remotePushed := false
 	failed := func(cause error) (Report, error) {
 		var cleanup []string
@@ -141,6 +137,17 @@ func Run(options Options) (Report, error) {
 			return report, fmt.Errorf("%w; cleanup: %s", cause, strings.Join(cleanup, "; "))
 		}
 		return report, cause
+	}
+	if _, err := run(checkout, "git", "checkout", "-b", branch, "origin/"+defaultBranch); err != nil {
+		return failed(fmt.Errorf("create upstream branch: %w", err))
+	}
+	report.Branch = branch
+	actualPayloadRoot, err := selectPayloadRoot(checkout)
+	if err != nil {
+		return failed(err)
+	}
+	if actualPayloadRoot != payloadRoot {
+		return failed(fmt.Errorf("upstream payload root changed from %q to %q while switching to default branch", payloadRoot, actualPayloadRoot))
 	}
 	stagePaths := make([]string, 0, len(included))
 	for _, item := range included {
@@ -193,6 +200,21 @@ func clean(run func(string, string, ...string) (string, error), dir string) erro
 	if _, err := run(dir, "git", "rev-parse", "--is-inside-work-tree"); err != nil {
 		return fmt.Errorf("memory-bank/.repo is not a Git checkout: %w", err)
 	}
+	top, err := run(dir, "git", "rev-parse", "--show-toplevel")
+	if err != nil {
+		return fmt.Errorf("resolve upstream Git root: %w", err)
+	}
+	absDir, err := filepath.EvalSymlinks(dir)
+	if err != nil {
+		return err
+	}
+	absTop, err := filepath.EvalSymlinks(strings.TrimSpace(top))
+	if err != nil {
+		return err
+	}
+	if filepath.Clean(absDir) != filepath.Clean(absTop) {
+		return fmt.Errorf("memory-bank/.repo must be its own Git worktree (got %q, want %q)", absTop, absDir)
+	}
 	status, err := run(dir, "git", "status", "--porcelain")
 	if err != nil {
 		return err
@@ -242,6 +264,23 @@ func selectPayloadRoot(checkout string) (string, error) {
 	}
 	if len(roots) != 1 {
 		return "", fmt.Errorf("upstream checkout must contain exactly one payload root (memory-bank-template or memory-bank), found %v", roots)
+	}
+	return roots[0], nil
+}
+
+func selectPayloadRootAt(run func(string, string, ...string) (string, error), checkout, ref string) (string, error) {
+	var roots []string
+	for _, candidate := range []string{"memory-bank-template", "memory-bank"} {
+		out, err := run(checkout, "git", "ls-tree", "-d", "--name-only", ref, "--", candidate)
+		if err != nil {
+			return "", fmt.Errorf("inspect upstream payload root %q: %w", candidate, err)
+		}
+		if strings.TrimSpace(out) == candidate {
+			roots = append(roots, candidate)
+		}
+	}
+	if len(roots) != 1 {
+		return "", fmt.Errorf("default branch must contain exactly one payload root (memory-bank-template or memory-bank), found %v", roots)
 	}
 	return roots[0], nil
 }

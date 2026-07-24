@@ -27,8 +27,11 @@ func TestRunCreatesBranchCopiesManagedFileAndReturnsPR(t *testing.T) {
 	run := func(dir, name string, args ...string) (string, error) {
 		call := name + " " + strings.Join(args, " ")
 		calls = append(calls, call)
+		if call == "git rev-parse --show-toplevel" {
+			return dir, nil
+		}
 		switch call {
-		case "git rev-parse --show-toplevel", "git rev-parse --is-inside-work-tree", "git status --porcelain", "git diff --name-only --diff-filter=U", "git rev-parse --verify origin/main", "git add -- memory-bank-template/dna/rule.md", "git commit -m Publish managed Memory Bank changes", "git push -u origin memory-bank-cli/push-20260724-120000":
+		case "git rev-parse --is-inside-work-tree", "git status --porcelain", "git diff --name-only --diff-filter=U", "git rev-parse --verify origin/main", "git add -- memory-bank-template/dna/rule.md", "git commit -m Publish managed Memory Bank changes", "git push -u origin memory-bank-cli/push-20260724-120000":
 			return "", nil
 		case "git remote get-url origin":
 			return "https://github.com/example/upstream.git", nil
@@ -38,6 +41,10 @@ func TestRunCreatesBranchCopiesManagedFileAndReturnsPR(t *testing.T) {
 			return "main", nil
 		case "git rev-parse HEAD":
 			return "abc123", nil
+		case "git ls-tree -d --name-only origin/main -- memory-bank-template":
+			return "memory-bank-template", nil
+		case "git ls-tree -d --name-only origin/main -- memory-bank":
+			return "", nil
 		case "git status --porcelain --untracked-files=all -- memory-bank":
 			return " M memory-bank/dna/rule.md\n M memory-bank/product/note.md\n", nil
 		case "git checkout -b memory-bank-cli/push-20260724-120000 origin/main":
@@ -75,11 +82,14 @@ func TestRunCreatesBranchCopiesManagedFileAndReturnsPR(t *testing.T) {
 func TestRunCompensatesRemoteBranchWhenPRCreationFails(t *testing.T) {
 	root := pushFixture(t)
 	var calls []string
-	run := func(_ string, name string, args ...string) (string, error) {
+	run := func(dir string, name string, args ...string) (string, error) {
 		call := name + " " + strings.Join(args, " ")
 		calls = append(calls, call)
+		if call == "git rev-parse --show-toplevel" {
+			return dir, nil
+		}
 		switch call {
-		case "git rev-parse --show-toplevel", "git rev-parse --is-inside-work-tree", "git status --porcelain", "git diff --name-only --diff-filter=U", "git rev-parse --verify origin/main", "git add -- memory-bank-template/dna/rule.md", "git commit -m Publish managed Memory Bank changes", "git push -u origin memory-bank-cli/push-20260724-120000", "git push origin --delete memory-bank-cli/push-20260724-120000", "git reset --hard", "git checkout main", "git reset --hard abc123":
+		case "git rev-parse --is-inside-work-tree", "git status --porcelain", "git diff --name-only --diff-filter=U", "git rev-parse --verify origin/main", "git add -- memory-bank-template/dna/rule.md", "git commit -m Publish managed Memory Bank changes", "git push -u origin memory-bank-cli/push-20260724-120000", "git push origin --delete memory-bank-cli/push-20260724-120000", "git reset --hard", "git checkout main", "git reset --hard abc123":
 			return "", nil
 		case "git remote get-url origin":
 			return "https://github.com/example/upstream.git", nil
@@ -89,6 +99,10 @@ func TestRunCompensatesRemoteBranchWhenPRCreationFails(t *testing.T) {
 			return "main", nil
 		case "git rev-parse HEAD":
 			return "abc123", nil
+		case "git ls-tree -d --name-only origin/main -- memory-bank-template":
+			return "memory-bank-template", nil
+		case "git ls-tree -d --name-only origin/main -- memory-bank":
+			return "", nil
 		case "git status --porcelain --untracked-files=all -- memory-bank":
 			return " M memory-bank/dna/rule.md\n", nil
 		case "git checkout -b memory-bank-cli/push-20260724-120000 origin/main":
