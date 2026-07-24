@@ -35,6 +35,11 @@ type Options struct {
 	Run      func(dir, name string, args ...string) (string, error)
 }
 
+type change struct {
+	path   string
+	delete bool
+}
+
 func Run(options Options) (Report, error) {
 	if options.RepoRoot == "" {
 		return Report{}, errors.New("repository root is required")
@@ -61,47 +66,96 @@ func Run(options Options) (Report, error) {
 	if err != nil || strings.TrimSpace(remote) == "" {
 		return Report{}, fmt.Errorf("upstream checkout has no valid origin remote")
 	}
-	paths, err := changedPaths(run, options.RepoRoot)
+	payloadRoot, err := selectPayloadRoot(checkout)
+	if err != nil {
+		return Report{}, err
+	}
+	defaultBranch, err := defaultBranch(run, checkout)
+	if err != nil {
+		return Report{}, err
+	}
+	originalBranch, err := run(checkout, "git", "branch", "--show-current")
+	if err != nil || strings.TrimSpace(originalBranch) == "" {
+		return Report{}, errors.New("upstream checkout must be on a named branch")
+	}
+	originalHead, err := run(checkout, "git", "rev-parse", "HEAD")
+	if err != nil {
+		return Report{}, fmt.Errorf("resolve upstream HEAD: %w", err)
+	}
+	changes, err := changedPaths(run, options.RepoRoot)
 	if err != nil {
 		return Report{}, err
 	}
 	report := Report{FormatVersion: 1, DryRun: options.DryRun}
-	for _, path := range paths {
-		class := ownership.Classify(path)
+	for _, item := range changes {
+		class := ownership.Classify(item.path)
 		if class != ownership.Managed {
-			report.Decisions = append(report.Decisions, Decision{Path: path, Action: "exclude", Reason: string(class) + " paths are not published"})
+			report.Decisions = append(report.Decisions, Decision{Path: item.path, Action: "exclude", Reason: string(class) + " paths are not published"})
 			continue
 		}
-		report.Decisions = append(report.Decisions, Decision{Path: path, Action: "include", Reason: "managed template path"})
+		action := "include"
+		if item.delete {
+			action = "delete"
+		}
+		report.Decisions = append(report.Decisions, Decision{Path: item.path, Action: action, Reason: "managed template path"})
 	}
 	sort.Slice(report.Decisions, func(i, j int) bool { return report.Decisions[i].Path < report.Decisions[j].Path })
 	if options.DryRun {
 		return report, nil
 	}
-	included := make([]string, 0)
-	for _, decision := range report.Decisions {
-		if decision.Action == "include" {
-			included = append(included, decision.Path)
+	included := make([]change, 0)
+	for _, item := range changes {
+		if ownership.Classify(item.path) == ownership.Managed {
+			included = append(included, item)
 		}
 	}
 	if len(included) == 0 {
 		return report, errors.New("no managed Memory Bank changes to publish")
 	}
 	branch := fmt.Sprintf("memory-bank-cli/push-%s", now().UTC().Format("20060102-150405"))
-	if _, err := run(checkout, "git", "checkout", "-b", branch); err != nil {
+	if _, err := run(checkout, "git", "checkout", "-b", branch, "origin/"+defaultBranch); err != nil {
 		return report, fmt.Errorf("create upstream branch: %w", err)
 	}
 	report.Branch = branch
+	remotePushed := false
 	failed := func(cause error) (Report, error) {
-		_, _ = run(checkout, "git", "checkout", "-")
+		var cleanup []string
+		if remotePushed {
+			if _, err := run(checkout, "git", "push", "origin", "--delete", branch); err != nil {
+				cleanup = append(cleanup, "remote branch remains: "+err.Error())
+			}
+		}
+		if _, err := run(checkout, "git", "reset", "--hard"); err != nil {
+			cleanup = append(cleanup, "reset failed: "+err.Error())
+		}
+		if _, err := run(checkout, "git", "checkout", strings.TrimSpace(originalBranch)); err != nil {
+			cleanup = append(cleanup, "restore branch failed: "+err.Error())
+		}
+		if _, err := run(checkout, "git", "reset", "--hard", strings.TrimSpace(originalHead)); err != nil {
+			cleanup = append(cleanup, "restore HEAD failed: "+err.Error())
+		}
+		if status, err := run(checkout, "git", "status", "--porcelain"); err != nil || strings.TrimSpace(status) != "" {
+			cleanup = append(cleanup, "checkout restoration is not clean")
+		}
+		if len(cleanup) > 0 {
+			return report, fmt.Errorf("%w; cleanup: %s", cause, strings.Join(cleanup, "; "))
+		}
 		return report, cause
 	}
-	for _, path := range included {
-		if err := copyFile(filepath.Join(options.RepoRoot, filepath.FromSlash(path)), filepath.Join(checkout, filepath.FromSlash(path))); err != nil {
-			return failed(fmt.Errorf("stage %s: %w", path, err))
+	stagePaths := make([]string, 0, len(included))
+	for _, item := range included {
+		relative := strings.TrimPrefix(item.path, "memory-bank/")
+		destination := filepath.Join(checkout, payloadRoot, filepath.FromSlash(relative))
+		stagePaths = append(stagePaths, filepath.ToSlash(filepath.Join(payloadRoot, relative)))
+		if item.delete {
+			if err := removeRegular(destination, filepath.Join(checkout, payloadRoot)); err != nil && !errors.Is(err, os.ErrNotExist) {
+				return failed(fmt.Errorf("delete %s: %w", item.path, err))
+			}
+		} else if err := copyRegular(filepath.Join(options.RepoRoot, filepath.FromSlash(item.path)), destination, filepath.Join(options.RepoRoot, "memory-bank"), filepath.Join(checkout, payloadRoot)); err != nil {
+			return failed(fmt.Errorf("stage %s: %w", item.path, err))
 		}
 	}
-	addArgs := append([]string{"add", "--"}, included...)
+	addArgs := append([]string{"add", "--"}, stagePaths...)
 	if _, err := run(checkout, "git", addArgs...); err != nil {
 		return failed(fmt.Errorf("stage upstream changes: %w", err))
 	}
@@ -111,12 +165,10 @@ func Run(options Options) (Report, error) {
 	if _, err := run(checkout, "git", "push", "-u", "origin", branch); err != nil {
 		return failed(fmt.Errorf("push upstream branch: %w", err))
 	}
-	pr, err := run(checkout, "gh", "pr", "create", "--head", branch, "--fill")
+	remotePushed = true
+	pr, err := run(checkout, "gh", "pr", "create", "--head", branch, "--base", defaultBranch, "--fill")
 	if err != nil {
-		if _, deleteErr := run(checkout, "git", "push", "origin", "--delete", branch); deleteErr != nil {
-			return failed(fmt.Errorf("create PR: %w; remote branch %q remains and must be deleted manually", err, branch))
-		}
-		return failed(fmt.Errorf("create PR: %w; remote branch was deleted", err))
+		return failed(fmt.Errorf("create PR: %w", err))
 	}
 	report.PRURL = strings.TrimSpace(pr)
 	if report.PRURL == "" {
@@ -158,47 +210,186 @@ func clean(run func(string, string, ...string) (string, error), dir string) erro
 	return nil
 }
 
-func changedPaths(run func(string, string, ...string) (string, error), root string) ([]string, error) {
+func defaultBranch(run func(string, string, ...string) (string, error), checkout string) (string, error) {
+	ref, err := run(checkout, "git", "symbolic-ref", "--short", "refs/remotes/origin/HEAD")
+	if err != nil {
+		return "", fmt.Errorf("resolve upstream default branch: %w", err)
+	}
+	branch := strings.TrimPrefix(strings.TrimSpace(ref), "origin/")
+	if branch == "" || branch == ref {
+		return "", errors.New("upstream origin/HEAD does not name a default branch")
+	}
+	if _, err := run(checkout, "git", "rev-parse", "--verify", "origin/"+branch); err != nil {
+		return "", fmt.Errorf("default branch %q is not available locally: %w", branch, err)
+	}
+	return branch, nil
+}
+
+func selectPayloadRoot(checkout string) (string, error) {
+	var roots []string
+	for _, candidate := range []string{"memory-bank-template", "memory-bank"} {
+		info, err := os.Lstat(filepath.Join(checkout, candidate))
+		if errors.Is(err, os.ErrNotExist) {
+			continue
+		}
+		if err != nil {
+			return "", err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return "", fmt.Errorf("upstream payload root %q must be a real directory", candidate)
+		}
+		roots = append(roots, candidate)
+	}
+	if len(roots) != 1 {
+		return "", fmt.Errorf("upstream checkout must contain exactly one payload root (memory-bank-template or memory-bank), found %v", roots)
+	}
+	return roots[0], nil
+}
+
+func changedPaths(run func(string, string, ...string) (string, error), root string) ([]change, error) {
 	out, err := run(root, "git", "status", "--porcelain", "--untracked-files=all", "--", "memory-bank")
 	if err != nil {
 		return nil, fmt.Errorf("inspect downstream changes: %w", err)
 	}
-	set := map[string]bool{}
+	set := map[string]change{}
 	for _, line := range strings.Split(strings.TrimSuffix(out, "\n"), "\n") {
-		if len(line) < 3 {
+		if len(line) < 4 {
 			continue
 		}
-		pathStart := 2
-		if line[2] == ' ' {
-			pathStart = 3
+		status, paths := line[:2], strings.TrimSpace(line[3:])
+		if strings.Contains(status, "R") {
+			old, next, ok := strings.Cut(paths, " -> ")
+			if !ok {
+				return nil, fmt.Errorf("ambiguous rename %q", line)
+			}
+			for _, item := range []change{{path: strings.TrimSpace(old), delete: true}, {path: strings.TrimSpace(next)}} {
+				if err := addChange(set, item); err != nil {
+					return nil, err
+				}
+			}
+			continue
 		}
-		path := strings.TrimSpace(line[pathStart:])
-		if before, _, ok := strings.Cut(path, " -> "); ok {
-			path = strings.TrimSpace(before)
+		if err := addChange(set, change{path: paths, delete: strings.Contains(status, "D")}); err != nil {
+			return nil, err
 		}
-		path = filepath.ToSlash(path)
-		if !strings.HasPrefix(path, "memory-bank/") || strings.Contains(path, "../") {
-			return nil, fmt.Errorf("ambiguous changed path %q", path)
-		}
-		set[path] = true
 	}
-	paths := make([]string, 0, len(set))
-	for path := range set {
-		paths = append(paths, path)
+	paths := make([]change, 0, len(set))
+	for _, item := range set {
+		paths = append(paths, item)
 	}
-	sort.Strings(paths)
+	sort.Slice(paths, func(i, j int) bool {
+		if paths[i].path == paths[j].path {
+			return paths[i].delete
+		}
+		return paths[i].path < paths[j].path
+	})
 	return paths, nil
 }
 
-func copyFile(source, destination string) error {
+func addChange(set map[string]change, item change) error {
+	item.path = filepath.ToSlash(item.path)
+	if !strings.HasPrefix(item.path, "memory-bank/") || strings.Contains(item.path, "../") {
+		return fmt.Errorf("ambiguous changed path %q", item.path)
+	}
+	set[item.path] = item
+	return nil
+}
+
+func copyRegular(source, destination, sourceRoot, destinationRoot string) error {
+	if err := validateRegular(source, sourceRoot); err != nil {
+		return err
+	}
+	if err := ensureSafeParents(filepath.Dir(destination), destinationRoot); err != nil {
+		return err
+	}
+	if info, err := os.Lstat(destination); err == nil && info.Mode()&os.ModeSymlink != 0 {
+		return fmt.Errorf("destination is a symlink: %s", destination)
+	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
 	data, err := os.ReadFile(source)
 	if err != nil {
 		return err
 	}
-	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+	return os.WriteFile(destination, data, 0o644)
+}
+
+func removeRegular(path, root string) error {
+	if err := ensureSafeParents(filepath.Dir(path), root); err != nil {
 		return err
 	}
-	return os.WriteFile(destination, data, 0o644)
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("destination is not a regular file: %s", path)
+	}
+	return os.Remove(path)
+}
+
+func validateRegular(path, root string) error {
+	if err := safeExistingParents(filepath.Dir(path), root); err != nil {
+		return err
+	}
+	info, err := os.Lstat(path)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("source is not a regular file: %s", path)
+	}
+	return nil
+}
+
+func safeExistingParents(directory, root string) error {
+	relative, err := filepath.Rel(root, directory)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return errors.New("path escapes payload root")
+	}
+	current := root
+	for _, part := range strings.Split(relative, string(filepath.Separator)) {
+		if part == "." || part == "" {
+			continue
+		}
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("unsafe path component: %s", current)
+		}
+	}
+	return nil
+}
+
+func ensureSafeParents(directory, root string) error {
+	relative, err := filepath.Rel(root, directory)
+	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
+		return errors.New("path escapes payload root")
+	}
+	current := root
+	for _, part := range strings.Split(relative, string(filepath.Separator)) {
+		if part == "." || part == "" {
+			continue
+		}
+		current = filepath.Join(current, part)
+		info, err := os.Lstat(current)
+		if errors.Is(err, os.ErrNotExist) {
+			if err := os.Mkdir(current, 0o755); err != nil && !errors.Is(err, os.ErrExist) {
+				return err
+			}
+			continue
+		}
+		if err != nil {
+			return err
+		}
+		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
+			return fmt.Errorf("unsafe path component: %s", current)
+		}
+	}
+	return nil
 }
 
 func command(dir, name string, args ...string) (string, error) {
@@ -212,5 +403,5 @@ func command(dir, name string, args ...string) (string, error) {
 		}
 		return "", err
 	}
-	return text, nil
+	return string(out), nil
 }

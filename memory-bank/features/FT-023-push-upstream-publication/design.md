@@ -80,12 +80,13 @@ The CLI reads downstream source, validates and temporarily mutates only the name
 - `SD-01` A path is publishable only when safely normalized below `memory-bank/` and its current class is exactly `managed`; every other class is reported as excluded. Failed normalization/classification aborts before mutation.
 - `SD-02` Preflight first; use only a fresh non-default branch; after failure restore original local branch/HEAD and attempt remote deletion only for the command-created branch. Failed compensation is a diagnosed failed outcome, never a default-branch write.
 - `SD-03` `standard` validation requires targeted contract tests, full Go suite, vet, navigation audit and one approved live PR result; the latter is a closure gate, not a unit-test substitute.
+- `SD-04` The source namespace is always downstream `memory-bank/`; before mutation the upstream checkout must contain exactly one real payload root, `memory-bank-template/` or legacy `memory-bank/`. The planner translates only the leading namespace and rejects missing, duplicate or symlink payload roots.
 
 ## Contracts
 
 | Contract ID | Connector / direction | Roles and sync boundary | Guarantees / failure / evolution semantics |
 | --- | --- | --- | --- |
-| `CTR-01` | Filesystem: `memory-bank/` → selection planner | CLI reads current repository synchronously | Only exactly-`managed` normalized paths enter plan; `.lock`, `.repo` and all other classes are excluded; normalization/classification failure aborts. |
+| `CTR-01` | Filesystem: downstream `memory-bank/` → selection planner → upstream payload root | CLI reads current repository synchronously | Only exactly-`managed` normalized paths enter plan; `.lock`, `.repo` and all other classes are excluded. The source prefix translates to exactly one validated upstream `memory-bank-template/` or `memory-bank/` root; invalid topology aborts. |
 | `CTR-02` | Local Git and remote Git: CLI → `.repo` → configured upstream | Synchronous local/remote boundary | Preflight validates repository, safe path, clean state, conflicts, remote identity and default branch; writes only fresh branch; failure runs `SD-02`. |
 | `CTR-03` | GitHub PR: CLI → configured upstream repository | External authenticated boundary after push | Success returns URL; failure triggers `CTR-02` compensation; dry-run never crosses boundary. |
 
