@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -720,4 +721,111 @@ func TestOwnershipDryRunJSONReportsNewManagedPathCollision(t *testing.T) {
 		}
 	}
 	t.Fatalf("collision decision missing from report: %#v", report.Decisions)
+}
+
+func TestUpdateAskResolvesCollisionsWithoutPartialChanges(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	seed := filepath.Join(source, "template", "memory-bank", "dna", "seed.md")
+	if err := os.MkdirAll(filepath.Dir(seed), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(seed, []byte("seed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	initialRef := commitCLISource(t, source, "initial source")
+	initArgs := []string{"init", "--repo-root", repo, "--source", source, "--template-version", "v1", "--source-ref", initialRef}
+	var stdout, stderr bytes.Buffer
+	if exitCode := Run(initArgs, "test", &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("init exit=%d stderr=%s", exitCode, stderr.String())
+	}
+	first := filepath.Join("memory-bank", "dna", "first.md")
+	second := filepath.Join("memory-bank", "dna", "second.md")
+	for _, collision := range []string{first, second} {
+		if err := os.WriteFile(filepath.Join(repo, collision), []byte("local "+collision+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(source, "template", collision), []byte("source "+collision+"\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := os.Chmod(filepath.Join(repo, second), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	updatedRef := commitCLISource(t, source, "add collisions")
+	updateArgs := []string{"--repo-root", repo, "--source", source, "--template-version", "v2", "--source-ref", updatedRef, "--ask"}
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := runOwnership(updateArgs, "update", strings.NewReader("bad\no\nk\n"), true, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("ask update exit=%d stdout=%s stderr=%s", exitCode, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "User-owned collision: "+filepath.ToSlash(first)) || !strings.Contains(stderr.String(), "Please enter k/keep or o/overwrite.") {
+		t.Fatalf("ask prompt omitted collision context or invalid-input guidance: %s", stderr.String())
+	}
+	if got, want := string(mustReadFile(t, filepath.Join(repo, first))), "source "+first+"\n"; got != want {
+		t.Fatalf("overwrite payload=%q want=%q", got, want)
+	}
+	if got, want := string(mustReadFile(t, filepath.Join(repo, second))), "local "+second+"\n"; got != want {
+		t.Fatalf("keep payload=%q want=%q", got, want)
+	}
+	if runtime.GOOS != "windows" {
+		if info, err := os.Stat(filepath.Join(repo, second)); err != nil || info.Mode().Perm() != 0o755 {
+			t.Fatalf("keep mode=%v err=%v, want 0755", info, err)
+		}
+	}
+	lock, exists, err := ownership.ReadLock(repo)
+	if err != nil || !exists || lock.Files[filepath.ToSlash(first)].Ownership != ownership.Managed || lock.Files[filepath.ToSlash(second)].Ownership != ownership.UserOwned {
+		t.Fatalf("ask resolutions not recorded: lock=%#v exists=%v err=%v", lock.Files, exists, err)
+	}
+
+	lockBefore := mustReadFile(t, filepath.Join(repo, "memory-bank", ".lock"))
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := runOwnership(append(append([]string{}, updateArgs...), "--dry-run"), "update", strings.NewReader("o\n"), true, &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("ask dry-run exit=%d stderr=%s", exitCode, stderr.String())
+	}
+	if got := string(mustReadFile(t, filepath.Join(repo, second))); got != "local "+second+"\n" {
+		t.Fatalf("ask dry-run changed payload: %q", got)
+	}
+	if got := mustReadFile(t, filepath.Join(repo, "memory-bank", ".lock")); !bytes.Equal(got, lockBefore) {
+		t.Fatal("ask dry-run changed lock")
+	}
+	if !strings.Contains(stdout.String(), "update\tmanaged\t"+filepath.ToSlash(second)+"\treplace user-owned file from source by explicit resolution") {
+		t.Fatalf("ask dry-run did not print resolved plan: %s", stdout.String())
+	}
+
+	third := filepath.Join("memory-bank", "dna", "third.md")
+	if err := os.WriteFile(filepath.Join(repo, third), []byte("local third\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "template", third), []byte("source third\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	thirdRef := commitCLISource(t, source, "add third collision")
+	attemptArgs := []string{"--repo-root", repo, "--source", source, "--template-version", "v3", "--source-ref", thirdRef, "--ask"}
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := runOwnership(attemptArgs, "update", strings.NewReader("o\n"), true, &stdout, &stderr); exitCode != exitFailure || !strings.Contains(stderr.String(), "input ended") {
+		t.Fatalf("incomplete answers exit=%d stderr=%s", exitCode, stderr.String())
+	}
+	if got := string(mustReadFile(t, filepath.Join(repo, second))); got != "local "+second+"\n" {
+		t.Fatalf("incomplete answers partially changed earlier collision: %q", got)
+	}
+	if got := string(mustReadFile(t, filepath.Join(repo, third))); got != "local third\n" {
+		t.Fatalf("incomplete answers changed later collision: %q", got)
+	}
+
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := runOwnership([]string{"--ask"}, "update", strings.NewReader("o\n"), false, &stdout, &stderr); exitCode != exitFailure || !strings.Contains(stderr.String(), "requires an interactive terminal") {
+		t.Fatalf("non-interactive --ask exit=%d stderr=%s", exitCode, stderr.String())
+	}
+}
+
+func mustReadFile(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }

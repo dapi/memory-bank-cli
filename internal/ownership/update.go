@@ -112,7 +112,7 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 	if err := verifySource(pinnedSource.root, options.SourceRef); err != nil {
 		return Report{}, fmt.Errorf("source checkout changed while reading template: %w", err)
 	}
-	mutations, decisions, next, err := buildPlan(repo, source, old, hasLock)
+	mutations, decisions, next, err := buildPlan(repo, source, old, hasLock, options.UserOwnedResolutions)
 	if err != nil {
 		return Report{}, err
 	}
@@ -401,7 +401,7 @@ func modeMatches(observed, expected string) bool {
 	return observed == "" || observed == expected
 }
 
-func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock bool) ([]mutation, []Decision, Lock, error) {
+func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock bool, userOwnedResolutions map[string]bool) ([]mutation, []Decision, Lock, error) {
 	if _, err := inspectRepoRoot(repo.root, repo.info); err != nil {
 		return nil, nil, Lock{}, err
 	}
@@ -594,6 +594,15 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 				decision.Action, decision.Reason = Preserve, "preserve downstream adaptation"
 			}
 		}
+		if resolution, resolved := userOwnedResolutions[path]; resolved && class == Managed && exists && file.Ownership == UserOwned {
+			if resolution {
+				decision.Action, decision.Reason = UpdateFile, "replace user-owned file from source by explicit resolution"
+				file = File{Ownership: Managed, BaseDigest: incoming.digest, PayloadDigest: incoming.digest, BaseMode: incoming.mode, PayloadMode: incoming.mode}
+			} else {
+				decision.Action, decision.Reason = Preserve, "keep user-owned file by explicit resolution"
+			}
+		}
+		decision.CanOverwrite = class == Managed && exists && file.Ownership == UserOwned
 		decision.Ownership = file.Ownership
 		if decision.Action == Create || decision.Action == UpdateFile {
 			sourceMutations = append(sourceMutations, mutation{

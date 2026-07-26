@@ -54,11 +54,12 @@ const (
 )
 
 type Decision struct {
-	Path      string `json:"path"`
-	Ownership Class  `json:"ownership"`
-	Action    Action `json:"action"`
-	Reason    string `json:"reason"`
-	Diff      string `json:"diff,omitempty"`
+	Path         string `json:"path"`
+	Ownership    Class  `json:"ownership"`
+	Action       Action `json:"action"`
+	Reason       string `json:"reason"`
+	Diff         string `json:"diff,omitempty"`
+	CanOverwrite bool   `json:"-"`
 }
 
 type Report struct {
@@ -76,8 +77,12 @@ type Options struct {
 	TemplateVersion string
 	SourceRef       string
 	DryRun          bool
-	AgentFile       string
-	Now             func() time.Time
+	// UserOwnedResolutions maps user-owned managed-file collisions to their
+	// explicit resolution: false keeps local content, true replaces it with the
+	// incoming source payload.
+	UserOwnedResolutions map[string]bool
+	AgentFile            string
+	Now                  func() time.Time
 	// verifySource is replaced by unit tests that use synthetic source trees.
 	// CLI callers always use the Git-backed provenance verifier.
 	verifySource func(string, string) error

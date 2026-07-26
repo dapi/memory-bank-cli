@@ -2,11 +2,13 @@
 package cli
 
 import (
+	"bufio"
 	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
 	"io"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
@@ -17,6 +19,7 @@ import (
 	"github.com/dapi/memory-bank-cli/internal/ownership"
 	"github.com/dapi/memory-bank-cli/internal/push"
 	"github.com/dapi/memory-bank-cli/internal/repository"
+	"golang.org/x/term"
 )
 
 const (
@@ -49,9 +52,9 @@ func Run(arguments []string, version string, stdout, stderr io.Writer) int {
 	case "lint":
 		return runLint(arguments[1:], "memory-bank-cli lint", version, stdout, stderr)
 	case "init":
-		return runOwnership(arguments[1:], "init", stdout, stderr)
+		return runOwnership(arguments[1:], "init", os.Stdin, term.IsTerminal(int(os.Stdin.Fd())), stdout, stderr)
 	case "update":
-		return runOwnership(arguments[1:], "update", stdout, stderr)
+		return runOwnership(arguments[1:], "update", os.Stdin, term.IsTerminal(int(os.Stdin.Fd())), stdout, stderr)
 	case "doctor":
 		return runDoctor(arguments[1:], stdout, stderr)
 	case "github":
@@ -194,7 +197,7 @@ func runGitHubAdapter(arguments []string, stdout, stderr io.Writer) int {
 	return exitSuccess
 }
 
-func runOwnership(arguments []string, command string, stdout, stderr io.Writer) int {
+func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTerminal bool, stdout, stderr io.Writer) int {
 	flags := flag.NewFlagSet("memory-bank-cli "+command, flag.ContinueOnError)
 	flags.SetOutput(stderr)
 	flags.Usage = func() {
@@ -206,6 +209,7 @@ func runOwnership(arguments []string, command string, stdout, stderr io.Writer) 
 	templateVersion := flags.String("template-version", "", "human-readable template version")
 	sourceRef := flags.String("source-ref", "", "full commit SHA matching the source checkout HEAD")
 	dryRun := flags.Bool("dry-run", false, "print the complete mutation plan without applying it")
+	ask := flags.Bool("ask", false, "interactively resolve user-owned managed-file collisions")
 	agentFile := flags.String("agent-file", "AGENTS.md", "single repository-relative agent instruction file to manage")
 	jsonOutput := addJSONOutputFlag(flags)
 	if err := flags.Parse(arguments); err != nil {
@@ -217,6 +221,14 @@ func runOwnership(arguments []string, command string, stdout, stderr io.Writer) 
 	if flags.NArg() > 0 {
 		fmt.Fprintf(stderr, "memory-bank-cli %s: unexpected arguments: %v\n", command, flags.Args())
 		return exitUsage
+	}
+	if *ask && command != "update" {
+		fmt.Fprintln(stderr, "memory-bank-cli init: --ask is only supported by update")
+		return exitUsage
+	}
+	if *ask && !stdinIsTerminal {
+		fmt.Fprintln(stderr, "memory-bank-cli update: --ask requires an interactive terminal; rerun without --ask in CI or piped execution")
+		return exitFailure
 	}
 	explicitSource := *sourceRootArgument != "" || *templateVersion != "" || *sourceRef != ""
 	if explicitSource && (*sourceRootArgument == "" || *templateVersion == "" || *sourceRef == "") {
@@ -240,6 +252,21 @@ func runOwnership(arguments []string, command string, stdout, stderr io.Writer) 
 		AgentFile: *agentFile,
 	}
 	var report ownership.Report
+	if *ask {
+		planOptions := options
+		planOptions.DryRun = true
+		plan, planErr := ownership.Update(planOptions)
+		if planErr != nil {
+			fmt.Fprintln(stderr, planErr)
+			return exitFailure
+		}
+		overwrites, askErr := askUserOwnedCollisions(stdin, stderr, plan)
+		if askErr != nil {
+			fmt.Fprintln(stderr, askErr)
+			return exitFailure
+		}
+		options.UserOwnedResolutions = overwrites
+	}
 	if command == "init" {
 		report, err = ownership.Init(options)
 	} else {
@@ -266,6 +293,38 @@ func runOwnership(arguments []string, command string, stdout, stderr io.Writer) 
 		return exitFailure
 	}
 	return exitSuccess
+}
+
+func askUserOwnedCollisions(stdin io.Reader, writer io.Writer, report ownership.Report) (map[string]bool, error) {
+	overwrites := make(map[string]bool)
+	scanner := bufio.NewScanner(stdin)
+	for _, decision := range report.Decisions {
+		if !decision.CanOverwrite {
+			continue
+		}
+		for {
+			fmt.Fprintf(writer, "User-owned collision: %s\nPlanned safe action: keep local file (%s).\nChoose [k]eep local or [o]verwrite from source: ", decision.Path, decision.Reason)
+			if !scanner.Scan() {
+				if err := scanner.Err(); err != nil {
+					return nil, fmt.Errorf("read --ask response: %w", err)
+				}
+				return nil, errors.New("read --ask response: input ended before all collisions were resolved; no files changed")
+			}
+			switch strings.ToLower(strings.TrimSpace(scanner.Text())) {
+			case "k", "keep":
+				overwrites[decision.Path] = false
+				break
+			case "o", "overwrite":
+				overwrites[decision.Path] = true
+				break
+			default:
+				fmt.Fprintln(writer, "Please enter k/keep or o/overwrite.")
+				continue
+			}
+			break
+		}
+	}
+	return overwrites, nil
 }
 
 func printOwnershipReport(writer io.Writer, report ownership.Report) {
