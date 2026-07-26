@@ -7,6 +7,14 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-07-26
+
+### Added
+
+- Add interactive `memory-bank-cli update --ask` resolution for user-owned
+  managed-file collisions, with keep or source-overwrite choices collected
+  before the update plan is applied atomically.
+
 ## [1.7.3] - 2026-07-24
 
 ### Fixed
