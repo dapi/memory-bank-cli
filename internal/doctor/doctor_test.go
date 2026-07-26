@@ -7,6 +7,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -762,6 +763,21 @@ func TestDesignDecisionMustBeInDesignRequirementSection(t *testing.T) {
 	}
 	if decision, valid := featureDesignDecision("# Brief\n\n## Design Requirement Decision\n\n### Context\n\nDesign required: yes\n\n## Delivery\n"); !valid || decision != "yes" {
 		t.Fatalf("nested decision subsection was not parsed: decision=%q valid=%t", decision, valid)
+	}
+}
+
+func TestObservedPayloadModeMatchesPlatformContract(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		if got := observedPayloadMode(0o755); got != "" {
+			t.Fatalf("Windows mode=%q, want no executable-bit comparison", got)
+		}
+		return
+	}
+	if got := observedPayloadMode(0o755); got != "100755" {
+		t.Fatalf("executable mode=%q, want 100755", got)
+	}
+	if got := observedPayloadMode(0o644); got != "100644" {
+		t.Fatalf("regular mode=%q, want 100644", got)
 	}
 }
 

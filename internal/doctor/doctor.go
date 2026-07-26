@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 
@@ -176,14 +177,24 @@ func (report *Report) checkManagedDrift(lock ownership.Lock) {
 		if digest != contract.PayloadDigest {
 			report.add(Finding{Code: "manifest.managed_content_drift", Severity: Error, Group: "manifest", Path: filePath, Message: "Managed file content differs from the lock payload digest.", Remediation: "Review the local change, then restore/update it through memory-bank-cli update."})
 		}
-		mode := "100644"
-		if info.Mode().Perm()&0o111 != 0 {
-			mode = "100755"
-		}
-		if contract.PayloadMode != "" && mode != contract.PayloadMode {
+		mode := observedPayloadMode(info.Mode().Perm())
+		if contract.PayloadMode != "" && mode != "" && mode != contract.PayloadMode {
 			report.add(Finding{Code: "manifest.managed_mode_drift", Severity: Error, Group: "manifest", Path: filePath, Message: "Managed file executable mode differs from the lock.", Remediation: "Restore the mode recorded by the ownership lock."})
 		}
 	}
+}
+
+// observedPayloadMode returns an empty mode on Windows because its filesystem
+// permission model does not preserve Git's executable bit. Ownership updates
+// use the same rule when deciding whether a payload has drifted.
+func observedPayloadMode(mode fs.FileMode) string {
+	if runtime.GOOS == "windows" {
+		return ""
+	}
+	if mode.Perm()&0o111 != 0 {
+		return "100755"
+	}
+	return "100644"
 }
 
 func readRegularWithinRoot(repoRoot, relativePath string) ([]byte, fs.FileInfo, error) {

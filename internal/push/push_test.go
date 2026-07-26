@@ -38,14 +38,50 @@ func TestRunCreatesBranchCopiesManagedFileAndReturnsPR(t *testing.T) {
 	writeManagedLock(t, root, "memory-bank/dna/rule.md", ".config/tool")
 	checkout := filepath.Join(root, "memory-bank", ".repo")
 	var calls []string
+	var worktree string
+	var stagedRule, stagedTool []byte
+	var stagedToolMode os.FileMode
 	run := func(dir, name string, args ...string) (string, error) {
 		call := name + " " + strings.Join(args, " ")
 		calls = append(calls, call)
 		if call == "git rev-parse --show-toplevel" {
 			return dir, nil
 		}
+		if name == "git" && len(args) == 6 && args[0] == "worktree" && args[1] == "add" && args[2] == "-b" {
+			if dir != checkout {
+				t.Fatalf("worktree created outside checkout: %q", dir)
+			}
+			worktree = args[4]
+			if err := os.MkdirAll(filepath.Join(worktree, "template", "memory-bank", "dna"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			return "", nil
+		}
+		if name == "git" && len(args) == 4 && args[0] == "worktree" && args[1] == "remove" && args[2] == "--force" {
+			if err := os.RemoveAll(args[3]); err != nil {
+				t.Fatal(err)
+			}
+			return "", nil
+		}
 		switch call {
-		case "git rev-parse --is-inside-work-tree", "git status --porcelain", "git diff --name-only --diff-filter=U", "git rev-parse --verify origin/main", "git add -- template/.config/tool template/memory-bank/dna/rule.md", "git commit -m Publish managed Memory Bank changes", "git push -u origin memory-bank-cli/push-20260724-120000":
+		case "git rev-parse --is-inside-work-tree", "git status --porcelain", "git diff --name-only --diff-filter=U", "git rev-parse --verify origin/main", "git commit -m Publish managed Memory Bank changes", "git push -u origin memory-bank-cli/push-20260724-120000", "git branch -D memory-bank-cli/push-20260724-120000":
+			return "", nil
+		case "git add -- template/.config/tool template/memory-bank/dna/rule.md":
+			if dir != worktree {
+				t.Fatalf("changes staged outside temporary worktree: %q", dir)
+			}
+			var err error
+			if stagedRule, err = os.ReadFile(filepath.Join(worktree, "template", "memory-bank", "dna", "rule.md")); err != nil {
+				t.Fatal(err)
+			}
+			if stagedTool, err = os.ReadFile(filepath.Join(worktree, "template", ".config", "tool")); err != nil {
+				t.Fatal(err)
+			}
+			info, err := os.Stat(filepath.Join(worktree, "template", ".config", "tool"))
+			if err != nil {
+				t.Fatal(err)
+			}
+			stagedToolMode = info.Mode().Perm()
 			return "", nil
 		case "git remote get-url origin":
 			return "https://github.com/example/upstream.git", nil
@@ -57,10 +93,6 @@ func TestRunCreatesBranchCopiesManagedFileAndReturnsPR(t *testing.T) {
 			return "origin/main", nil
 		case "git fetch origin main:refs/remotes/origin/main":
 			return "", nil
-		case "git branch --show-current":
-			return "main", nil
-		case "git rev-parse HEAD":
-			return "abc123", nil
 		case "git ls-tree -d --name-only origin/main -- template":
 			return "template", nil
 		case "git ls-tree -d --name-only origin/main -- memory-bank-template":
@@ -69,11 +101,6 @@ func TestRunCreatesBranchCopiesManagedFileAndReturnsPR(t *testing.T) {
 			return "", nil
 		case "git status --porcelain=v1 -z --untracked-files=all":
 			return " M .config/tool\x00 M memory-bank/dna/rule.md\x00 M memory-bank/product/note.md\x00", nil
-		case "git checkout -b memory-bank-cli/push-20260724-120000 origin/main":
-			if dir != checkout {
-				t.Fatalf("branch created outside checkout: %q", dir)
-			}
-			return "", nil
 		case "gh pr create --repo example/upstream --head memory-bank-cli/push-20260724-120000 --base main --fill":
 			return "https://github.com/example/upstream/pull/1", nil
 		default:
@@ -87,35 +114,31 @@ func TestRunCreatesBranchCopiesManagedFileAndReturnsPR(t *testing.T) {
 	if report.Branch != "memory-bank-cli/push-20260724-120000" || report.PRURL != "https://github.com/example/upstream/pull/1" {
 		t.Fatalf("unexpected report: %#v", report)
 	}
-	data, err := os.ReadFile(filepath.Join(checkout, "template", "memory-bank", "dna", "rule.md"))
-	if err != nil || string(data) != "changed\n" {
-		t.Fatalf("managed file was not copied: %q, %v", data, err)
+	if string(stagedRule) != "changed\n" {
+		t.Fatalf("managed file was not copied: %q", stagedRule)
 	}
-	data, err = os.ReadFile(filepath.Join(checkout, "template", ".config", "tool"))
-	if err != nil || string(data) != "#!/bin/sh\n" {
-		t.Fatalf("canonical root file was not copied: %q, %v", data, err)
+	if string(stagedTool) != "#!/bin/sh\n" {
+		t.Fatalf("canonical root file was not copied: %q", stagedTool)
 	}
-	if runtime.GOOS != "windows" {
-		info, statErr := os.Stat(filepath.Join(checkout, "template", ".config", "tool"))
-		if statErr != nil {
-			t.Fatal(statErr)
-		}
-		if info.Mode().Perm() != 0o755 {
-			t.Fatalf("canonical executable mode = %v", info.Mode())
-		}
+	if runtime.GOOS != "windows" && stagedToolMode != 0o755 {
+		t.Fatalf("canonical executable mode = %v", stagedToolMode)
 	}
 	if _, err := os.Stat(filepath.Join(checkout, "template", "memory-bank", "product", "note.md")); !os.IsNotExist(err) {
 		t.Fatalf("excluded path was copied: %v", err)
 	}
+	if _, err := os.Stat(worktree); !os.IsNotExist(err) {
+		t.Fatalf("temporary worktree was retained: %v", err)
+	}
 	for _, call := range calls {
-		if call == "git checkout -" {
-			t.Fatalf("successful run restored checkout: %v", calls)
+		if strings.HasPrefix(call, "git reset --hard") || strings.HasPrefix(call, "git clean -fd") || call == "git checkout -" {
+			t.Fatalf("successful run mutated the original checkout during cleanup: %v", calls)
 		}
 	}
 }
 
 func TestRunCompensatesRemoteBranchWhenPRCreationFails(t *testing.T) {
 	root := pushFixture(t)
+	checkout := filepath.Join(root, "memory-bank", ".repo")
 	var calls []string
 	run := func(dir string, name string, args ...string) (string, error) {
 		call := name + " " + strings.Join(args, " ")
@@ -123,8 +146,20 @@ func TestRunCompensatesRemoteBranchWhenPRCreationFails(t *testing.T) {
 		if call == "git rev-parse --show-toplevel" {
 			return dir, nil
 		}
+		if name == "git" && len(args) == 6 && args[0] == "worktree" && args[1] == "add" && args[2] == "-b" {
+			if dir != checkout {
+				t.Fatalf("worktree created outside checkout: %q", dir)
+			}
+			if err := os.MkdirAll(filepath.Join(args[4], "template", "memory-bank", "dna"), 0o755); err != nil {
+				t.Fatal(err)
+			}
+			return "", nil
+		}
+		if name == "git" && len(args) == 4 && args[0] == "worktree" && args[1] == "remove" && args[2] == "--force" {
+			return "", os.RemoveAll(args[3])
+		}
 		switch call {
-		case "git rev-parse --is-inside-work-tree", "git status --porcelain", "git diff --name-only --diff-filter=U", "git rev-parse --verify origin/main", "git add -- template/memory-bank/dna/rule.md", "git commit -m Publish managed Memory Bank changes", "git push -u origin memory-bank-cli/push-20260724-120000", "git push origin --delete memory-bank-cli/push-20260724-120000", "git reset --hard", "git checkout main", "git branch -D memory-bank-cli/push-20260724-120000", "git reset --hard abc123", "git clean -fd -- template/memory-bank/dna/rule.md":
+		case "git rev-parse --is-inside-work-tree", "git status --porcelain", "git diff --name-only --diff-filter=U", "git rev-parse --verify origin/main", "git add -- template/memory-bank/dna/rule.md", "git commit -m Publish managed Memory Bank changes", "git push -u origin memory-bank-cli/push-20260724-120000", "git push origin --delete memory-bank-cli/push-20260724-120000", "git branch -D memory-bank-cli/push-20260724-120000":
 			return "", nil
 		case "git remote get-url origin":
 			return "https://github.com/example/upstream.git", nil
@@ -134,10 +169,6 @@ func TestRunCompensatesRemoteBranchWhenPRCreationFails(t *testing.T) {
 			return "origin/main", nil
 		case "git fetch origin main:refs/remotes/origin/main":
 			return "", nil
-		case "git branch --show-current":
-			return "main", nil
-		case "git rev-parse HEAD":
-			return "abc123", nil
 		case "git ls-tree -d --name-only origin/main -- template":
 			return "template", nil
 		case "git ls-tree -d --name-only origin/main -- memory-bank-template":
@@ -148,8 +179,6 @@ func TestRunCompensatesRemoteBranchWhenPRCreationFails(t *testing.T) {
 			return " M memory-bank/dna/rule.md\x00", nil
 		case "git ls-remote --exit-code --heads origin memory-bank-cli/push-20260724-120000":
 			return "", errors.New("not found")
-		case "git checkout -b memory-bank-cli/push-20260724-120000 origin/main":
-			return "", nil
 		case "gh pr create --repo example/upstream --head memory-bank-cli/push-20260724-120000 --base main --fill":
 			return "", errors.New("forbidden")
 		default:
@@ -161,10 +190,102 @@ func TestRunCompensatesRemoteBranchWhenPRCreationFails(t *testing.T) {
 		t.Fatalf("want compensated failure, got %v", err)
 	}
 	joined := strings.Join(calls, "\n")
-	for _, want := range []string{"git push origin --delete memory-bank-cli/push-20260724-120000", "git reset --hard", "git checkout main"} {
+	for _, want := range []string{"git push origin --delete memory-bank-cli/push-20260724-120000", "git worktree remove --force", "git branch -D memory-bank-cli/push-20260724-120000"} {
 		if !strings.Contains(joined, want) {
 			t.Fatalf("missing compensation %q in %v", want, calls)
 		}
+	}
+}
+
+func TestRunFailureKeepsOriginalCheckoutUntouched(t *testing.T) {
+	remote, upstreamSeed, root := t.TempDir(), t.TempDir(), t.TempDir()
+	git(t, remote, "init", "--bare", "--quiet")
+	git(t, upstreamSeed, "init", "--quiet")
+	git(t, upstreamSeed, "branch", "-M", "main")
+	git(t, upstreamSeed, "config", "user.name", "Test")
+	git(t, upstreamSeed, "config", "user.email", "test@example.invalid")
+	upstreamFile := filepath.Join(upstreamSeed, "template", "memory-bank", "dna", "rule.md")
+	if err := os.MkdirAll(filepath.Dir(upstreamFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(upstreamFile, []byte("base\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	git(t, upstreamSeed, "add", ".")
+	git(t, upstreamSeed, "commit", "--quiet", "-m", "base")
+	git(t, upstreamSeed, "remote", "add", "origin", remote)
+	git(t, upstreamSeed, "push", "--quiet", "-u", "origin", "main")
+	git(t, remote, "symbolic-ref", "HEAD", "refs/heads/main")
+
+	git(t, root, "init", "--quiet")
+	git(t, root, "config", "user.name", "Test")
+	git(t, root, "config", "user.email", "test@example.invalid")
+	downstreamFile := filepath.Join(root, "memory-bank", "dna", "rule.md")
+	if err := os.MkdirAll(filepath.Dir(downstreamFile), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(downstreamFile, []byte("base\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	writeManagedLock(t, root, "memory-bank/dna/rule.md")
+	git(t, root, "add", ".")
+	git(t, root, "commit", "--quiet", "-m", "downstream base")
+	if err := os.WriteFile(downstreamFile, []byte("changed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	checkout := filepath.Join(root, "memory-bank", ".repo")
+	if err := os.MkdirAll(filepath.Dir(checkout), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	git(t, root, "clone", "--quiet", remote, checkout)
+	git(t, checkout, "config", "user.name", "Test")
+	git(t, checkout, "config", "user.email", "test@example.invalid")
+	originalHead := git(t, checkout, "rev-parse", "HEAD")
+	branch := "memory-bank-cli/push-test"
+	run := func(dir, name string, args ...string) (string, error) {
+		if name == "gh" {
+			switch strings.Join(args, " ") {
+			case "repo view example/upstream --json id":
+				return `{"id":"R_1"}`, nil
+			case "pr create --repo example/upstream --head " + branch + " --base main --fill":
+				return "", errors.New("forbidden")
+			case "pr list --repo example/upstream --head " + branch + " --json url --jq .[0].url":
+				return "", nil
+			}
+		}
+		if name == "git" {
+			switch strings.Join(args, " ") {
+			case "remote get-url origin":
+				if dir == checkout {
+					return "https://github.com/example/upstream.git", nil
+				}
+			case "fetch origin main:refs/remotes/origin/main", "push -u origin " + branch, "push origin --delete " + branch:
+				return "", nil
+			case "ls-remote --exit-code --heads origin " + branch:
+				return "", errors.New("not found")
+			}
+		}
+		return command(dir, name, args...)
+	}
+	_, err := Run(Options{RepoRoot: root, BranchName: func(time.Time) (string, error) { return branch, nil }, Run: run})
+	if err == nil || !strings.Contains(err.Error(), "create PR: forbidden") {
+		t.Fatalf("want PR failure, got %v", err)
+	}
+	if got := git(t, checkout, "rev-parse", "HEAD"); got != originalHead {
+		t.Fatalf("original checkout HEAD changed: got %s, want %s", got, originalHead)
+	}
+	if got := git(t, checkout, "branch", "--show-current"); got != "main" {
+		t.Fatalf("original checkout branch changed: %q", got)
+	}
+	if got := git(t, checkout, "status", "--porcelain"); got != "" {
+		t.Fatalf("original checkout is dirty after failed push: %q", got)
+	}
+	if output := git(t, checkout, "worktree", "list", "--porcelain"); strings.Count(output, "worktree ") != 1 {
+		t.Fatalf("temporary worktree was retained: %s", output)
+	}
+	if command := exec.Command("git", "-C", checkout, "show-ref", "--verify", "--quiet", "refs/heads/"+branch); command.Run() == nil {
+		t.Fatalf("temporary branch %q was retained", branch)
 	}
 }
 
@@ -431,7 +552,40 @@ func TestCopyRegularRejectsSymlinkSource(t *testing.T) {
 		t.Skipf("symlink unsupported: %v", err)
 	}
 	err := copyRegular(filepath.Join(sourceRoot, "dna", "link.md"), filepath.Join(destinationRoot, "dna", "link.md"), sourceRoot, destinationRoot)
-	if err == nil || !strings.Contains(err.Error(), "not a regular file") {
+	if err == nil || (!strings.Contains(err.Error(), "not a regular file") && !strings.Contains(err.Error(), "symbolic links")) {
 		t.Fatalf("want symlink rejection, got %v", err)
+	}
+}
+
+func TestCopyRegularRejectsSymlinkDestination(t *testing.T) {
+	root := t.TempDir()
+	sourceRoot, destinationRoot := filepath.Join(root, "source"), filepath.Join(root, "destination")
+	if err := os.MkdirAll(filepath.Join(sourceRoot, "dna"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(destinationRoot, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	source := filepath.Join(sourceRoot, "dna", "rule.md")
+	outside := filepath.Join(root, "outside")
+	if err := os.WriteFile(source, []byte("source"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(outside, []byte("outside"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	destination := filepath.Join(destinationRoot, "dna", "rule.md")
+	if err := os.MkdirAll(filepath.Dir(destination), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(outside, destination); err != nil {
+		t.Skipf("symlink unsupported: %v", err)
+	}
+	if err := copyRegular(source, destination, sourceRoot, destinationRoot); err == nil {
+		t.Fatal("symlink destination was accepted")
+	}
+	data, err := os.ReadFile(outside)
+	if err != nil || string(data) != "outside" {
+		t.Fatalf("write escaped through destination symlink: %q, %v", data, err)
 	}
 }

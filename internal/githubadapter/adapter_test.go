@@ -95,6 +95,9 @@ func TestApplyFailureRollsBackAllManagedAssets(t *testing.T) {
 		if writes == 3 {
 			return os.ErrPermission
 		}
+		if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
+			return err
+		}
 		return atomicWriteFile(path, data)
 	}})
 	if err == nil || report.Applied || writes != 3 {
@@ -114,6 +117,9 @@ func TestApplyRejectsDestinationCreatedAfterPlanning(t *testing.T) {
 			return
 		}
 		injected = true
+		if mkdirErr := os.MkdirAll(filepath.Dir(path), 0o755); mkdirErr != nil {
+			t.Fatal(mkdirErr)
+		}
 		if writeErr := os.WriteFile(path, []byte("name: user-owned\n"), 0o644); writeErr != nil {
 			t.Fatal(writeErr)
 		}
@@ -151,6 +157,9 @@ func TestApplyRejectsConcurrentManagedEdit(t *testing.T) {
 
 func TestApplyRejectsParentSymlinkSwap(t *testing.T) {
 	repo, outside := t.TempDir(), t.TempDir()
+	if err := os.Mkdir(filepath.Join(repo, ".github"), 0o755); err != nil {
+		t.Fatal(err)
+	}
 	injected := false
 	_, err := Run(Options{RepoRoot: repo, beforeMutation: func(relative string) {
 		if injected || relative != ".github/ISSUE_TEMPLATE/memory-bank-small-change.yml" {

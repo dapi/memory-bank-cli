@@ -85,13 +85,6 @@ func Run(options Options) (Report, error) {
 	if report.DryRun || report.ConflictCount > 0 {
 		return report, nil
 	}
-	createdDirs := map[string]struct{}{}
-	for _, mutation := range mutations {
-		if err := ensureParent(options.RepoRoot, filepath.Dir(mutation.path), createdDirs); err != nil {
-			rollback(options.RepoRoot, mutations, 0, createdDirs)
-			return report, err
-		}
-	}
 	for index, mutation := range mutations {
 		if options.beforeMutation != nil {
 			options.beforeMutation(mutation.relative)
@@ -103,41 +96,12 @@ func Run(options Options) (Report, error) {
 			err = secureAtomicWrite(options.RepoRoot, mutation)
 		}
 		if err != nil {
-			rollback(options.RepoRoot, mutations, index, createdDirs)
+			rollback(options.RepoRoot, mutations, index)
 			return report, fmt.Errorf("apply GitHub adapter: %w", err)
 		}
 	}
 	report.Applied = len(mutations) > 0
 	return report, nil
-}
-
-func ensureParent(root, directory string, created map[string]struct{}) error {
-	relative, err := filepath.Rel(root, directory)
-	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return fmt.Errorf("unsafe adapter parent %q", directory)
-	}
-	current := root
-	for _, component := range strings.Split(relative, string(filepath.Separator)) {
-		if component == "." || component == "" {
-			continue
-		}
-		current = filepath.Join(current, component)
-		info, err := os.Lstat(current)
-		if os.IsNotExist(err) {
-			if err := os.Mkdir(current, 0o755); err != nil {
-				return err
-			}
-			created[current] = struct{}{}
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("unsafe adapter parent %q", current)
-		}
-	}
-	return nil
 }
 
 func atomicWriteFile(path string, data []byte) error {
@@ -161,13 +125,10 @@ func atomicWriteFile(path string, data []byte) error {
 	return os.Rename(temporaryPath, path)
 }
 
-func rollback(root string, mutations []mutation, applied int, createdDirs map[string]struct{}) {
+func rollback(root string, mutations []mutation, applied int) {
 	for index := applied - 1; index >= 0; index-- {
 		_ = secureRollback(root, mutations[index])
 	}
-	// Empty parent directories are harmless. Do not remove them by pathname:
-	// an ancestor could have been replaced after planning.
-	_ = createdDirs
 }
 
 func safePath(root, relative string) (string, error) {

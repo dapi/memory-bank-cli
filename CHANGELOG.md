@@ -7,6 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [1.8.1] - 2026-07-26
+
+### Fixed
+
+- Publish managed changes from an isolated temporary Git worktree and remove
+  the destructive rollback of the user's clean upstream checkout.
+- Reject path-swap and symlink redirection while publishing managed files or
+  installing the GitHub adapter, including on Windows.
+- Avoid false executable-mode drift findings from `doctor` on Windows.
+
 ## [1.8.0] - 2026-07-26
 
 ### Added
@@ -147,7 +157,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Add opt-in GitHub workflow integration and managed Memory Bank blocks.
 - Add Go install, Homebrew, and platform-specific release artifacts.
 
-[Unreleased]: https://github.com/dapi/memory-bank-cli/compare/v1.4.0...HEAD
+[Unreleased]: https://github.com/dapi/memory-bank-cli/compare/v1.8.1...HEAD
+[1.8.1]: https://github.com/dapi/memory-bank-cli/compare/v1.8.0...v1.8.1
 [1.4.0]: https://github.com/dapi/memory-bank-cli/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/dapi/memory-bank-cli/compare/v1.2.2...v1.3.0
 [1.2.2]: https://github.com/dapi/memory-bank-cli/compare/v1.2.1...v1.2.2

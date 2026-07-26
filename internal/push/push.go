@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/dapi/memory-bank-cli/internal/ownership"
+	"github.com/dapi/memory-bank-cli/internal/safepath"
 )
 
 type Decision struct {
@@ -92,14 +93,6 @@ func Run(options Options) (Report, error) {
 	if err != nil {
 		return Report{}, err
 	}
-	originalBranch, err := run(checkout, "git", "branch", "--show-current")
-	if err != nil || strings.TrimSpace(originalBranch) == "" {
-		return Report{}, errors.New("upstream checkout must be on a named branch")
-	}
-	originalHead, err := run(checkout, "git", "rev-parse", "HEAD")
-	if err != nil {
-		return Report{}, fmt.Errorf("resolve upstream HEAD: %w", err)
-	}
 	changes, err := changedPaths(run, options.RepoRoot)
 	if err != nil {
 		return Report{}, err
@@ -144,8 +137,34 @@ func Run(options Options) (Report, error) {
 	if _, err := run(checkout, "git", "ls-remote", "--exit-code", "--heads", "origin", branch); err == nil {
 		return report, fmt.Errorf("upstream branch %q already exists; retry the command", branch)
 	}
-	branchCreated, remoteCreated := false, false
-	stagePaths := make([]string, 0, len(included))
+	worktreeParent, err := os.MkdirTemp("", "memory-bank-cli-push-")
+	if err != nil {
+		return report, fmt.Errorf("create temporary upstream worktree: %w", err)
+	}
+	worktree := filepath.Join(worktreeParent, "checkout")
+	branchCreated, worktreeCreated, remoteCreated := false, false, false
+	cleanupWorktree := func() []string {
+		cleanup := []string{}
+		worktreeRemoved := !worktreeCreated
+		if worktreeCreated {
+			if _, err := run(checkout, "git", "worktree", "remove", "--force", worktree); err != nil {
+				cleanup = append(cleanup, "temporary worktree retained at "+worktreeParent+": "+err.Error())
+			} else {
+				worktreeRemoved = true
+			}
+		}
+		if worktreeRemoved {
+			if err := os.RemoveAll(worktreeParent); err != nil {
+				cleanup = append(cleanup, "remove temporary worktree directory failed: "+err.Error())
+			}
+		}
+		if branchCreated {
+			if _, err := run(checkout, "git", "branch", "-D", branch); err != nil {
+				cleanup = append(cleanup, "remove local branch failed: "+err.Error())
+			}
+		}
+		return cleanup
+	}
 	failed := func(cause error) (Report, error) {
 		var cleanup []string
 		if remoteCreated {
@@ -153,72 +172,51 @@ func Run(options Options) (Report, error) {
 				cleanup = append(cleanup, "remote branch remains: "+err.Error())
 			}
 		}
-		if _, err := run(checkout, "git", "reset", "--hard"); err != nil {
-			cleanup = append(cleanup, "reset failed: "+err.Error())
-		}
-		if _, err := run(checkout, "git", "checkout", strings.TrimSpace(originalBranch)); err != nil {
-			cleanup = append(cleanup, "restore branch failed: "+err.Error())
-		}
-		if branchCreated {
-			if _, err := run(checkout, "git", "branch", "-D", branch); err != nil {
-				cleanup = append(cleanup, "remove local branch failed: "+err.Error())
-			}
-		}
-		if _, err := run(checkout, "git", "reset", "--hard", strings.TrimSpace(originalHead)); err != nil {
-			cleanup = append(cleanup, "restore HEAD failed: "+err.Error())
-		}
-		if len(stagePaths) > 0 {
-			args := append([]string{"clean", "-fd", "--"}, stagePaths...)
-			if _, err := run(checkout, "git", args...); err != nil {
-				cleanup = append(cleanup, "remove untracked staged paths failed: "+err.Error())
-			}
-		}
-		if status, err := run(checkout, "git", "status", "--porcelain"); err != nil || strings.TrimSpace(status) != "" {
-			cleanup = append(cleanup, "checkout restoration is not clean")
-		}
+		cleanup = append(cleanup, cleanupWorktree()...)
 		if len(cleanup) > 0 {
 			return report, fmt.Errorf("%w; cleanup: %s", cause, strings.Join(cleanup, "; "))
 		}
 		return report, cause
 	}
-	if _, err := run(checkout, "git", "checkout", "-b", branch, "origin/"+defaultBranch); err != nil {
-		return failed(fmt.Errorf("create upstream branch: %w", err))
+	if _, err := run(checkout, "git", "worktree", "add", "-b", branch, worktree, "origin/"+defaultBranch); err != nil {
+		_ = os.RemoveAll(worktreeParent)
+		return report, fmt.Errorf("create temporary upstream branch: %w", err)
 	}
-	branchCreated = true
+	branchCreated, worktreeCreated = true, true
 	report.Branch = branch
-	actualPayloadRoot, err := selectPayloadRoot(checkout)
+	actualPayloadRoot, err := selectPayloadRoot(worktree)
 	if err != nil {
 		return failed(err)
 	}
 	if actualPayloadRoot != payloadRoot {
 		return failed(fmt.Errorf("upstream payload root changed from %q to %q while switching to default branch", payloadRoot, actualPayloadRoot))
 	}
+	stagePaths := make([]string, 0, len(included))
 	for _, item := range included {
-		destinationRoot := payloadDestinationRoot(checkout, payloadRoot)
-		destination, stagePath := payloadDestinationPath(checkout, payloadRoot, item.path)
+		destination, stagePath := payloadDestinationPath(worktree, payloadRoot, item.path)
 		stagePaths = append(stagePaths, stagePath)
 		if item.delete {
-			if err := removeRegular(destination, destinationRoot); err != nil && !errors.Is(err, os.ErrNotExist) {
+			if err := removeRegular(destination, worktree); err != nil && !errors.Is(err, os.ErrNotExist) {
 				return failed(fmt.Errorf("delete %s: %w", item.path, err))
 			}
-		} else if err := copyRegular(filepath.Join(options.RepoRoot, filepath.FromSlash(item.path)), destination, options.RepoRoot, destinationRoot); err != nil {
+		} else if err := copyRegular(filepath.Join(options.RepoRoot, filepath.FromSlash(item.path)), destination, options.RepoRoot, worktree); err != nil {
 			return failed(fmt.Errorf("stage %s: %w", item.path, err))
 		}
 	}
 	addArgs := append([]string{"add", "--"}, stagePaths...)
-	if _, err := run(checkout, "git", addArgs...); err != nil {
+	if _, err := run(worktree, "git", addArgs...); err != nil {
 		return failed(fmt.Errorf("stage upstream changes: %w", err))
 	}
-	if _, err := run(checkout, "git", "commit", "-m", "Publish managed Memory Bank changes"); err != nil {
+	if _, err := run(worktree, "git", "commit", "-m", "Publish managed Memory Bank changes"); err != nil {
 		return failed(fmt.Errorf("commit upstream changes: %w", err))
 	}
-	if _, err := run(checkout, "git", "push", "-u", "origin", branch); err != nil {
+	if _, err := run(worktree, "git", "push", "-u", "origin", branch); err != nil {
 		return failed(fmt.Errorf("push upstream branch: %w; remote branch ownership is unproven and will not be deleted", err))
 	}
 	remoteCreated = true
-	pr, err := run(checkout, "gh", "pr", "create", "--repo", githubRepo, "--head", branch, "--base", defaultBranch, "--fill")
+	pr, err := run(worktree, "gh", "pr", "create", "--repo", githubRepo, "--head", branch, "--base", defaultBranch, "--fill")
 	if err != nil {
-		if existing, queryErr := run(checkout, "gh", "pr", "list", "--repo", githubRepo, "--head", branch, "--json", "url", "--jq", ".[0].url"); queryErr == nil && strings.TrimSpace(existing) != "" {
+		if existing, queryErr := run(worktree, "gh", "pr", "list", "--repo", githubRepo, "--head", branch, "--json", "url", "--jq", ".[0].url"); queryErr == nil && strings.TrimSpace(existing) != "" {
 			remoteCreated = false
 			return failed(fmt.Errorf("create PR returned an error, but PR %s may have been created; remote branch was retained", strings.TrimSpace(existing)))
 		}
@@ -227,6 +225,9 @@ func Run(options Options) (Report, error) {
 	report.PRURL = strings.TrimSpace(pr)
 	if report.PRURL == "" {
 		return failed(errors.New("GitHub did not return a PR URL"))
+	}
+	if cleanup := cleanupWorktree(); len(cleanup) > 0 {
+		return report, fmt.Errorf("PR created but local cleanup failed: %s", strings.Join(cleanup, "; "))
 	}
 	return report, nil
 }
@@ -354,10 +355,6 @@ func selectPayloadRootAt(run func(string, string, ...string) (string, error), ch
 	return roots[0], nil
 }
 
-func payloadDestinationRoot(checkout, payloadRoot string) string {
-	return filepath.Join(checkout, payloadRoot)
-}
-
 func payloadDestinationPath(checkout, payloadRoot, downstreamPath string) (string, string) {
 	if payloadRoot != ownership.CanonicalTemplateRoot {
 		relative := strings.TrimPrefix(downstreamPath, ownership.DownstreamPayloadRoot+"/")
@@ -445,107 +442,27 @@ func addChange(set map[string]change, item change) error {
 }
 
 func copyRegular(source, destination, sourceRoot, destinationRoot string) error {
-	if err := validateRegular(source, sourceRoot); err != nil {
-		return err
+	sourceRelative, err := filepath.Rel(sourceRoot, source)
+	if err != nil || sourceRelative == ".." || strings.HasPrefix(sourceRelative, ".."+string(filepath.Separator)) {
+		return errors.New("source path escapes downstream root")
 	}
-	if err := ensureSafeParents(filepath.Dir(destination), destinationRoot); err != nil {
-		return err
+	destinationRelative, err := filepath.Rel(destinationRoot, destination)
+	if err != nil || destinationRelative == ".." || strings.HasPrefix(destinationRelative, ".."+string(filepath.Separator)) {
+		return errors.New("destination path escapes upstream root")
 	}
-	if info, err := os.Lstat(destination); err == nil && info.Mode()&os.ModeSymlink != 0 {
-		return fmt.Errorf("destination is a symlink: %s", destination)
-	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
-	}
-	info, err := os.Lstat(source)
+	data, mode, err := safepath.ReadRegular(sourceRoot, sourceRelative)
 	if err != nil {
 		return err
 	}
-	data, err := os.ReadFile(source)
-	if err != nil {
-		return err
-	}
-	if err := os.WriteFile(destination, data, info.Mode().Perm()); err != nil {
-		return err
-	}
-	return os.Chmod(destination, info.Mode().Perm())
+	return safepath.ReplaceRegular(destinationRoot, destinationRelative, data, mode, nil)
 }
 
 func removeRegular(path, root string) error {
-	if err := ensureSafeParents(filepath.Dir(path), root); err != nil {
-		return err
-	}
-	info, err := os.Lstat(path)
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("destination is not a regular file: %s", path)
-	}
-	return os.Remove(path)
-}
-
-func validateRegular(path, root string) error {
-	if err := safeExistingParents(filepath.Dir(path), root); err != nil {
-		return err
-	}
-	info, err := os.Lstat(path)
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("source is not a regular file: %s", path)
-	}
-	return nil
-}
-
-func safeExistingParents(directory, root string) error {
-	relative, err := filepath.Rel(root, directory)
+	relative, err := filepath.Rel(root, path)
 	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return errors.New("path escapes payload root")
+		return errors.New("destination path escapes upstream root")
 	}
-	current := root
-	for _, part := range strings.Split(relative, string(filepath.Separator)) {
-		if part == "." || part == "" {
-			continue
-		}
-		current = filepath.Join(current, part)
-		info, err := os.Lstat(current)
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("unsafe path component: %s", current)
-		}
-	}
-	return nil
-}
-
-func ensureSafeParents(directory, root string) error {
-	relative, err := filepath.Rel(root, directory)
-	if err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator)) {
-		return errors.New("path escapes payload root")
-	}
-	current := root
-	for _, part := range strings.Split(relative, string(filepath.Separator)) {
-		if part == "." || part == "" {
-			continue
-		}
-		current = filepath.Join(current, part)
-		info, err := os.Lstat(current)
-		if errors.Is(err, os.ErrNotExist) {
-			if err := os.Mkdir(current, 0o755); err != nil && !errors.Is(err, os.ErrExist) {
-				return err
-			}
-			continue
-		}
-		if err != nil {
-			return err
-		}
-		if !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("unsafe path component: %s", current)
-		}
-	}
-	return nil
+	return safepath.RemoveRegular(root, relative)
 }
 
 func command(dir, name string, args ...string) (string, error) {
