@@ -70,6 +70,24 @@ clean `origin` or the default upstream. To use a specific trusted checkout,
 pass `--source`, `--template-version`, and `--source-ref` together. The repair
 never replaces an existing lock.
 
+## Build an execution handoff
+
+Build a deterministic, read-only projection from a task document and explicit
+execution evidence. Markdown is written by default; add `--json` for the
+machine-readable projection.
+
+```sh
+memory-bank-cli handoff build \
+  --from features/FT-042/implementation-plan.md \
+  --git-range main..HEAD \
+  --test-report reports/test-results.json \
+  --out .memory-bank/handoffs/FT-042.md
+```
+
+The command never edits source documents. Missing documents, reports, broken
+links, and invalid Git ranges are included in the output as unresolved sources
+and cause a non-zero exit status.
+
 ## Upgrade
 
 Install the desired newer semantic version with the same command:

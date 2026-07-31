@@ -10,6 +10,7 @@ source_refs:
   - ../../go.mod
   - ../../cmd/memory-bank-cli/main.go
   - ../../internal/cli/cli.go
+  - ../../internal/handoff/handoff.go
 status: active
 ---
 
@@ -21,7 +22,7 @@ One executable, `cmd/memory-bank-cli`, imports `internal/cli` and exits with its
 
 ```text
 cmd/memory-bank-cli -> internal/cli
-internal/cli -> internal/{ownership, doctor, lint, push, repository}
+internal/cli -> internal/{ownership, doctor, handoff, lint, push, repository}
 internal/doctor -> ownership + lint/governance inspection
 internal/ownership -> Git source + local filesystem + memory-bank/.lock
 internal/push -> ownership payload-path model + local/upstream Git + GitHub PR
@@ -35,6 +36,7 @@ internal/push -> ownership payload-path model + local/upstream Git + GitHub PR
 | `internal/ownership` | Template source validation, ownership classes, lock, plan and transactional apply. |
 | `internal/doctor` | Profile-driven read-only findings for adoption, governance, drift and navigation. |
 | `internal/lint` | Markdown parsing, navigation audit and reports. |
+| `internal/handoff` | Read-only, evidence-backed execution handoff projection. |
 | `internal/push` | Lock-backed selection and compensating upstream branch/PR publication. |
 | `internal/repository` | Explicit/nearest-Git repository-root resolution. |
 | `internal/agentinstructions` | Managed block planning for one agent instruction file. |

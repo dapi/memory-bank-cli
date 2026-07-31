@@ -3,6 +3,7 @@ package cli
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -15,6 +16,7 @@ import (
 
 	"github.com/dapi/memory-bank-cli/internal/doctor"
 	"github.com/dapi/memory-bank-cli/internal/githubadapter"
+	"github.com/dapi/memory-bank-cli/internal/handoff"
 	"github.com/dapi/memory-bank-cli/internal/lint"
 	"github.com/dapi/memory-bank-cli/internal/ownership"
 	"github.com/dapi/memory-bank-cli/internal/push"
@@ -61,6 +63,8 @@ func Run(arguments []string, version string, stdout, stderr io.Writer) int {
 		return runGitHubAdapter(arguments[1:], stdout, stderr)
 	case "push":
 		return runPush(arguments[1:], stdout, stderr)
+	case "handoff":
+		return runHandoff(arguments[1:], stdout, stderr)
 	case "--version", "-version":
 		if len(arguments) != 1 {
 			fmt.Fprintf(stderr, "memory-bank-cli: unexpected arguments: %v\n", arguments[1:])
@@ -94,10 +98,101 @@ func printRootUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "  lint    Audit markdown navigation integrity")
 	fmt.Fprintln(writer, "  github  Install or update the optional GitHub workflow adapter")
 	fmt.Fprintln(writer, "  push    Publish locked canonical template changes upstream through a PR")
+	fmt.Fprintln(writer, "  handoff Build a read-only execution handoff from explicit project evidence")
 	fmt.Fprintln(writer)
 	fmt.Fprintln(writer, "Options:")
 	fmt.Fprintln(writer, "  --help       Show this help")
 	fmt.Fprintln(writer, "  --version    Print the version and exit")
+}
+
+func runHandoff(arguments []string, stdout, stderr io.Writer) int {
+	if len(arguments) == 0 || arguments[0] != "build" {
+		fmt.Fprintln(stderr, "Usage: memory-bank-cli handoff build [options]")
+		return exitUsage
+	}
+	flags := flag.NewFlagSet("memory-bank-cli handoff build", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	flags.Usage = func() {
+		fmt.Fprintln(stderr, "Build a deterministic, read-only execution handoff from explicit project evidence.")
+		fmt.Fprintln(stderr)
+		fmt.Fprintln(stderr, "Usage: memory-bank-cli handoff build --from DOCUMENT [options]")
+		flags.PrintDefaults()
+	}
+	repoRootArgument := addRepoRootFlag(flags)
+	from := flags.String("from", "", "starting Memory Bank document path")
+	gitRange := flags.String("git-range", "", "Git revision range to include as observed execution evidence")
+	testReports := repeatedStringFlag{}
+	flags.Var(&testReports, "test-report", "caller-supplied verification report path; may be repeated")
+	out := flags.String("out", "", "write the selected Markdown or JSON output to this path")
+	jsonOutput := addJSONOutputFlag(flags)
+	if err := flags.Parse(arguments[1:]); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return exitSuccess
+		}
+		return exitUsage
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintf(stderr, "memory-bank-cli handoff build: unexpected arguments: %v\n", flags.Args())
+		return exitUsage
+	}
+	repoRoot, err := repository.ResolveRoot(*repoRootArgument)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitFailure
+	}
+	report, buildErr := handoff.Build(handoff.Options{
+		RepoRoot: repoRoot, From: *from, GitRange: *gitRange, TestReports: testReports.values, Out: *out,
+	})
+	writeErr := writeHandoffOutput(stdout, repoRoot, *out, *jsonOutput, report)
+	if writeErr != nil {
+		fmt.Fprintln(stderr, writeErr)
+		return exitFailure
+	}
+	if buildErr != nil {
+		fmt.Fprintln(stderr, buildErr)
+		return exitFailure
+	}
+	return exitSuccess
+}
+
+type repeatedStringFlag struct {
+	values []string
+}
+
+func (values *repeatedStringFlag) String() string {
+	return strings.Join(values.values, ",")
+}
+
+func (values *repeatedStringFlag) Set(value string) error {
+	values.values = append(values.values, value)
+	return nil
+}
+
+func writeHandoffOutput(stdout io.Writer, repoRoot, outputPath string, jsonOutput bool, report handoff.Report) error {
+	var content []byte
+	if jsonOutput {
+		var buffer bytes.Buffer
+		if err := writeResult(&buffer, true, report, func(io.Writer) {}); err != nil {
+			return err
+		}
+		content = buffer.Bytes()
+	} else {
+		content = []byte(handoff.RenderMarkdown(report))
+	}
+	if outputPath == "" {
+		_, err := stdout.Write(content)
+		return err
+	}
+	if !filepath.IsAbs(outputPath) {
+		outputPath = filepath.Join(repoRoot, filepath.FromSlash(outputPath))
+	}
+	if err := os.MkdirAll(filepath.Dir(outputPath), 0o755); err != nil {
+		return fmt.Errorf("create handoff output directory: %w", err)
+	}
+	if err := os.WriteFile(outputPath, content, 0o644); err != nil {
+		return fmt.Errorf("write handoff output: %w", err)
+	}
+	return nil
 }
 
 func runPush(arguments []string, stdout, stderr io.Writer) int {
