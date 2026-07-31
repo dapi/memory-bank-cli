@@ -9,6 +9,20 @@ Existing locks from the legacy payload roots are migrated conservatively:
 unchanged files adopt canonical ownership, while local customization is
 preserved for explicit resolution.
 
+## Analyse an execution handoff
+
+Inspect an Execution Handoff without changing the handoff or Memory Bank:
+
+```sh
+memory-bank-cli analyze-graph \
+  --handoff .memory-bank/handoffs/FT-042.json
+```
+
+The default Markdown report separates recommendations, findings, and typed
+evidence. Add `--json` for the versioned structured report. Recommendations
+retain the contributing node IDs, relation types, and source references;
+unresolved or weakly sourced relations are reported for review.
+
 ## Resolve update collisions interactively
 
 `update` preserves user-owned files by default. To decide each managed-file

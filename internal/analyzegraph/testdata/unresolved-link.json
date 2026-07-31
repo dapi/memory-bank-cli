@@ -1,0 +1,15 @@
+{
+  "kind": "execution_handoff",
+  "schema_version": 1,
+  "task": {"id": "FT-044", "source": "features/FT-044/brief.md"},
+  "declared_context": [
+    {"id": "plan", "type": "document", "source": "features/FT-044/implementation-plan.md"}
+  ],
+  "nodes": [
+    {"id": "decision", "type": "decision", "source": "features/FT-044/decision-log.md"}
+  ],
+  "relations": [
+    {"from": "plan", "to": "missing-document", "type": "derived_from", "source": "features/FT-044/implementation-plan.md"},
+    {"from": "plan", "to": "decision", "type": "depends_on"}
+  ]
+}
