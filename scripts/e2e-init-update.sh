@@ -102,7 +102,7 @@ setup_case() {
 
 init_v1() { require "$binary" init --repo-root "$downstream" --source "$source" --template-version v1.0.0 --source-ref "$v1_sha"; }
 checkout_v2() { require git -C "$source" checkout --quiet --detach "$v2_sha"; }
-update_v2() { "$binary" update --repo-root "$downstream" --source "$source" --template-version v1.1.0 --source-ref "$v2_sha"; }
+update_v2() { "$binary" pull --repo-root "$downstream" --source "$source" --template-version v1.1.0 --source-ref "$v2_sha"; }
 snapshot() { rm -rf "$case_root/snapshot"; cp -R "$downstream" "$case_root/snapshot"; }
 assert_unchanged() { diff -r -q --exclude .git "$case_root/snapshot" "$downstream" >/dev/null || fail 'downstream changed despite expected refusal'; }
 assert_contains() { grep -Fq "$2" "$1" || fail "expected $1 to contain $2"; }
@@ -124,7 +124,7 @@ scenario_02() { setup_case E2E-02; init_v1; snapshot; expect_fail "$binary" init
 scenario_03() { setup_case E2E-03; init_v1; checkout_v2; require update_v2; assert_contains "$(file memory-bank/dna/managed.md)" 'managed v2'; test -f "$(file memory-bank/dna/created.md)"; assert_absent "$(file memory-bank/dna/delete.md)"; assert_lock_v2; }
 scenario_04() { setup_case E2E-04; init_v1; printf 'local edit\n' >"$(file memory-bank/dna/managed.md)"; checkout_v2; snapshot; expect_fail update_v2; assert_unchanged; }
 scenario_05() { setup_case E2E-05; init_v1; printf 'user data\n' >"$(file memory-bank/user-owned.md)"; checkout_v2; require update_v2; assert_contains "$(file memory-bank/user-owned.md)" 'user data'; }
-scenario_06() { setup_case E2E-06; init_v1; checkout_v2; snapshot; require "$binary" update --dry-run --repo-root "$downstream" --source "$source" --template-version v1.1.0 --source-ref "$v2_sha" >"$case_root/dry-run.txt"; assert_contains "$case_root/dry-run.txt" 'create'; assert_contains "$case_root/dry-run.txt" 'delete'; assert_unchanged; }
+scenario_06() { setup_case E2E-06; init_v1; checkout_v2; snapshot; require "$binary" pull --dry-run --repo-root "$downstream" --source "$source" --template-version v1.1.0 --source-ref "$v2_sha" >"$case_root/dry-run.txt"; assert_contains "$case_root/dry-run.txt" 'create'; assert_contains "$case_root/dry-run.txt" 'delete'; assert_unchanged; }
 scenario_07() { setup_case E2E-07; init_v1; mkdir -p "$downstream/.memory-bank-template"; doctor_profile "$downstream" downstream; }
 scenario_08() { setup_case E2E-08; doctor_profile "$source" template; }
 scenario_09() { setup_case E2E-09; snapshot; expect_fail "$binary" init --repo-root "$downstream" --source "$source" --template-version bad --source-ref 0000000000000000000000000000000000000000; assert_unchanged; }
@@ -143,10 +143,10 @@ scenario_21() { setup_case E2E-21; init_v1; printf 'user collision\n' >"$(file m
 scenario_22() { setup_case E2E-22; init_v1; printf 'file blocks dir\n' >"$(file memory-bank/dna/new-dir)"; checkout_v2; snapshot; expect_fail update_v2; assert_unchanged; }
 scenario_23() { setup_case E2E-23; init_v1; mkdir -p "$(file memory-bank/user-dir)"; printf 'keep\n' >"$(file memory-bank/user-dir/keep.md)"; checkout_v2; require update_v2; assert_contains "$(file memory-bank/user-dir/keep.md)" keep; }
 scenario_24() { setup_case E2E-24; init_v1; printf 'conflict\n' >"$(file memory-bank/dna/managed.md)"; checkout_v2; snapshot; expect_fail update_v2; assert_unchanged; }
-scenario_25() { setup_case E2E-25; init_v1; snapshot; expect_fail "$binary" update --repo-root "$downstream" --source "$source" --template-version bad --source-ref 0000000000000000000000000000000000000000; assert_unchanged; }
+scenario_25() { setup_case E2E-25; init_v1; snapshot; expect_fail "$binary" pull --repo-root "$downstream" --source "$source" --template-version bad --source-ref 0000000000000000000000000000000000000000; assert_unchanged; }
 scenario_26() { setup_case E2E-26; init_v1; printf 'conflict\n' >"$(file memory-bank/dna/managed.md)"; checkout_v2; snapshot; expect_fail update_v2; assert_unchanged; snapshot; expect_fail update_v2; assert_unchanged; }
 scenario_27() { setup_case E2E-27; init_v1; printf 'local edit\n' >"$(file memory-bank/dna/managed.md)"; checkout_v2; expect_fail update_v2; printf 'managed v2\n' >"$(file memory-bank/dna/managed.md)"; require update_v2; assert_lock_v2; }
-scenario_28() { setup_case E2E-28; init_v1; require git clone --quiet "$remote" "$(file memory-bank/.repo)"; local repo_head; repo_head="$(git -C "$(file memory-bank/.repo)" rev-parse HEAD)"; checkout_v2; require git -C "$source" push --quiet origin HEAD:main; require "$binary" update --repo-root "$downstream"; assert_contains "$(file memory-bank/dna/managed.md)" 'managed v2'; assert_contains "$(lock_file)" "$v2_sha"; assert_contains "$(lock_file)" "main@${v2_sha:0:12}"; test "$(git -C "$(file memory-bank/.repo)" rev-parse HEAD)" = "$repo_head"; }
+scenario_28() { setup_case E2E-28; init_v1; require git clone --quiet "$remote" "$(file memory-bank/.repo)"; local repo_head; repo_head="$(git -C "$(file memory-bank/.repo)" rev-parse HEAD)"; checkout_v2; require git -C "$source" push --quiet origin HEAD:main; require "$binary" pull --repo-root "$downstream"; assert_contains "$(file memory-bank/dna/managed.md)" 'managed v2'; assert_contains "$(lock_file)" "$v2_sha"; assert_contains "$(lock_file)" "main@${v2_sha:0:12}"; test "$(git -C "$(file memory-bank/.repo)" rev-parse HEAD)" = "$repo_head"; }
 
 run_case() { local requested="$1"; case_name="$requested"; printf 'RUN %s\n' "$requested"; "scenario_${requested#E2E-}"; printf 'PASS %s\n' "$requested"; }
 

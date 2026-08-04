@@ -26,6 +26,7 @@ audience: humans_and_agents
 - [FT-021: Local Init/Update E2E](FT-021-local-init-update-e2e/README.md) — planned package for issue #21's hermetic CLI/Git lifecycle coverage, required local merge gate and pre-publish release-binary validation.
 - [FT-023: Push Upstream Publication](FT-023-push-upstream-publication/README.md) — completed package for issue #23's managed-only, failure-safe upstream publication through a dedicated branch and PR.
 - [FT-026: Ignore Project-Local Source Root](FT-026-ignore-project-local-source-root/README.md) — in-progress package for issue #26's target-template selection alongside a locked project-local copy.
+- [FT-051: Separate CLI Self-Update](FT-051-separate-cli-self-update/README.md) — planned package for issue #51; blocked at the self-update delivery-contract human gate before solution design.
 
 ## Rules
 

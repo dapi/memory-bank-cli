@@ -118,7 +118,7 @@ func (report *Report) checkIdentityAndDrift(agentFile, scopeRoot string) {
 		report.add(Finding{Code: "manifest.invalid", Severity: Error, Group: "manifest", Path: ownership.LockFileName, Message: lockErr.Error(), Remediation: "Repair or recreate the ownership lock with memory-bank-cli init from a trusted template checkout."})
 	} else if exists {
 		report.TemplateIdentity = TemplateIdentity{SchemaVersion: lock.SchemaVersion, Version: lock.Template.Version, SourceRef: lock.Template.SourceRef}
-		report.add(Finding{Code: "template.identity", Severity: Info, Group: "template_identity", Path: ownership.LockFileName, Subject: lock.Template.Version, Message: "Installed template identity is recorded in the ownership lock.", Remediation: "Use memory-bank-cli update --dry-run to compare with a newer pinned template source."})
+		report.add(Finding{Code: "template.identity", Severity: Info, Group: "template_identity", Path: ownership.LockFileName, Subject: lock.Template.Version, Message: "Installed template identity is recorded in the ownership lock.", Remediation: "Use memory-bank-cli pull --dry-run to compare with a newer pinned template source."})
 		report.checkManagedDrift(lock)
 		agentContract, tracked := lock.Files[filepath.ToSlash(agentFile)]
 		templateOwnsAgentFile = tracked && agentContract.Ownership == ownership.Managed
@@ -140,15 +140,15 @@ func (report *Report) checkIdentityAndDrift(agentFile, scopeRoot string) {
 		}
 		report.add(Finding{Code: "agent.entrypoint_missing", Severity: severity, Group: "agent_integration", Path: agentFile, Message: message, Remediation: fmt.Sprintf("Create the agent instruction file and link it to %s/README.md.", scopeRoot)})
 	} else if !strings.Contains(string(contents), scopeRoot+"/README.md") {
-		report.add(Finding{Code: "agent.memory_bank_link_missing", Severity: Error, Group: "agent_integration", Path: agentFile, Message: fmt.Sprintf("Agent instructions do not route readers to %s/README.md.", scopeRoot), Remediation: fmt.Sprintf("Add a repository-relative link to %s/README.md or run memory-bank-cli update with the same --agent-file.", scopeRoot)})
+			report.add(Finding{Code: "agent.memory_bank_link_missing", Severity: Error, Group: "agent_integration", Path: agentFile, Message: fmt.Sprintf("Agent instructions do not route readers to %s/README.md.", scopeRoot), Remediation: fmt.Sprintf("Add a repository-relative link to %s/README.md or run memory-bank-cli pull with the same --agent-file.", scopeRoot)})
 	}
 	if exists && lockErr == nil {
 		agentReport, err := ownership.InspectAgentInstructions(report.RepoRoot, agentFile)
 		if err != nil {
-			report.add(Finding{Code: "agent.managed_block_invalid", Severity: Error, Group: "agent_integration", Path: agentFile, Message: err.Error(), Remediation: "Resolve unsafe paths or damaged markers, then run memory-bank-cli update."})
+			report.add(Finding{Code: "agent.managed_block_invalid", Severity: Error, Group: "agent_integration", Path: agentFile, Message: err.Error(), Remediation: "Resolve unsafe paths or damaged markers, then run memory-bank-cli pull."})
 		} else if agentReport.DriftCount > 0 {
 			decision := agentReport.Decisions[0]
-			report.add(Finding{Code: "agent.managed_block_drift", Severity: Error, Group: "agent_integration", Path: decision.Path, Subject: string(decision.Action), Message: decision.Reason, Remediation: "Run memory-bank-cli update using the pinned template checkout and the same --agent-file."})
+			report.add(Finding{Code: "agent.managed_block_drift", Severity: Error, Group: "agent_integration", Path: decision.Path, Subject: string(decision.Action), Message: decision.Reason, Remediation: "Run memory-bank-cli pull using the pinned template checkout and the same --agent-file."})
 		}
 	}
 }
@@ -170,12 +170,12 @@ func (report *Report) checkManagedDrift(lock ownership.Lock) {
 			if os.IsNotExist(err) {
 				code, message = "manifest.managed_missing", "Managed file recorded by the lock is missing."
 			}
-			report.add(Finding{Code: code, Severity: Error, Group: "manifest", Path: filePath, Message: message, Remediation: "Restore the file from the pinned template with memory-bank-cli update."})
+		report.add(Finding{Code: code, Severity: Error, Group: "manifest", Path: filePath, Message: message, Remediation: "Restore the file from the pinned template with memory-bank-cli pull."})
 			continue
 		}
 		digest := fmt.Sprintf("sha256:%x", sha256.Sum256(data))
 		if digest != contract.PayloadDigest {
-			report.add(Finding{Code: "manifest.managed_content_drift", Severity: Error, Group: "manifest", Path: filePath, Message: "Managed file content differs from the lock payload digest.", Remediation: "Review the local change, then restore/update it through memory-bank-cli update."})
+		report.add(Finding{Code: "manifest.managed_content_drift", Severity: Error, Group: "manifest", Path: filePath, Message: "Managed file content differs from the lock payload digest.", Remediation: "Review the local change, then restore it through memory-bank-cli pull."})
 		}
 		mode := observedPayloadMode(info.Mode().Perm())
 		if contract.PayloadMode != "" && mode != "" && mode != contract.PayloadMode {

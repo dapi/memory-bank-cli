@@ -11,7 +11,7 @@ status: active
 
 # Autonomy Boundaries
 
-`init` and `update` may mutate only the resolved downstream repository after source validation and full planning. `--dry-run` is the non-mutating preview. `doctor` is explicitly read-only; lint only audits.
+`init` and `pull` may mutate only the resolved downstream repository after source validation and full planning. `--dry-run` is the non-mutating preview. `doctor` is explicitly read-only; lint only audits.
 
 The implementation rejects source/repository overlap, repository-relative path escape, forbidden lock payload, unsafe symlink ancestry and unsafe topology changes. It manages one specified agent instruction file rather than arbitrarily rewriting project instructions.
 

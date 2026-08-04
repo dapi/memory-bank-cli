@@ -172,13 +172,13 @@ user_owned_file="$downstream_root/memory-bank/features/downstream-owned.txt"
 printf '\nDownstream adaptation.\n' >>"$adapted_file"
 printf 'Downstream-owned file.\n' >"$user_owned_file"
 user_owned_digest="$(sha256sum "$user_owned_file" | awk '{ print $1 }')"
-run_step "update-preservation" "$cli" update --repo-root "$downstream_root" --source "$source_root" --template-version "$template_ref" --source-ref "$template_sha"
+run_step "pull-preservation" "$cli" pull --repo-root "$downstream_root" --source "$source_root" --template-version "$template_ref" --source-ref "$template_sha"
 run_step "verify-adaptation" assert_contains "$adapted_file" "Downstream adaptation."
 run_step "verify-user-owned-content" assert_digest "$user_owned_file" "$user_owned_digest"
 step="commit-baseline"
 git -C "$downstream_root" add --all
 git -C "$downstream_root" -c user.name='Downstream smoke' -c user.email='smoke@example.invalid' commit --quiet -m 'fixture baseline'
-run_step "update-idempotence" "$cli" update --repo-root "$downstream_root" --source "$source_root" --template-version "$template_ref" --source-ref "$template_sha"
+run_step "pull-idempotence" "$cli" pull --repo-root "$downstream_root" --source "$source_root" --template-version "$template_ref" --source-ref "$template_sha"
 run_step "verify-no-diff" git -C "$downstream_root" diff --exit-code
 run_step "verify-clean-repository" assert_clean_repository "$downstream_root"
 run_step "lint" "$cli" lint --repo-root "$downstream_root"
