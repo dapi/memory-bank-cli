@@ -206,7 +206,7 @@ func TestUpdateDispatchesSelfUpdaterAndPullKeepsOwnershipFlags(t *testing.T) {
 	}
 	stdout.Reset()
 	stderr.Reset()
-	if exitCode := Run([]string{"pull", "--help"}, "v1.2.3", &stdout, &stderr); exitCode != exitSuccess || !strings.Contains(stderr.String(), "--ask") {
+	if exitCode := Run([]string{"pull", "--help"}, "v1.2.3", &stdout, &stderr); exitCode != exitSuccess || !strings.Contains(stderr.String(), "-ask") {
 		t.Fatalf("pull help exit=%d stderr=%q", exitCode, stderr.String())
 	}
 }
