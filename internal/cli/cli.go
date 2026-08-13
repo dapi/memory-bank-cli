@@ -14,6 +14,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/dapi/memory-bank-cli/internal/analyzegraph"
 	"github.com/dapi/memory-bank-cli/internal/doctor"
 	"github.com/dapi/memory-bank-cli/internal/githubadapter"
 	"github.com/dapi/memory-bank-cli/internal/handoff"
@@ -51,6 +52,8 @@ func Run(arguments []string, version string, stdout, stderr io.Writer) int {
 	}
 
 	switch arguments[0] {
+	case "analyze-graph":
+		return runAnalyzeGraph(arguments[1:], stdout, stderr)
 	case "lint":
 		return runLint(arguments[1:], "memory-bank-cli lint", version, stdout, stderr)
 	case "init":
@@ -92,6 +95,7 @@ func printRootUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "Usage: memory-bank-cli <command> [options]")
 	fmt.Fprintln(writer)
 	fmt.Fprintln(writer, "Commands:")
+	fmt.Fprintln(writer, "  analyze-graph  Analyse typed execution-context handoff evidence")
 	fmt.Fprintln(writer, "  init    Adopt or install a template and create its ownership lock")
 	fmt.Fprintln(writer, "  update  Safely update a template using its ownership lock")
 	fmt.Fprintln(writer, "  doctor  Diagnose adoption, governance, managed drift, and navigation")
@@ -103,6 +107,43 @@ func printRootUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "Options:")
 	fmt.Fprintln(writer, "  --help       Show this help")
 	fmt.Fprintln(writer, "  --version    Print the version and exit")
+}
+
+func runAnalyzeGraph(arguments []string, stdout, stderr io.Writer) int {
+	flags := flag.NewFlagSet("memory-bank-cli analyze-graph", flag.ContinueOnError)
+	flags.SetOutput(stderr)
+	flags.Usage = func() {
+		fmt.Fprintln(stderr, "Usage: memory-bank-cli analyze-graph --handoff FILE [--json]")
+		flags.PrintDefaults()
+	}
+	handoffPath := flags.String("handoff", "", "Execution Handoff JSON artefact to analyse")
+	jsonOutput := addJSONOutputFlag(flags)
+	if err := flags.Parse(arguments); err != nil {
+		if errors.Is(err, flag.ErrHelp) {
+			return exitSuccess
+		}
+		return exitUsage
+	}
+	if flags.NArg() != 0 {
+		fmt.Fprintf(stderr, "memory-bank-cli analyze-graph: unexpected arguments: %v\n", flags.Args())
+		return exitUsage
+	}
+	if strings.TrimSpace(*handoffPath) == "" {
+		fmt.Fprintln(stderr, "memory-bank-cli analyze-graph: --handoff is required")
+		return exitUsage
+	}
+	report, err := analyzegraph.AnalyzeFile(*handoffPath)
+	if err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitFailure
+	}
+	if err := writeResult(stdout, *jsonOutput, report, func(writer io.Writer) {
+		analyzegraph.PrintMarkdown(writer, report)
+	}); err != nil {
+		fmt.Fprintln(stderr, err)
+		return exitFailure
+	}
+	return exitSuccess
 }
 
 func runHandoff(arguments []string, stdout, stderr io.Writer) int {

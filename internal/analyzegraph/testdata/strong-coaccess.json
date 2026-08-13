@@ -1,0 +1,29 @@
+{
+  "kind": "execution_handoff",
+  "schema_version": 1,
+  "task": {
+    "id": "FT-042",
+    "source": "features/FT-042/implementation-plan.md"
+  },
+  "declared_context": [
+    {
+      "id": "plan",
+      "type": "document",
+      "label": "implementation plan",
+      "source": "features/FT-042/implementation-plan.md"
+    }
+  ],
+  "nodes": [
+    {"id": "brief", "type": "document", "label": "brief", "source": "features/FT-042/brief.md"},
+    {"id": "decision", "type": "decision", "label": "API decision", "source": "features/FT-042/decision-log.md"},
+    {"id": "file", "type": "file", "label": "internal/analyzegraph/analyze.go", "source": "git:commit-123"},
+    {"id": "verification", "type": "verification_artifact", "label": "go test report", "source": "reports/test-results.json"}
+  ],
+  "relations": [
+    {"from": "FT-042", "to": "plan", "type": "task_context", "source": "features/FT-042/implementation-plan.md"},
+    {"from": "plan", "to": "brief", "type": "derived_from", "source": "features/FT-042/implementation-plan.md"},
+    {"from": "plan", "to": "decision", "type": "co_access", "count": 2, "source": "handoff:FT-042"},
+    {"from": "plan", "to": "file", "type": "git_changed_file", "source": "git:commit-123"},
+    {"from": "plan", "to": "verification", "type": "test_result", "source": "reports/test-results.json"}
+  ]
+}

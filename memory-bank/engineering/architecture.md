@@ -22,7 +22,7 @@ One executable, `cmd/memory-bank-cli`, imports `internal/cli` and exits with its
 
 ```text
 cmd/memory-bank-cli -> internal/cli
-internal/cli -> internal/{ownership, doctor, handoff, lint, push, repository}
+internal/cli -> internal/{analyzegraph, ownership, doctor, handoff, lint, push, repository}
 internal/doctor -> ownership + lint/governance inspection
 internal/ownership -> Git source + local filesystem + memory-bank/.lock
 internal/push -> ownership payload-path model + local/upstream Git + GitHub PR
@@ -33,6 +33,7 @@ internal/push -> ownership payload-path model + local/upstream Git + GitHub PR
 | Package | Responsibility |
 | --- | --- |
 | `internal/cli` | Command dispatch, flags, usage, JSON/text output and exit codes. |
+| `internal/analyzegraph` | Read-only normalization and analysis of typed execution-context handoff evidence. |
 | `internal/ownership` | Template source validation, ownership classes, lock, plan and transactional apply. |
 | `internal/doctor` | Profile-driven read-only findings for adoption, governance, drift and navigation. |
 | `internal/lint` | Markdown parsing, navigation audit and reports. |

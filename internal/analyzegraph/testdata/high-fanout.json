@@ -1,0 +1,17 @@
+{
+  "kind": "execution_handoff",
+  "schema_version": 1,
+  "task": {"id": "FT-043", "source": "features/FT-043/brief.md"},
+  "nodes": [
+    {"id": "hub", "type": "document", "label": "feature brief", "source": "features/FT-043/brief.md"},
+    {"id": "design", "type": "document", "label": "design", "source": "features/FT-043/design.md"},
+    {"id": "plan", "type": "document", "label": "implementation plan", "source": "features/FT-043/implementation-plan.md"},
+    {"id": "verify", "type": "verification_artifact", "label": "verification", "source": "reports/FT-043.json"}
+  ],
+  "relations": [
+    {"from": "FT-043", "to": "hub", "type": "task_context", "source": "features/FT-043/brief.md"},
+    {"from": "hub", "to": "design", "type": "navigation", "source": "features/FT-043/brief.md"},
+    {"from": "hub", "to": "plan", "type": "navigation", "source": "features/FT-043/brief.md"},
+    {"from": "hub", "to": "verify", "type": "verification", "source": "reports/FT-043.json"}
+  ]
+}
