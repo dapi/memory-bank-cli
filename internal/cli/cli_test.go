@@ -78,6 +78,55 @@ func TestRootHelpAndVersion(t *testing.T) {
 		if test.arguments[0] == "--help" && !strings.Contains(stdout.String(), "push    Publish locked canonical template changes upstream through a PR") {
 			t.Fatalf("root help does not document push: %q", stdout.String())
 		}
+		if test.arguments[0] == "--help" && !strings.Contains(stdout.String(), "handoff Build a read-only execution handoff") {
+			t.Fatalf("root help does not document handoff: %q", stdout.String())
+		}
+	}
+}
+
+func TestHandoffBuildJSONAndMarkdownOutput(t *testing.T) {
+	repo := t.TempDir()
+	document := filepath.Join(repo, "features", "FT-042", "implementation-plan.md")
+	if err := os.MkdirAll(filepath.Dir(document), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(document, []byte("# Plan\n\n## Next Steps\n\n- verify the handoff\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	var jsonStdout, jsonStderr bytes.Buffer
+	if exitCode := Run([]string{"handoff", "build", "--repo-root", repo, "--from", "features/FT-042/implementation-plan.md", "--json"}, "test", &jsonStdout, &jsonStderr); exitCode != 0 {
+		t.Fatalf("handoff JSON exit=%d stderr=%q", exitCode, jsonStderr.String())
+	}
+	var report struct {
+		StartingDocument string `json:"starting_document"`
+		Items            []struct {
+			Source struct {
+				Ref string `json:"ref"`
+			} `json:"source"`
+		} `json:"items"`
+	}
+	if err := json.Unmarshal(jsonStdout.Bytes(), &report); err != nil {
+		t.Fatalf("invalid handoff JSON: %v\n%s", err, jsonStdout.String())
+	}
+	if report.StartingDocument != "features/FT-042/implementation-plan.md" || len(report.Items) == 0 || report.Items[0].Source.Ref == "" {
+		t.Fatalf("unexpected handoff report: %#v", report)
+	}
+
+	outputPath := ".memory-bank/handoffs/FT-042.md"
+	var markdownStdout, markdownStderr bytes.Buffer
+	if exitCode := Run([]string{"handoff", "build", "--repo-root", repo, "--from", "features/FT-042/implementation-plan.md", "--out", outputPath}, "test", &markdownStdout, &markdownStderr); exitCode != 0 {
+		t.Fatalf("handoff Markdown exit=%d stderr=%q", exitCode, markdownStderr.String())
+	}
+	if markdownStdout.Len() != 0 {
+		t.Fatalf("--out unexpectedly wrote to stdout: %q", markdownStdout.String())
+	}
+	data, err := os.ReadFile(filepath.Join(repo, filepath.FromSlash(outputPath)))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), "# Execution Handoff") || !strings.Contains(string(data), "verify the handoff") {
+		t.Fatalf("unexpected handoff Markdown: %s", data)
 	}
 }
 
