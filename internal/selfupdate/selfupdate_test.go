@@ -27,14 +27,14 @@ func TestCurrentReleaseDoesNotDownloadOrReplace(t *testing.T) {
 }
 
 func TestVerifiedUpdateReplacesRunningExecutable(t *testing.T) {
-	server, _ := releaseServer(t, "v1.1.0", []byte("#!/bin/sh\nprintf 'memory-bank-cli v1.1.0\\n'\n"), true)
+	server, _ := releaseServer(t, "v1.1.0", []byte("#!/bin/sh\nprintf 'memory-bank-cli 1.1.0\\n'\n"), true)
 	defer server.Close()
 	destination := writeDestination(t, []byte("old"))
 	var stdout, stderr bytes.Buffer
 	if code := service(server, destination, &stdout, &stderr).Run(context.Background()); code != 0 || stderr.Len() != 0 {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
-	if got, err := os.ReadFile(destination); err != nil || !bytes.Contains(got, []byte("v1.1.0")) {
+	if got, err := os.ReadFile(destination); err != nil || !bytes.Contains(got, []byte("1.1.0")) {
 		t.Fatalf("updated executable=%q err=%v", got, err)
 	}
 	if !strings.Contains(stdout.String(), "Updated memory-bank-cli to v1.1.0") {
@@ -53,7 +53,7 @@ func TestFailuresPreserveOriginalExecutable(t *testing.T) {
 		{"unsupported platform", func(s *Service) { s.GOARCH = "386" }, true},
 	} {
 		t.Run(test.name, func(t *testing.T) {
-			server, _ := releaseServer(t, "v1.1.0", []byte("#!/bin/sh\nprintf 'memory-bank-cli v1.1.0\\n'\n"), test.valid)
+			server, _ := releaseServer(t, "v1.1.0", []byte("#!/bin/sh\nprintf 'memory-bank-cli 1.1.0\\n'\n"), test.valid)
 			defer server.Close()
 			destination := writeDestination(t, []byte("old"))
 			var stdout, stderr bytes.Buffer
@@ -64,6 +64,61 @@ func TestFailuresPreserveOriginalExecutable(t *testing.T) {
 			}
 			assertBytes(t, destination, []byte("old"))
 		})
+	}
+}
+
+func TestParseVersionSupportsReleaseWorkflowSemVer(t *testing.T) {
+	for _, test := range []struct {
+		value string
+		valid bool
+	}{
+		{"v1.2.3", true},
+		{"1.2.3", true},
+		{"v1.2.3-rc.1", true},
+		{"v1.2.3+build.1", true},
+		{"v1.2.3-rc.1+build.1", true},
+		{"v01.2.3", false},
+		{"v1.2.3-01", false},
+		{"v1.2.3-", false},
+		{"v1.2", false},
+	} {
+		t.Run(test.value, func(t *testing.T) {
+			_, err := parseVersion(test.value)
+			if (err == nil) != test.valid {
+				t.Fatalf("parseVersion(%q) error = %v, valid = %v", test.value, err, test.valid)
+			}
+		})
+	}
+}
+
+func TestVersionPrecedenceIncludesPrereleasesAndIgnoresBuildMetadata(t *testing.T) {
+	for _, test := range []struct {
+		left, right string
+		want        int
+	}{
+		{"1.2.3-rc.1", "1.2.3", -1},
+		{"1.2.3-rc.1", "1.2.3-rc.2", -1},
+		{"1.2.3-rc.10", "1.2.3-rc.2", 1},
+		{"1.2.3+build.1", "1.2.3+build.2", 0},
+	} {
+		left, err := parseVersion(test.left)
+		if err != nil {
+			t.Fatal(err)
+		}
+		right, err := parseVersion(test.right)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := left.compare(right); got != test.want {
+			t.Fatalf("compare(%q, %q) = %d, want %d", test.left, test.right, got, test.want)
+		}
+	}
+}
+
+func TestVerifyStagedVersionAcceptsGoReleaserOutputAndBuildMetadata(t *testing.T) {
+	staged := writeDestination(t, []byte("#!/bin/sh\nprintf 'memory-bank-cli 1.2.3+build.1\\n'\n"))
+	if err := verifyStagedVersion(staged, "v1.2.3+build.1"); err != nil {
+		t.Fatalf("verify staged GoReleaser version: %v", err)
 	}
 }
 

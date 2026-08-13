@@ -12,7 +12,9 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strconv"
 	"strings"
 )
 
@@ -43,9 +45,20 @@ type asset struct {
 	BrowserDownloadURL string `json:"browser_download_url"`
 }
 
-type semver struct{ major, minor, patch int }
+var semverPattern = regexp.MustCompile(`^(?:v)?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(?:-((?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9][0-9]*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$`)
 
-func (v semver) String() string { return fmt.Sprintf("%d.%d.%d", v.major, v.minor, v.patch) }
+type semver struct {
+	major, minor, patch int
+	pre                 []string
+}
+
+func (v semver) String() string {
+	value := fmt.Sprintf("%d.%d.%d", v.major, v.minor, v.patch)
+	if len(v.pre) > 0 {
+		value += "-" + strings.Join(v.pre, ".")
+	}
+	return value
+}
 
 func (v semver) compare(other semver) int {
 	if v.major != other.major {
@@ -66,7 +79,55 @@ func (v semver) compare(other semver) int {
 	if v.patch > other.patch {
 		return 1
 	}
+	if len(v.pre) == 0 && len(other.pre) > 0 {
+		return 1
+	}
+	if len(v.pre) > 0 && len(other.pre) == 0 {
+		return -1
+	}
+	for index := 0; index < len(v.pre) && index < len(other.pre); index++ {
+		left, right := v.pre[index], other.pre[index]
+		if left == right {
+			continue
+		}
+		leftNumber, leftIsNumber := numericIdentifier(left)
+		rightNumber, rightIsNumber := numericIdentifier(right)
+		switch {
+		case leftIsNumber && rightIsNumber:
+			if leftNumber < rightNumber {
+				return -1
+			}
+			return 1
+		case leftIsNumber:
+			return -1
+		case rightIsNumber:
+			return 1
+		case left < right:
+			return -1
+		default:
+			return 1
+		}
+	}
+	if len(v.pre) < len(other.pre) {
+		return -1
+	}
+	if len(v.pre) > len(other.pre) {
+		return 1
+	}
 	return 0
+}
+
+func numericIdentifier(value string) (int, bool) {
+	if value == "" || (len(value) > 1 && value[0] == '0') {
+		return 0, false
+	}
+	for _, character := range value {
+		if character < '0' || character > '9' {
+			return 0, false
+		}
+	}
+	number, err := strconv.Atoi(value)
+	return number, err == nil
 }
 
 // Run returns 0 after a successful update or an already-current result, and
@@ -250,11 +311,20 @@ func target(osName, arch string) (string, string, error) {
 }
 
 func parseVersion(value string) (semver, error) {
-	value = strings.TrimPrefix(strings.TrimSpace(value), "v")
-	var version semver
-	var extra string
-	if _, err := fmt.Sscanf(value, "%d.%d.%d%s", &version.major, &version.minor, &version.patch, &extra); err == nil || err != io.EOF || extra != "" || version.major < 0 || version.minor < 0 || version.patch < 0 || version.String() != value {
+	value = strings.TrimSpace(value)
+	matches := semverPattern.FindStringSubmatch(value)
+	if matches == nil {
 		return semver{}, fmt.Errorf("invalid semantic version %q", value)
+	}
+	major, majorErr := strconv.Atoi(matches[1])
+	minor, minorErr := strconv.Atoi(matches[2])
+	patch, patchErr := strconv.Atoi(matches[3])
+	if majorErr != nil || minorErr != nil || patchErr != nil {
+		return semver{}, fmt.Errorf("invalid semantic version %q", value)
+	}
+	version := semver{major: major, minor: minor, patch: patch}
+	if matches[4] != "" {
+		version.pre = strings.Split(matches[4], ".")
 	}
 	return version, nil
 }
@@ -314,9 +384,21 @@ func verifyStagedVersion(stagedPath, expectedTag string) error {
 	if err != nil {
 		return fmt.Errorf("run staged --version: %w", err)
 	}
-	want := "memory-bank-cli " + expectedTag
-	if got := strings.TrimSpace(string(output)); got != want {
-		return fmt.Errorf("staged --version = %q, want %q", got, want)
+	const prefix = "memory-bank-cli "
+	got := strings.TrimSpace(string(output))
+	if !strings.HasPrefix(got, prefix) {
+		return fmt.Errorf("staged --version = %q, want %s<semantic version>", got, prefix)
+	}
+	actualVersion, err := parseVersion(strings.TrimPrefix(got, prefix))
+	if err != nil {
+		return fmt.Errorf("staged --version: %w", err)
+	}
+	expectedVersion, err := parseVersion(expectedTag)
+	if err != nil {
+		return fmt.Errorf("expected release tag: %w", err)
+	}
+	if actualVersion.compare(expectedVersion) != 0 {
+		return fmt.Errorf("staged --version = %q, want semantic version %q", got, expectedTag)
 	}
 	return nil
 }
