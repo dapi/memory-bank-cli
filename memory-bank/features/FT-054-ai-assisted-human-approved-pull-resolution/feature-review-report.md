@@ -113,14 +113,14 @@ No.
 
 ### Review summary
 
-A follow-up contract review confirmed four important gaps: a plan-local digest could be recomputed by its writer and therefore was not human approval; repeat-apply wording conflicted with pre-state identity validation; mechanical-merge derivation was unspecified; and `design.md` and `decision-log.md` formed a provenance cycle. The canonical owners now state an independently verifiable human-authorization outcome, deterministic merge derivation/recomputation, fixture-scoped determinism with stale replay rejection, and an acyclic derivation graph. Cycle 5 subsequently made the concrete authorization mechanism an explicit human gate.
+A follow-up contract review confirmed four important gaps: a plan-local digest could be recomputed by its writer and therefore was not human approval; repeat-apply wording conflicted with pre-state identity validation; mechanical-merge derivation was unspecified; and `design.md` and `decision-log.md` formed a provenance cycle. The canonical owners now state an independently verifiable human-authorization outcome, deterministic merge derivation/recomputation, fixture-scoped determinism with stale replay rejection after a state-changing apply and idempotent no-op replay, and an acyclic derivation graph. Cycle 5 subsequently made the concrete authorization mechanism an explicit human gate.
 
 ### Critical and important findings
 
 | Severity | Finding | Resolution |
 | --- | --- | --- |
 | `important` | A plan writer could alter actions or merge bytes and recompute its embedded digest. | `SOL-02`, `CTR-01`, `INV-02` and `NEG-03` require independently verifiable human authorization over the canonical whole-plan digest, outside the agent authority; `BD-01` later retains selection of its concrete mechanism as a human gate. |
-| `important` | “Repeatably” contradicted the rule that apply must match recorded pre-state identities. | `EC-02`, `SC-02`, `CHK-02` and `INV-05` define deterministic execution across identical fresh fixtures and require stale rejection after a successful apply. |
+| `important` | “Repeatably” contradicted the rule that apply must match recorded pre-state identities. | `EC-02`, `SC-02`, `CHK-02` and `INV-05` define deterministic execution across identical fresh fixtures, stale rejection after a state-changing apply, and idempotent no-op replay. |
 | `important` | The plan could describe arbitrary bytes as a mechanical merge. | `SOL-03` and `NEG-02` bind base bytes to the lock identity and require versioned deterministic three-way merge recomputation, including overlap rejection. |
 | `important` | Canonical design and derived ledger declared each other as sources. | Removed `decision-log.md` from `design.md` provenance; the derived ledger may depend on canonical design, but canonical design depends only on the brief. |
 
