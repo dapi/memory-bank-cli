@@ -113,13 +113,13 @@ No.
 
 ### Review summary
 
-A follow-up contract review confirmed four important gaps: a plan-local digest could be recomputed by its writer and therefore was not human approval; repeat-apply wording conflicted with pre-state identity validation; mechanical-merge derivation was unspecified; and `design.md` and `decision-log.md` formed a provenance cycle. The canonical owners now state a detached authorized-human attestation, deterministic merge derivation/recomputation, fixture-scoped determinism with stale replay rejection, and an acyclic derivation graph.
+A follow-up contract review confirmed four important gaps: a plan-local digest could be recomputed by its writer and therefore was not human approval; repeat-apply wording conflicted with pre-state identity validation; mechanical-merge derivation was unspecified; and `design.md` and `decision-log.md` formed a provenance cycle. The canonical owners now state an independently verifiable human-authorization outcome, deterministic merge derivation/recomputation, fixture-scoped determinism with stale replay rejection, and an acyclic derivation graph. Cycle 5 subsequently made the concrete authorization mechanism an explicit human gate.
 
 ### Critical and important findings
 
 | Severity | Finding | Resolution |
 | --- | --- | --- |
-| `important` | A plan writer could alter actions or merge bytes and recompute its embedded digest. | `SOL-02`, `CTR-01`, `INV-02` and `NEG-03` require a detached attestation over the canonical whole-plan digest, verified by an authorized human-reviewer public key outside the agent authority. |
+| `important` | A plan writer could alter actions or merge bytes and recompute its embedded digest. | `SOL-02`, `CTR-01`, `INV-02` and `NEG-03` require independently verifiable human authorization over the canonical whole-plan digest, outside the agent authority; `BD-01` later retains selection of its concrete mechanism as a human gate. |
 | `important` | “Repeatably” contradicted the rule that apply must match recorded pre-state identities. | `EC-02`, `SC-02`, `CHK-02` and `INV-05` define deterministic execution across identical fresh fixtures and require stale rejection after a successful apply. |
 | `important` | The plan could describe arbitrary bytes as a mechanical merge. | `SOL-03` and `NEG-02` bind base bytes to the lock identity and require versioned deterministic three-way merge recomputation, including overlap rejection. |
 | `important` | Canonical design and derived ledger declared each other as sources. | Removed `decision-log.md` from `design.md` provenance; the derived ledger may depend on canonical design, but canonical design depends only on the brief. |
@@ -149,14 +149,14 @@ A follow-up review reopened the package. The planned CLI was documented in the c
 | Severity | Finding | Resolution |
 | --- | --- | --- |
 | `critical` | Planned `pull --plan` and `--apply-plan` commands were presented as available. | Removed the future-workflow section from the current README; `STEP-04` remains the implementation-time documentation update. |
-| `critical` | No selected attestation format, canonicalization, trust-store, key lifecycle or reviewer signing workflow existed despite a claim of no blockers. | Added blocking `BD-01` / `DEC-04`; the package is not Plan Ready until a human approves that public security contract. |
+| `critical` | No selected authorization carrier/verification format, canonicalization, trust policy, credential lifecycle or reviewer authorization workflow existed despite a claim of no blockers. | Added blocking `BD-01` / `DEC-04`; the package is not Plan Ready until a human approves that public security contract. |
 | `important` | A writer could race validation and commit. | `SOL-04`, `CTR-02` and `INV-06` require an exclusive update guard and transaction-scoped final revalidation; `CHK-04` requires competing-writer coverage. |
 | `important` | One-sided adapted behavior lacked an ownership/content/mode contract. | Added the adapted state/action table and `SC-04a`–`SC-04b` / `CHK-03` coverage. |
 | `important` | The brief prescribed an implementation-level detached-signature mechanism. | `REQ-02` and `CON-01` now state the required authorization outcome; design owns the later selected mechanism. |
 
 ### Human gate
 
-Yes. Approve `BD-01` / `DEC-04`: the attestation/signature format, canonicalization procedure, trust-store configuration, key provisioning/revocation model and reviewer signing workflow. Until that decision, do not implement or publish FT-054 as Plan Ready.
+Yes. Approve `BD-01` / `DEC-04`: the authorization carrier and verification format, canonicalization procedure, trust policy/configuration, credential provisioning/revocation model and reviewer authorization workflow. Until that decision, do not implement or publish FT-054 as Plan Ready.
 
 ## Final Report
 

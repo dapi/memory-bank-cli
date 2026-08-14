@@ -33,7 +33,7 @@ must_not_define:
 ### Scope
 
 - `REQ-01` Provide a machine-readable, non-mutating `pull` plan containing path, ownership, base identity, local/upstream state, safe proposed action, human-decision requirement, and concise conflict context.
-- `REQ-02` Define a versioned, reviewable resolution-plan file with independently verifiable, tamper-resistant human authorization over its canonical whole-plan digest; it records accepted actions and the inputs, algorithm version and result of any reviewed non-overlapping mechanical merge. Mechanical merge is available only with a digest-verified historical-base snapshot retained in a versioned lock extension; legacy entries without one must report that action unavailable rather than reconstruct a base from a digest.
+- `REQ-02` Define a versioned, reviewable resolution-plan file with independently verifiable, tamper-resistant human authorization over its canonical whole-plan digest; it records accepted actions and the inputs, algorithm version and result of any reviewed non-overlapping mechanical merge. Mechanical merge is available only when compatible ownership state retains digest-verified historical-base bytes; legacy entries that cannot verify those bytes must report that action unavailable rather than reconstruct a base from a digest, while preserving their existing non-merge behavior.
 - `REQ-03` Apply a resolution plan only after validating its lock, source identity, local payload and template payload under a cooperating-writer serialization boundary; perform final revalidation and apply all accepted actions and `.lock` atomically.
 - `REQ-04` Require an explicit human-selected `keep-local`, `take-upstream`, or `apply-reviewed-merge` action for every two-sided `adapted` change; an unresolved path blocks apply.
 - `REQ-05` Preserve deterministic safe actions, including managed no-drift update, user-owned missing-template `keep-and-detach`, one-sided adapted behavior, and a plan-encoded non-overlapping mechanical merge.
@@ -48,7 +48,7 @@ must_not_define:
 
 ### Constraints / Assumptions
 
-- `ASM-01` Issue #54 is the sole product request and has no comments or attached implementation decision.
+- `ASM-01` Issue #54 is the sole product request. Its existing comment is a routing/provenance record and adds no product requirements or attached implementation decision.
 - `ASM-02` Current `pull --dry-run --json` already derives a non-mutating ownership report; `pull --ask` collects all terminal answers before mutation.
 - `ASM-03` Current ownership planning validates an existing `.lock` and writes destination payload plus lock through an atomic transaction; lock entries record ownership, digests and modes.
 - `CON-01` A plan must be bound to the reviewed source, lock and payload identities and to independently verifiable, tamper-resistant human authorization over its canonical digest, so stale, tampered or agent-rewritten input fails before mutation.
@@ -57,7 +57,7 @@ must_not_define:
 
 ## Blocking Decisions
 
-`BD-01` **Human approval required before Plan Ready or implementation.** Select and approve the attestation/signature format, canonicalization procedure, authorized-reviewer trust-store configuration, key provisioning and revocation model, and reviewer signing workflow. Until then, FT-054 may describe the required authorization outcome but must not claim a deployable approval mechanism. Exact flag spelling and JSON field names remain implementation details once `BD-01` is resolved.
+`BD-01` **Human approval required before Plan Ready or implementation.** Select and approve the human-authorization carrier and verification format, canonicalization procedure, authorized-reviewer trust policy/configuration, credential lifecycle and revocation model, and reviewer authorization workflow. Until then, FT-054 may describe the required authorization outcome but must not claim a deployable approval mechanism. Exact flag spelling and JSON field names remain implementation details once `BD-01` is resolved.
 
 ## Design Requirement Decision
 
@@ -110,14 +110,14 @@ must_not_define:
 - `SC-04b` For an `adapted` path with only upstream drift, apply takes the upstream content and mode and retains `adapted` ownership.
 - `SC-04c` For a managed path with no local drift and changed upstream content, apply writes the recorded upstream bytes and executable mode, retains `managed` ownership, and atomically updates the path's `.lock` entry to the resulting upstream identity and mode.
 - `SC-04d` For a user-owned path missing from the template, apply `keep-and-detach` without changing its bytes or executable mode, removes that path's ownership entry from `.lock`, and commits the unchanged payload with the updated lock atomically.
-- `SC-04e` A reviewed mechanical merge uses only a digest-verified historical-base snapshot retained in a versioned lock extension. For a legacy lock entry without that snapshot, planning marks `apply-reviewed-merge` unavailable and apply rejects that action without mutation; a later clean baseline/update may establish the snapshot atomically.
+- `SC-04e` A reviewed mechanical merge uses only digest-verified historical-base bytes retained with compatible ownership state. For a legacy lock entry without verifiable retained base bytes, planning marks `apply-reviewed-merge` unavailable and apply rejects that action without mutation; a later clean baseline/update may establish that retained state atomically.
 - `SC-05` A changed lock, source ref, local payload, template payload, malformed/tampered plan or human-authorization material, competing cooperating-writer attempt, or injected write failure leaves all downstream files and `.lock` unchanged or rejects the stale plan before commit. A non-cooperating writer is outside the serialization guarantee; if its mutation is observed by final validation, apply rejects before commit.
 - `SC-06` A user following help and README understands that an AI may prepare a proposal but cannot approve it; ordinary `pull` stays conservative.
 
 ### Negative Coverage
 
 - `NEG-01` Reject an unknown schema/action, a plan with unrecognized fields, or a path outside the payload boundary.
-- `NEG-02` Reject a purported reviewed merge whose encoded result or digest does not match the bytes and mode recomputed by the recorded deterministic three-way merge algorithm.
+- `NEG-02` Reject a purported reviewed merge whose encoded result or digest does not match the bytes and mode recomputed by the recorded `mbc-diff3-lines-v1` algorithm, including its content-collision and mode-conflict rules.
 - `NEG-03` Reject a plan whose canonical digest is not covered by valid human-authorization material under the `BD-01`-approved trust policy.
 
 ### Checks
@@ -126,7 +126,7 @@ must_not_define:
 | --- | --- | --- | --- | --- |
 | `CHK-01` | `EC-01`, `SC-01` | Run CLI and ownership plan serialization/read-only tests. | Planning has no mutation and exposes required identities/context. | `artifacts/ft-054/verify/chk-01/` |
 | `CHK-02` | `EC-02`, `SC-02` | Run hermetic deterministic plan/apply E2E on separate identical pre-state fixtures, then replay on the changed fixture. | Complete human-authorized safe plan applies atomically and identically on fresh fixtures; replay is stale and rejected. | `artifacts/ft-054/verify/chk-02/` |
-| `CHK-03` | `EC-03`, `SC-03`–`SC-04e`, `NEG-02` | Run adapted conflict, one-sided adapted-action, managed no-drift update, user-owned missing-template detach, historical-base snapshot verification/retention, legacy-missing-base rejection, mechanical-merge recomputation and mode-preservation E2E. | Unresolved conflicts fail; each safe action produces its specified content, mode, ownership and lock state; only an explicit allowed two-sided action with a verified retained base yields a recomputed merge result; legacy entries without a base snapshot cannot mechanically merge. | `artifacts/ft-054/verify/chk-03/` |
+| `CHK-03` | `EC-03`, `SC-03`–`SC-04e`, `NEG-02` | Run adapted conflict, one-sided adapted-action, managed no-drift update, user-owned missing-template detach, historical-base retention/verification, legacy-missing-base rejection, and `mbc-diff3-lines-v1` E2E covering LCS tie-breaking, collisions, LF/CRLF and unterminated-line preservation, binary rejection, mode conflicts and mode preservation. | Unresolved conflicts fail; each safe action produces its specified content, mode, ownership and lock state; only an explicit allowed two-sided action with a verified retained base yields the exact `mbc-diff3-lines-v1` result; binary, colliding or mode-conflicting inputs cannot mechanically merge; legacy entries without retained base bytes cannot mechanically merge. | `artifacts/ft-054/verify/chk-03/` |
 | `CHK-04` | `EC-04`, `SC-05`, `NEG-01`, `NEG-03` | Run stale/tamper/path/human-authorization, cooperating-writer and injected-failure transaction regressions. | Validation fails before mutation; a cooperating writer cannot interleave after final validation; interrupted apply leaves payload and lock unchanged. | `artifacts/ft-054/verify/chk-04/` |
 | `CHK-05` | `EC-05`, `SC-06` | Review help/README and run relevant Go test and vet suites. | Boundary and `keep-and-detach` policy agree; required suites pass. | `artifacts/ft-054/verify/chk-05/` |
 
@@ -136,6 +136,6 @@ must_not_define:
 | --- | --- | --- | --- | --- |
 | `EVID-01` | Read-only plan test output and sample JSON | Go test runner | `artifacts/ft-054/verify/chk-01/` | `CHK-01` |
 | `EVID-02` | Deterministic apply E2E output | Go test runner | `artifacts/ft-054/verify/chk-02/` | `CHK-02` |
-| `EVID-03` | Adapted and deterministic-safe-action content/mode/ownership/lock plus historical-base snapshot E2E output | Go test runner | `artifacts/ft-054/verify/chk-03/` | `CHK-03` |
+| `EVID-03` | Adapted and deterministic-safe-action content/mode/ownership/lock plus historical-base and `mbc-diff3-lines-v1` E2E output | Go test runner | `artifacts/ft-054/verify/chk-03/` | `CHK-03` |
 | `EVID-04` | Staleness/tamper and transaction-failure output | Go test runner | `artifacts/ft-054/verify/chk-04/` | `CHK-04` |
 | `EVID-05` | Documentation audit plus applicable Go test/vet output | Implementer / Go toolchain | `artifacts/ft-054/verify/chk-05/` | `CHK-05` |
