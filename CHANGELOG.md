@@ -7,6 +7,15 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [2.0.1] - 2026-08-14
+
+### Fixed
+
+- Allow `pull --ask` to restore a missing user-owned template path from the
+  canonical source and return it to managed ownership.
+- Preserve adapted downstream files that were removed upstream while still
+  applying unrelated safe template updates.
+
 ## [2.0.0] - 2026-08-14
 
 ### Added
@@ -170,7 +179,9 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Add opt-in GitHub workflow integration and managed Memory Bank blocks.
 - Add Go install, Homebrew, and platform-specific release artifacts.
 
-[Unreleased]: https://github.com/dapi/memory-bank-cli/compare/v1.8.1...HEAD
+[Unreleased]: https://github.com/dapi/memory-bank-cli/compare/v2.0.1...HEAD
+[2.0.1]: https://github.com/dapi/memory-bank-cli/compare/v2.0.0...v2.0.1
+[2.0.0]: https://github.com/dapi/memory-bank-cli/compare/v1.8.1...v2.0.0
 [1.8.1]: https://github.com/dapi/memory-bank-cli/compare/v1.8.0...v1.8.1
 [1.4.0]: https://github.com/dapi/memory-bank-cli/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/dapi/memory-bank-cli/compare/v1.2.2...v1.3.0
