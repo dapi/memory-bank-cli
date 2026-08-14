@@ -27,6 +27,7 @@ audience: humans_and_agents
 - [FT-023: Push Upstream Publication](FT-023-push-upstream-publication/README.md) — completed package for issue #23's managed-only, failure-safe upstream publication through a dedicated branch and PR.
 - [FT-026: Ignore Project-Local Source Root](FT-026-ignore-project-local-source-root/README.md) — in-progress package for issue #26's target-template selection alongside a locked project-local copy.
 - [FT-051: Separate CLI Self-Update](FT-051-separate-cli-self-update/README.md) — in-progress package for issue #51 with an accepted self-update delivery contract and completed review cycles.
+- [FT-054: AI-Assisted, Human-Approved Pull Resolution](FT-054-ai-assisted-human-approved-pull-resolution/README.md) — planned package for issue #54's reviewable, human-approved pull resolution plans.
 
 ## Rules
 
