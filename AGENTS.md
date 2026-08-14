@@ -11,8 +11,10 @@ without waiting for a separate request:
    `## [X.Y.Z] - YYYY-MM-DD` section and leave an empty `Unreleased` section.
 3. Keep the changelog entry in the same commit that will be tagged. Do not
    publish a release from a commit that lacks its versioned changelog section.
-4. Run the Go tests, vet, GoReleaser configuration check, snapshot build, and
-   release E2E validation before publishing.
+4. Treat the required GitHub Actions checks as the authoritative release
+   validation gate. Local Go tests, vet, GoReleaser checks, snapshot builds,
+   and release E2E runs are optional diagnostics; do not repeat them or block
+   publication when the equivalent CI checks are green.
 5. Publish through `.github/workflows/release.yml`, wait for it to complete,
    install the exact released tag locally, and verify `memory-bank-cli
    --version`.
