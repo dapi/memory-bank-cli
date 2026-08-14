@@ -50,12 +50,16 @@ var semverPattern = regexp.MustCompile(`^(?:v)?(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\
 type semver struct {
 	major, minor, patch int
 	pre                 []string
+	build               []string
 }
 
 func (v semver) String() string {
 	value := fmt.Sprintf("%d.%d.%d", v.major, v.minor, v.patch)
 	if len(v.pre) > 0 {
 		value += "-" + strings.Join(v.pre, ".")
+	}
+	if len(v.build) > 0 {
+		value += "+" + strings.Join(v.build, ".")
 	}
 	return value
 }
@@ -326,6 +330,9 @@ func parseVersion(value string) (semver, error) {
 	if matches[4] != "" {
 		version.pre = strings.Split(matches[4], ".")
 	}
+	if matches[5] != "" {
+		version.build = strings.Split(matches[5], ".")
+	}
 	return version, nil
 }
 
@@ -397,7 +404,9 @@ func verifyStagedVersion(stagedPath, expectedTag string) error {
 	if err != nil {
 		return fmt.Errorf("expected release tag: %w", err)
 	}
-	if actualVersion.compare(expectedVersion) != 0 {
+	// SemVer precedence deliberately ignores build metadata, but a staged
+	// release artifact must identify as the exact normalized release tag.
+	if actualVersion.String() != expectedVersion.String() {
 		return fmt.Errorf("staged --version = %q, want semantic version %q", got, expectedTag)
 	}
 	return nil

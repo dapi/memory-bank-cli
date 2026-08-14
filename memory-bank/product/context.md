@@ -21,10 +21,11 @@ audience: humans_and_agents
 
 ## Product
 
-`memory-bank-cli` — единственная публичная команда проекта. Она предоставляет четыре подтверждённые capability:
+`memory-bank-cli` — единственная публичная команда проекта. Она предоставляет пять подтверждённых capability:
 
 - `init` — принимает clean Git checkout шаблона и создаёт/adopts `memory-bank/` вместе с ownership lock;
-- `update` — строит и атомарно применяет безопасный update plan по существующему lock;
+- `pull` — строит и атомарно применяет безопасный update plan по существующему lock;
+- `update` — обновляет установленный CLI до последнего совместимого release;
 - `doctor` — read-only диагностирует adoption, governance, managed drift и navigation;
 - `lint` — проверяет markdown navigation integrity в Memory Bank scope.
 

@@ -122,6 +122,13 @@ func TestVerifyStagedVersionAcceptsGoReleaserOutputAndBuildMetadata(t *testing.T
 	}
 }
 
+func TestVerifyStagedVersionRejectsDifferentBuildMetadata(t *testing.T) {
+	staged := writeDestination(t, []byte("#!/bin/sh\nprintf 'memory-bank-cli 1.2.3+other\\n'\n"))
+	if err := verifyStagedVersion(staged, "v1.2.3+build.1"); err == nil {
+		t.Fatal("verify staged version succeeded with different build metadata")
+	}
+}
+
 func TestWindowsRequiresManualReplacement(t *testing.T) {
 	server, _ := releaseServer(t, "v1.1.0", []byte("ignored"), true)
 	defer server.Close()

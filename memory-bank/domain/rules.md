@@ -10,7 +10,7 @@ status: active
 
 # Domain Rules
 
-- `init`, `update`, and `doctor --fix` resolve a clean upstream checkout when
+- `init`, `pull`, and `doctor --fix` resolve a clean upstream checkout when
   source flags are omitted. An explicit `--source`, `--template-version`, and
   `--source-ref` trio overrides that resolution and must be supplied together.
 - Template source must be a clean Git checkout and the supplied full ref must match its HEAD/payload; source and downstream roots must not overlap.

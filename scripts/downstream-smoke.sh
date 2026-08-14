@@ -112,11 +112,9 @@ step="resolve-cli-ref"
 cli_sha="$(resolve_ref "$cli_ref")"
 cli_install_ref="$cli_sha"
 sync_command="pull"
-if [ -n "$release_tag" ] && [ "$cli_ref" = "$release_tag" ] &&
-  [[ "$cli_ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-  # Stable release lanes must exercise the documented semantic-version
-  # consumer command. v1.0.1 predates `pull`, so its synchronization contract
-  # remains `update`; canary inputs use the current `pull` contract.
+if [ "$release_tag" = "v1.0.1" ] && [ "$cli_ref" = "$release_tag" ]; then
+  # v1.0.1 predates `pull`, so this explicitly legacy lane retains its
+  # synchronization contract. Every later release and canary uses `pull`.
   cli_install_ref="$cli_ref"
   sync_command="update"
 fi
