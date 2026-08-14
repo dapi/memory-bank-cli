@@ -184,6 +184,51 @@ func TestInjectedHTTPClientIsPreserved(t *testing.T) {
 	}
 }
 
+func TestReleaseMetadataHasSizeLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write([]byte(`{"tag_name":"v1.1.0"}`))
+		_, _ = writer.Write(bytes.Repeat([]byte(" "), maxReleaseMetadataBytes))
+	}))
+	defer server.Close()
+
+	var rel release
+	err := (Service{Client: server.Client()}).getJSON(context.Background(), server.URL, &rel)
+	if err == nil || !strings.Contains(err.Error(), "response exceeds") {
+		t.Fatalf("getJSON error = %v, want size-limit error", err)
+	}
+}
+
+func TestChecksumsDownloadHasSizeLimit(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write(bytes.Repeat([]byte("x"), maxChecksumsFileBytes+1))
+	}))
+	defer server.Close()
+
+	_, err := (Service{Client: server.Client()}).downloadBytes(context.Background(), server.URL, maxChecksumsFileBytes)
+	if err == nil || !strings.Contains(err.Error(), "response exceeds") {
+		t.Fatalf("downloadBytes error = %v, want size-limit error", err)
+	}
+}
+
+func TestDownloadStreamsAssetAndReturnsChecksum(t *testing.T) {
+	payload := bytes.Repeat([]byte("asset-data"), 128*1024)
+	server := httptest.NewServer(http.HandlerFunc(func(writer http.ResponseWriter, _ *http.Request) {
+		_, _ = writer.Write(payload)
+	}))
+	defer server.Close()
+
+	destination := writeDestination(t, []byte("old"))
+	actual, err := (Service{Client: server.Client()}).download(context.Background(), server.URL, destination)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := sha256.Sum256(payload)
+	if actual != fmt.Sprintf("%x", want) {
+		t.Fatalf("checksum = %s, want %x", actual, want)
+	}
+	assertBytes(t, destination, payload)
+}
+
 type counters struct{ asset, sums int }
 
 func releaseServer(t *testing.T, tag string, binary []byte, validChecksum bool) (*httptest.Server, *counters) {

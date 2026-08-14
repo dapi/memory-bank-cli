@@ -20,8 +20,10 @@ import (
 )
 
 const (
-	latestReleaseURL   = "https://api.github.com/repos/dapi/memory-bank-cli/releases/latest"
-	defaultHTTPTimeout = 30 * time.Second
+	latestReleaseURL        = "https://api.github.com/repos/dapi/memory-bank-cli/releases/latest"
+	defaultHTTPTimeout      = 30 * time.Second
+	maxReleaseMetadataBytes = 1 << 20
+	maxChecksumsFileBytes   = 1 << 20
 )
 
 // Service implements the self-update command. Dependencies are fields so the
@@ -224,7 +226,11 @@ func (s Service) getJSON(ctx context.Context, targetURL string, value any) error
 	if response.StatusCode != http.StatusOK {
 		return fmt.Errorf("GET %s: HTTP %s", targetURL, response.Status)
 	}
-	return json.NewDecoder(response.Body).Decode(value)
+	body, err := readLimited(response.Body, maxReleaseMetadataBytes)
+	if err != nil {
+		return fmt.Errorf("read response: %w", err)
+	}
+	return json.Unmarshal(body, value)
 }
 
 func (s Service) get(ctx context.Context, targetURL string) (*http.Response, error) {
@@ -253,10 +259,11 @@ func (s Service) install(ctx context.Context, assetURL, sumsURL, assetName, dest
 	if err := staged.Close(); err != nil {
 		return err
 	}
-	if err := s.download(ctx, assetURL, stagedPath); err != nil {
+	actual, err := s.download(ctx, assetURL, stagedPath)
+	if err != nil {
 		return fmt.Errorf("download asset: %w", err)
 	}
-	checksums, err := s.downloadBytes(ctx, sumsURL)
+	checksums, err := s.downloadBytes(ctx, sumsURL, maxChecksumsFileBytes)
 	if err != nil {
 		return fmt.Errorf("download checksums.txt: %w", err)
 	}
@@ -264,8 +271,8 @@ func (s Service) install(ctx context.Context, assetURL, sumsURL, assetName, dest
 	if err != nil {
 		return err
 	}
-	if err := verifyFile(stagedPath, expected); err != nil {
-		return err
+	if actual != expected {
+		return fmt.Errorf("checksum mismatch for %s", assetName)
 	}
 	if err := os.Chmod(stagedPath, 0o755); err != nil {
 		return fmt.Errorf("make staged executable: %w", err)
@@ -283,15 +290,32 @@ func (s Service) install(ctx context.Context, assetURL, sumsURL, assetName, dest
 	return nil
 }
 
-func (s Service) download(ctx context.Context, source, destination string) error {
-	data, err := s.downloadBytes(ctx, source)
+func (s Service) download(ctx context.Context, source, destination string) (string, error) {
+	response, err := s.get(ctx, source)
 	if err != nil {
-		return err
+		return "", err
 	}
-	return os.WriteFile(destination, data, 0o600)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("GET %s: HTTP %s", source, response.Status)
+	}
+	file, err := os.OpenFile(destination, os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return "", err
+	}
+	hash := sha256.New()
+	_, copyErr := io.Copy(io.MultiWriter(file, hash), response.Body)
+	closeErr := file.Close()
+	if copyErr != nil {
+		return "", copyErr
+	}
+	if closeErr != nil {
+		return "", closeErr
+	}
+	return hex.EncodeToString(hash.Sum(nil)), nil
 }
 
-func (s Service) downloadBytes(ctx context.Context, source string) ([]byte, error) {
+func (s Service) downloadBytes(ctx context.Context, source string, limit int64) ([]byte, error) {
 	response, err := s.get(ctx, source)
 	if err != nil {
 		return nil, err
@@ -300,7 +324,18 @@ func (s Service) downloadBytes(ctx context.Context, source string) ([]byte, erro
 	if response.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("GET %s: HTTP %s", source, response.Status)
 	}
-	return io.ReadAll(response.Body)
+	return readLimited(response.Body, limit)
+}
+
+func readLimited(reader io.Reader, limit int64) ([]byte, error) {
+	body, err := io.ReadAll(io.LimitReader(reader, limit+1))
+	if err != nil {
+		return nil, err
+	}
+	if int64(len(body)) > limit {
+		return nil, fmt.Errorf("response exceeds %d-byte limit", limit)
+	}
+	return body, nil
 }
 
 func target(osName, arch string) (string, string, error) {
