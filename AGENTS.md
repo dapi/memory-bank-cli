@@ -15,9 +15,10 @@ without waiting for a separate request:
    validation gate. Local Go tests, vet, GoReleaser checks, snapshot builds,
    and release E2E runs are optional diagnostics; do not repeat them or block
    publication when the equivalent CI checks are green.
-5. Publish through `.github/workflows/release.yml`, wait for it to complete,
-   install the exact released tag locally, and verify `memory-bank-cli
-   --version`.
+5. From the release commit on `main`, create and push the annotated
+   `vX.Y.Z` tag. The tag-triggered `.github/workflows/release.yml` validates,
+   builds, and publishes the release. Wait for it to complete, install the
+   exact released tag locally, and verify `memory-bank-cli --version`.
 
 The release workflow enforces step 3 with
 `scripts/check-release-changelog.sh`.
