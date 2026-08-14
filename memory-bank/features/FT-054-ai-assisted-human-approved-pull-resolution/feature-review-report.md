@@ -184,3 +184,26 @@ Yes. `BD-01` / `DEC-04` remains the only implementation gate: approve the author
 
 - **Status:** `reopened_pending_human_approval`
 - **Critical/important findings remaining:** `BD-01` / `DEC-04` human-authorization approval; `DEC-03` remains the publication-routing follow-up.
+
+## Cycle 7
+
+### Review summary
+
+A focused contract review found that stale-sidecar handling had no recoverable transition, managed absent-tombstone state lacked its no-local-drift upstream-reappearance transition, and the canonical brief repeated design-owned sidecar and resource choices. The canonical and derived documents now define the atomic recovery path, the missing managed transition and the proper brief/design ownership boundary.
+
+### Critical and important findings
+
+| Severity | Finding | Resolution |
+| --- | --- | --- |
+| `critical` | A stale but well-formed sidecar was both a mandatory collision and something a later clean update was expected to re-establish. | `SOL-03`, `RB-01`, `SC-04i`, `CHK-03` and `STEP-02` now make it merge-unavailable and permit replacement only in a validated atomic clean-baseline/update transaction; malformed state and payload collisions still reject without mutation. |
+| `critical` | The next pull from a managed absent tombstone did not specify local-absent/upstream-present behavior. | The managed tombstone row in the state table and `SC-04c` require a deterministic no-local-drift `take-upstream`, retain `managed` ownership and atomically replace the tombstone; `CHK-03` and `STEP-02` cover it. |
+| `important` | The canonical brief depended on design-owned sidecar, storage and resource decisions. | `REQ-01`–`REQ-03`, acceptance coverage and checks now state safety and compatibility outcomes only; `design.md` solely owns the control-path, storage and quota details. |
+
+### Human gate
+
+Yes. `BD-01` / `DEC-04` remains the implementation gate; this review did not select an authorization mechanism.
+
+## Final Report
+
+- **Status:** `reopened_pending_human_approval`
+- **Critical/important findings remaining:** `BD-01` / `DEC-04` human-authorization approval; `DEC-03` remains the publication-routing follow-up.
