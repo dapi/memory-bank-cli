@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"reflect"
 	"sort"
+	"strings"
 )
 
 // PlanPull creates a versioned, read-only plan for an existing ownership lock.
@@ -43,7 +44,12 @@ func PlanPull(options Options) (ResolutionPlan, error) {
 		return ResolutionPlan{}, err
 	}
 	var source map[string]payload
+	payloadRoot := ""
 	if options.verifySource == nil {
+		payloadRoot, err = selectGitSourcePayloadRoot(pinnedSource.root, options.SourceRef)
+		if err != nil {
+			return ResolutionPlan{}, err
+		}
 		source, err = readGitSource(pinnedSource, options.SourceRef)
 	} else {
 		source, err = readSource(pinnedSource)
@@ -75,23 +81,22 @@ func PlanPull(options Options) (ResolutionPlan, error) {
 		entry := ResolutionPlanEntry{Path: decision.Path, LocalPath: decision.Path, Ownership: decision.Ownership, BaseDigest: prior.BaseDigest, BaseMode: prior.BaseMode, BaseSourceRef: lock.Template.SourceRef, BasePath: decision.Path, ProposedAction: decision.Action, Reason: decision.Reason}
 		if exists {
 			entry.LocalDigest = localDigest
-			_, info, _, inspectErr := inspectDestination(repo, decision.Path)
-			if inspectErr != nil {
+			_, info, stillExists, inspectErr := inspectDestination(repo, decision.Path)
+			if inspectErr != nil || !stillExists || info == nil {
+				if inspectErr == nil {
+					inspectErr = fmt.Errorf("destination changed while reading plan")
+				}
 				return ResolutionPlan{}, inspectErr
 			}
 			entry.LocalMode = observedMode(info.Mode().Perm())
 		}
 		if sourceExists {
 			entry.UpstreamDigest, entry.UpstreamMode = incoming.digest, incoming.mode
-			entry.UpstreamSourceRef, entry.UpstreamPath = options.SourceRef, decision.Path
+			entry.UpstreamSourceRef, entry.UpstreamPath = options.SourceRef, sourceTreePath(payloadRoot, decision.Path)
 		}
 		if decision.Action == Conflict && decision.Ownership == Adapted {
 			entry.RequiresHumanDecision = true
-			if sourceExists {
-				entry.AllowedActions = []string{"keep-local", "take-upstream", "apply-reviewed-merge"}
-			} else {
-				entry.AllowedActions = []string{"keep-local", "take-upstream"}
-			}
+			entry.AllowedActions = []string{"keep-local", "take-upstream", "apply-reviewed-merge"}
 		}
 		entries = append(entries, entry)
 	}
@@ -107,6 +112,17 @@ func ApplyResolutionPlan(options Options, plan ResolutionPlan) (Report, error) {
 	}
 	if plan.Template.Version != options.TemplateVersion || plan.Template.SourceRef != options.SourceRef {
 		return Report{}, fmt.Errorf("resolution plan template identity does not match apply inputs")
+	}
+	repo, err := pinRepoRoot(options.RepoRoot)
+	if err != nil {
+		return Report{}, err
+	}
+	_, agentDecision, err := buildAgentPlan(repo, options.AgentFile)
+	if err != nil {
+		return Report{}, err
+	}
+	if agentDecision.Action != Preserve {
+		return Report{}, fmt.Errorf("agent instruction state is not current; resolve it with ordinary pull before applying a resolution plan")
 	}
 	current, err := PlanPull(options)
 	if err != nil {
@@ -153,15 +169,19 @@ func ApplyResolutionPlan(options Options, plan ResolutionPlan) (Report, error) {
 func planPreconditions(plan ResolutionPlan) []destinationPrecondition {
 	result := make([]destinationPrecondition, 0, len(plan.Entries))
 	for _, entry := range plan.Entries {
-		if entry.LocalDigest == "" {
-			// Create/topology paths are protected by their own mutation's
-			// expected-existence check. There is no existing regular file to
-			// verify as a lock barrier precondition.
-			continue
-		}
-		result = append(result, destinationPrecondition{path: entry.Path, digest: entry.LocalDigest, mode: entry.LocalMode})
+		result = append(result, destinationPrecondition{path: entry.Path, exists: entry.LocalDigest != "", digest: entry.LocalDigest, mode: entry.LocalMode})
 	}
 	return result
+}
+
+func sourceTreePath(payloadRoot, downstream string) string {
+	if payloadRoot == "" {
+		return downstream
+	}
+	if payloadRoot == targetSourcePayloadRoot && strings.HasPrefix(downstream, downstreamPayloadRoot+"/") {
+		return payloadRoot + "/" + strings.TrimPrefix(downstream, downstreamPayloadRoot+"/")
+	}
+	return payloadRoot + "/" + downstream
 }
 
 func containsAction(actions []string, target string) bool {

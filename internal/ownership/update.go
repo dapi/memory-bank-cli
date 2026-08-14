@@ -40,6 +40,7 @@ type mutation struct {
 
 type destinationPrecondition struct {
 	path   string
+	exists bool
 	digest string
 	mode   string
 }
@@ -146,7 +147,9 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 		return report, nil
 	}
 	template := Template{Version: options.TemplateVersion, SourceRef: options.SourceRef}
-	needsLockWrite := !hasLock || templateMutationCount > 0 || old.SchemaVersion != CurrentSchemaVersion || old.Template != template
+	// A detach-only plan changes only lock membership, while ordinary preserved
+	// drift must retain its established no-write behavior.
+	needsLockWrite := !hasLock || templateMutationCount > 0 || old.SchemaVersion != CurrentSchemaVersion || old.Template != template || len(old.Files) != len(next.Files)
 	if !needsLockWrite {
 		if len(mutations) == 0 {
 			return report, nil
@@ -475,6 +478,12 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 					cleanRemovals[path] = currentDigest
 					removalMutationIndex[path] = len(removalMutations)
 					removalMutations = append(removalMutations, mutation{decision: decision, expectedExists: true, expectedDigest: currentDigest, expectedMode: currentMode})
+				case "apply-reviewed-merge":
+					if resolution.Mode != "100644" && resolution.Mode != "100755" {
+						return nil, nil, Lock{}, fmt.Errorf("invalid reviewed merge resolution for %s", path)
+					}
+					decision.Action, decision.Reason = UpdateFile, "apply reviewed merge and detach adapted file removed upstream"
+					removalMutations = append(removalMutations, mutation{decision: decision, data: resolution.Data, mode: fileMode(resolution.Mode), modeSet: true, expectedExists: true, expectedDigest: currentDigest, expectedMode: currentMode})
 				default:
 					return nil, nil, Lock{}, fmt.Errorf("invalid adapted removal resolution %q for %s", resolution.Action, path)
 				}
@@ -700,7 +709,7 @@ func lockPreconditions(lock Lock) []destinationPrecondition {
 	sort.Strings(paths)
 	result := make([]destinationPrecondition, 0, len(paths))
 	for _, path := range paths {
-		result = append(result, destinationPrecondition{path: path, digest: lock.Files[path].PayloadDigest, mode: lock.Files[path].PayloadMode})
+		result = append(result, destinationPrecondition{path: path, exists: true, digest: lock.Files[path].PayloadDigest, mode: lock.Files[path].PayloadMode})
 	}
 	return result
 }
@@ -1126,7 +1135,13 @@ func verifyDestinationPrecondition(repo pinnedRepo, precondition destinationPrec
 	if err != nil {
 		return err
 	}
+	if exists != precondition.exists {
+		return errors.New("managed payload existence changed before lock commit")
+	}
 	if !exists {
+		return nil
+	}
+	if !precondition.exists {
 		return errors.New("managed payload is missing")
 	}
 	readInfo, data, err := secureReadDestination(repo, precondition.path)

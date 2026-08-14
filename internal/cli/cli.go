@@ -457,12 +457,16 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 		return exitSuccess
 	}
 	if *applyPlan != "" {
-		file, readErr := os.Open(*applyPlan)
+		data, readErr := os.ReadFile(*applyPlan)
 		if readErr != nil {
 			fmt.Fprintln(stderr, readErr)
 			return exitFailure
 		}
-		decoder := json.NewDecoder(file)
+		if duplicateErr := rejectDuplicateJSONMembers(data); duplicateErr != nil {
+			fmt.Fprintln(stderr, "read resolution plan:", duplicateErr)
+			return exitFailure
+		}
+		decoder := json.NewDecoder(bytes.NewReader(data))
 		decoder.DisallowUnknownFields()
 		var plan ownership.ResolutionPlan
 		decodeErr := decoder.Decode(&plan)
@@ -472,13 +476,8 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 				decodeErr = errors.New("resolution plan has trailing JSON content")
 			}
 		}
-		closeErr := file.Close()
 		if decodeErr != nil {
 			fmt.Fprintln(stderr, "read resolution plan:", decodeErr)
-			return exitFailure
-		}
-		if closeErr != nil {
-			fmt.Fprintln(stderr, closeErr)
 			return exitFailure
 		}
 		report, applyErr := ownership.ApplyResolutionPlan(options, plan)
@@ -490,7 +489,7 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 			fmt.Fprintln(stderr, err)
 			return exitFailure
 		}
-		if report.ConflictCount > 0 || !report.Applied {
+		if report.ConflictCount > 0 {
 			return exitFailure
 		}
 		return exitSuccess
@@ -537,6 +536,55 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 		return exitFailure
 	}
 	return exitSuccess
+}
+
+func rejectDuplicateJSONMembers(data []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	if err := scanJSONValue(decoder); err != nil {
+		return err
+	}
+	if token, err := decoder.Token(); err != io.EOF {
+		return fmt.Errorf("trailing JSON content: %v", token)
+	}
+	return nil
+}
+
+func scanJSONValue(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	delimiter, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	switch delimiter {
+	case '{':
+		seen := make(map[string]bool)
+		for decoder.More() {
+			keyToken, keyErr := decoder.Token()
+			if keyErr != nil {
+				return keyErr
+			}
+			key := strings.ToLower(keyToken.(string))
+			if seen[key] {
+				return fmt.Errorf("duplicate JSON member %q", keyToken)
+			}
+			seen[key] = true
+			if valueErr := scanJSONValue(decoder); valueErr != nil {
+				return valueErr
+			}
+		}
+		_, err = decoder.Token()
+	case '[':
+		for decoder.More() {
+			if err := scanJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+		_, err = decoder.Token()
+	}
+	return err
 }
 
 func askUserOwnedCollisions(stdin io.Reader, writer io.Writer, report ownership.Report) (map[string]bool, error) {
