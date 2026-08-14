@@ -130,10 +130,36 @@ No. The approved contract now makes the required human authorization technically
 
 ## Final Report
 
-- **Status:** `done`
+- **Status:** superseded by Cycle 5.
 - **Cycles completed:** 4
 - **Critical findings closed:** missing solution-space owner for CLI/file/trust/atomicity; closed by `design.md`.
 - **Important findings closed:** missing grounded execution plan; premature mutation of the current-state use case avoided by deferring its update to `STEP-04`; issue #54 routing record added after branch publication; approval binding, repeatability, mechanical-merge derivation and provenance-order gaps closed in Cycle 4.
 - **Critical/important findings remaining:** none.
 - **Minor findings:** none changed.
 - **Decision log:** [decision-log.md](decision-log.md)
+
+## Cycle 5
+
+### Review summary
+
+A follow-up review reopened the package. The planned CLI was documented in the current README before implementation; the approval workflow lacked a selected trust-root and signing contract; one-sided adapted outcomes and writer-race handling were unspecified. The public README now documents only delivered behavior. The package records the unresolved authorization decision as a human gate and specifies the required one-sided and concurrency contracts for later implementation.
+
+### Critical and important findings
+
+| Severity | Finding | Resolution |
+| --- | --- | --- |
+| `critical` | Planned `pull --plan` and `--apply-plan` commands were presented as available. | Removed the future-workflow section from the current README; `STEP-04` remains the implementation-time documentation update. |
+| `critical` | No selected attestation format, canonicalization, trust-store, key lifecycle or reviewer signing workflow existed despite a claim of no blockers. | Added blocking `BD-01` / `DEC-04`; the package is not Plan Ready until a human approves that public security contract. |
+| `important` | A writer could race validation and commit. | `SOL-04`, `CTR-02` and `INV-06` require an exclusive update guard and transaction-scoped final revalidation; `CHK-04` requires competing-writer coverage. |
+| `important` | One-sided adapted behavior lacked an ownership/content/mode contract. | Added the adapted state/action table and `SC-04a`–`SC-04b` / `CHK-03` coverage. |
+| `important` | The brief prescribed an implementation-level detached-signature mechanism. | `REQ-02` and `CON-01` now state the required authorization outcome; design owns the later selected mechanism. |
+
+### Human gate
+
+Yes. Approve `BD-01` / `DEC-04`: the attestation/signature format, canonicalization procedure, trust-store configuration, key provisioning/revocation model and reviewer signing workflow. Until that decision, do not implement or publish FT-054 as Plan Ready.
+
+## Final Report
+
+- **Status:** `reopened_pending_human_approval`
+- **Critical/important findings remaining:** `BD-01` / `DEC-04` approval.
+- **Implemented-product documentation:** current README does not advertise the planned workflow.
