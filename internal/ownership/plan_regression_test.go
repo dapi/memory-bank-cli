@@ -534,3 +534,43 @@ func TestApplyResolutionPlanRequiresAndAppliesHumanDecision(t *testing.T) {
 		t.Fatalf("take-upstream content=%q", got)
 	}
 }
+
+func TestApplyResolutionPlanResolvesCanonicalAdaptedMigration(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	path := "memory-bank/domain/model.md"
+	write(t, source, "template/"+path, "base\n")
+	initialize(t, repo, source)
+	lock, exists, err := ReadLock(repo)
+	if err != nil || !exists {
+		t.Fatalf("read lock: exists=%v err=%v", exists, err)
+	}
+	lock.Files[path] = File{Ownership: Adapted, BaseDigest: digest([]byte("base\n")), BaseMode: "100644"}
+	lockData, err := marshalLock(lock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, repo, LockFileName, string(lockData))
+	write(t, repo, path, "local\n")
+	write(t, source, "template/"+path, "upstream\n")
+	options := opts(repo, source, "b")
+	plan, err := PlanPull(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for index := range plan.Entries {
+		if plan.Entries[index].Path == path {
+			plan.Entries[index].SelectedAction = "take-upstream"
+		}
+	}
+	report, err := ApplyResolutionPlan(options, plan)
+	if err != nil || !report.Applied {
+		t.Fatalf("canonical adapted resolution failed: report=%#v err=%v", report, err)
+	}
+	if got := read(t, repo, path); got != "upstream\n" {
+		t.Fatalf("unexpected content %q", got)
+	}
+	updated, _, err := ReadLock(repo)
+	if err != nil || updated.Files[path].Ownership != Managed {
+		t.Fatalf("take-upstream did not adopt canonical ownership: %#v err=%v", updated.Files[path], err)
+	}
+}

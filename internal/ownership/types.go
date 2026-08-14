@@ -86,10 +86,16 @@ type ResolutionPlanEntry struct {
 	Path                  string   `json:"path"`
 	Ownership             Class    `json:"ownership"`
 	BaseDigest            string   `json:"base_digest,omitempty"`
+	BaseMode              string   `json:"base_mode,omitempty"`
+	BaseSourceRef         string   `json:"base_source_ref,omitempty"`
+	BasePath              string   `json:"base_path,omitempty"`
 	LocalDigest           string   `json:"local_digest,omitempty"`
 	LocalMode             string   `json:"local_mode,omitempty"`
 	UpstreamDigest        string   `json:"upstream_digest,omitempty"`
 	UpstreamMode          string   `json:"upstream_mode,omitempty"`
+	UpstreamSourceRef     string   `json:"upstream_source_ref,omitempty"`
+	UpstreamPath          string   `json:"upstream_path,omitempty"`
+	LocalPath             string   `json:"local_path"`
 	ProposedAction        Action   `json:"proposed_action"`
 	Reason                string   `json:"reason"`
 	RequiresHumanDecision bool     `json:"requires_human_decision"`
@@ -115,10 +121,14 @@ type Options struct {
 	// UserOwnedResolutions maps user-owned managed-file collisions to their
 	// explicit resolution: false keeps local content, true replaces it with the
 	// incoming source payload.
-	UserOwnedResolutions map[string]bool
-	AdaptedResolutions   map[string]AdaptedResolution
-	AgentFile            string
-	Now                  func() time.Time
+	UserOwnedResolutions    map[string]bool
+	AdaptedResolutions      map[string]AdaptedResolution
+	ExpectedLockDigest      string
+	ExpectedPaths           []destinationPrecondition
+	DetachUserOwnedRemovals bool
+	SkipAgentInstructions   bool
+	AgentFile               string
+	Now                     func() time.Time
 	// verifySource is replaced by unit tests that use synthetic source trees.
 	// CLI callers always use the Git-backed provenance verifier.
 	verifySource func(string, string) error

@@ -3,11 +3,8 @@ package ownership
 import (
 	"encoding/base64"
 	"fmt"
-	"path/filepath"
 	"reflect"
 	"sort"
-
-	"github.com/dapi/memory-bank-cli/internal/agentinstructions"
 )
 
 // PlanPull creates a versioned, read-only plan for an existing ownership lock.
@@ -57,20 +54,9 @@ func PlanPull(options Options) (ResolutionPlan, error) {
 	if err := verifySource(pinnedSource.root, options.SourceRef); err != nil {
 		return ResolutionPlan{}, fmt.Errorf("source checkout changed while reading template: %w", err)
 	}
-	_, decisions, _, err := buildPlan(repo, source, lock, true, nil, nil)
+	_, decisions, _, err := buildPlan(repo, source, lock, true, nil, nil, true)
 	if err != nil {
 		return ResolutionPlan{}, err
-	}
-	agentTarget := options.AgentFile
-	if agentTarget == "" {
-		agentTarget = agentinstructions.DefaultTarget
-	}
-	if _, templateOwnsAgentFile := source[filepath.ToSlash(agentTarget)]; !templateOwnsAgentFile {
-		_, agentDecision, agentErr := buildAgentPlan(repo, options.AgentFile)
-		if agentErr != nil {
-			return ResolutionPlan{}, agentErr
-		}
-		decisions = append(decisions, agentDecision)
 	}
 	entries := make([]ResolutionPlanEntry, 0, len(decisions))
 	for _, decision := range decisions {
@@ -81,9 +67,12 @@ func PlanPull(options Options) (ResolutionPlan, error) {
 		prior := lock.Files[decision.Path]
 		localDigest, exists, err := digestDestinationFile(repo, decision.Path)
 		if err != nil {
-			return ResolutionPlan{}, err
+			// buildPlan has already captured and validated clean topology changes.
+			// A second regular-file lookup cannot traverse the old topology; leave
+			// its local identity empty rather than rejecting a deterministic plan.
+			localDigest, exists = "", false
 		}
-		entry := ResolutionPlanEntry{Path: decision.Path, Ownership: decision.Ownership, BaseDigest: prior.BaseDigest, ProposedAction: decision.Action, Reason: decision.Reason}
+		entry := ResolutionPlanEntry{Path: decision.Path, LocalPath: decision.Path, Ownership: decision.Ownership, BaseDigest: prior.BaseDigest, BaseMode: prior.BaseMode, BaseSourceRef: lock.Template.SourceRef, BasePath: decision.Path, ProposedAction: decision.Action, Reason: decision.Reason}
 		if exists {
 			entry.LocalDigest = localDigest
 			_, info, _, inspectErr := inspectDestination(repo, decision.Path)
@@ -94,10 +83,15 @@ func PlanPull(options Options) (ResolutionPlan, error) {
 		}
 		if sourceExists {
 			entry.UpstreamDigest, entry.UpstreamMode = incoming.digest, incoming.mode
+			entry.UpstreamSourceRef, entry.UpstreamPath = options.SourceRef, decision.Path
 		}
 		if decision.Action == Conflict && decision.Ownership == Adapted {
 			entry.RequiresHumanDecision = true
-			entry.AllowedActions = []string{"keep-local", "take-upstream", "apply-reviewed-merge"}
+			if sourceExists {
+				entry.AllowedActions = []string{"keep-local", "take-upstream", "apply-reviewed-merge"}
+			} else {
+				entry.AllowedActions = []string{"keep-local", "take-upstream"}
+			}
 		}
 		entries = append(entries, entry)
 	}
@@ -149,7 +143,25 @@ func ApplyResolutionPlan(options Options, plan ResolutionPlan) (Report, error) {
 		return Report{}, fmt.Errorf("resolution plan is stale or tampered; regenerate and review it before applying")
 	}
 	options.AdaptedResolutions = resolutions
+	options.ExpectedLockDigest = plan.LockDigest
+	options.ExpectedPaths = planPreconditions(plan)
+	options.DetachUserOwnedRemovals = true
+	options.SkipAgentInstructions = true
 	return Update(options)
+}
+
+func planPreconditions(plan ResolutionPlan) []destinationPrecondition {
+	result := make([]destinationPrecondition, 0, len(plan.Entries))
+	for _, entry := range plan.Entries {
+		if entry.LocalDigest == "" {
+			// Create/topology paths are protected by their own mutation's
+			// expected-existence check. There is no existing regular file to
+			// verify as a lock barrier precondition.
+			continue
+		}
+		result = append(result, destinationPrecondition{path: entry.Path, digest: entry.LocalDigest, mode: entry.LocalMode})
+	}
+	return result
 }
 
 func containsAction(actions []string, target string) bool {

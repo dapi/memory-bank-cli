@@ -398,6 +398,14 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 		fmt.Fprintln(stderr, "memory-bank-cli init: --plan is only supported by pull")
 		return exitUsage
 	}
+	if *applyPlan != "" && command != "pull" {
+		fmt.Fprintln(stderr, "memory-bank-cli init: --apply-plan is only supported by pull")
+		return exitUsage
+	}
+	if *applyPlan != "" && *ask {
+		fmt.Fprintln(stderr, "memory-bank-cli pull: --apply-plan cannot be combined with --ask")
+		return exitUsage
+	}
 	if *planOutput && *ask {
 		fmt.Fprintln(stderr, "memory-bank-cli pull: --plan cannot be combined with --ask")
 		return exitUsage
@@ -480,6 +488,9 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 		}
 		if err := writeResult(stdout, *jsonOutput, report, func(writer io.Writer) { printOwnershipReport(writer, report) }); err != nil {
 			fmt.Fprintln(stderr, err)
+			return exitFailure
+		}
+		if report.ConflictCount > 0 || !report.Applied {
 			return exitFailure
 		}
 		return exitSuccess
