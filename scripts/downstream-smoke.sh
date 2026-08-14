@@ -112,10 +112,13 @@ step="resolve-cli-ref"
 cli_sha="$(resolve_ref "$cli_ref")"
 cli_install_ref="$cli_sha"
 sync_command="pull"
-if [ "$release_tag" = "v1.0.1" ] && [ "$cli_ref" = "$release_tag" ]; then
-  # v1.0.1 predates `pull`, so this explicitly legacy lane retains its
-  # synchronization contract. Every later release and canary uses `pull`.
+if [ -n "$release_tag" ] && [ "$cli_ref" = "$release_tag" ]; then
+  # Stable releases are installed by tag so the smoke test covers the released
+  # module-consumer path. v1.0.1 predates `pull`, so only that legacy release
+  # retains its older synchronization command.
   cli_install_ref="$cli_ref"
+fi
+if [ "$release_tag" = "v1.0.1" ] && [ "$cli_ref" = "$release_tag" ]; then
   sync_command="update"
 fi
 step="resolve-template-ref"

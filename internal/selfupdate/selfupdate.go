@@ -16,9 +16,13 @@ import (
 	"runtime"
 	"strconv"
 	"strings"
+	"time"
 )
 
-const latestReleaseURL = "https://api.github.com/repos/dapi/memory-bank-cli/releases/latest"
+const (
+	latestReleaseURL   = "https://api.github.com/repos/dapi/memory-bank-cli/releases/latest"
+	defaultHTTPTimeout = 30 * time.Second
+)
 
 // Service implements the self-update command. Dependencies are fields so the
 // release and filesystem failure paths can be deterministic in tests.
@@ -153,22 +157,6 @@ func (s Service) Run(ctx context.Context) int {
 	if err != nil {
 		return fail("running version: %v", err)
 	}
-	osName, arch, err := target(s.GOOS, s.GOARCH)
-	if err != nil {
-		return fail("%v", err)
-	}
-	executable := s.Executable
-	if executable == nil {
-		executable = os.Executable
-	}
-	destination, err := executable()
-	if err != nil {
-		return fail("running executable: %v", err)
-	}
-	if resolved, resolveErr := filepath.EvalSymlinks(destination); resolveErr == nil {
-		destination = resolved
-	}
-
 	rel, err := s.latest(ctx)
 	if err != nil {
 		return fail("latest release: %v", err)
@@ -183,6 +171,21 @@ func (s Service) Run(ctx context.Context) int {
 	if targetVersion.compare(current) <= 0 {
 		fmt.Fprintln(out, "memory-bank-cli is already up to date.")
 		return 0
+	}
+	osName, arch, err := target(s.GOOS, s.GOARCH)
+	if err != nil {
+		return fail("%v", err)
+	}
+	executable := s.Executable
+	if executable == nil {
+		executable = os.Executable
+	}
+	destination, err := executable()
+	if err != nil {
+		return fail("running executable: %v", err)
+	}
+	if resolved, resolveErr := filepath.EvalSymlinks(destination); resolveErr == nil {
+		destination = resolved
 	}
 
 	assetName := fmt.Sprintf("memory-bank-cli-%s-%s", osName, arch)
@@ -225,16 +228,19 @@ func (s Service) getJSON(ctx context.Context, targetURL string, value any) error
 }
 
 func (s Service) get(ctx context.Context, targetURL string) (*http.Response, error) {
-	client := s.Client
-	if client == nil {
-		client = http.DefaultClient
-	}
 	request, err := http.NewRequestWithContext(ctx, http.MethodGet, targetURL, nil)
 	if err != nil {
 		return nil, err
 	}
 	request.Header.Set("User-Agent", "memory-bank-cli-self-update")
-	return client.Do(request)
+	return s.httpClient().Do(request)
+}
+
+func (s Service) httpClient() *http.Client {
+	if s.Client != nil {
+		return s.Client
+	}
+	return &http.Client{Timeout: defaultHTTPTimeout}
 }
 
 func (s Service) install(ctx context.Context, assetURL, sumsURL, assetName, destination, expectedTag string) error {

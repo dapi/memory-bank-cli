@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 const testAsset = "memory-bank-cli-linux-amd64"
@@ -140,6 +141,47 @@ func TestWindowsRequiresManualReplacement(t *testing.T) {
 		t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
 	}
 	assertBytes(t, destination, []byte("old"))
+}
+
+func TestUnsupportedPlatformDoesNotBlockAlreadyCurrentResult(t *testing.T) {
+	for _, test := range []struct{ os, arch string }{
+		{"windows", "amd64"},
+		{"linux", "386"},
+	} {
+		t.Run(test.os+"/"+test.arch, func(t *testing.T) {
+			server, _ := releaseServer(t, "v1.0.0", []byte("ignored"), true)
+			defer server.Close()
+			destination := writeDestination(t, []byte("old"))
+			var stdout, stderr bytes.Buffer
+			s := service(server, destination, &stdout, &stderr)
+			s.GOOS, s.GOARCH = test.os, test.arch
+			s.Executable = func() (string, error) {
+				t.Fatal("executable lookup should not run when already current")
+				return "", nil
+			}
+			if code := s.Run(context.Background()); code != 0 || stderr.Len() != 0 || !strings.Contains(stdout.String(), "already up to date") {
+				t.Fatalf("code=%d stdout=%q stderr=%q", code, stdout.String(), stderr.String())
+			}
+			assertBytes(t, destination, []byte("old"))
+		})
+	}
+}
+
+func TestDefaultHTTPClientHasTimeout(t *testing.T) {
+	s := Service{}
+	if got := s.httpClient().Timeout; got != defaultHTTPTimeout {
+		t.Fatalf("default client timeout = %s, want %s", got, defaultHTTPTimeout)
+	}
+	if defaultHTTPTimeout <= 0 || defaultHTTPTimeout > time.Minute {
+		t.Fatalf("defaultHTTPTimeout = %s, want a practical positive timeout", defaultHTTPTimeout)
+	}
+}
+
+func TestInjectedHTTPClientIsPreserved(t *testing.T) {
+	client := &http.Client{}
+	if got := (Service{Client: client}).httpClient(); got != client {
+		t.Fatal("injected HTTP client was not preserved")
+	}
 }
 
 type counters struct{ asset, sums int }
