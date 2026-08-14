@@ -2,10 +2,10 @@
 title: "FT-054: Design"
 doc_kind: feature
 doc_function: canonical
-purpose: "Selected solution and safety contract for FT-054 reviewable pull resolution plans."
+purpose: "Proposed solution and safety-contract constraints for FT-054 reviewable pull resolution plans."
 derived_from:
   - brief.md
-status: active
+status: draft
 audience: humans_and_agents
 must_not_define:
   - ft_054_scope
@@ -26,13 +26,17 @@ must_not_define:
 
 The feature adds a public CLI plan/apply contract at the boundary between a human reviewer, an optional AI proposal, the local downstream payload, its ownership lock and a pinned source. `brief.md` requires exact review identity and atomic application; current ownership planning and transaction code provide the local baseline.
 
+This design remains a draft. `BD-01` has not selected the human-authorization mechanism and `BD-02` has not selected the protected-registry topology or atomic-commit protocol. The C3 model below deliberately exposes those unresolved ports, but does not select their implementations. Do not create an implementation plan or treat this package as Solution Ready until both decisions are selected, incorporated here, reviewed, and the decision-dependent design verification is completed.
+
 ## C4 Applicability
 
 | C4 ID | Decision | Trigger / reason | Artifact |
 | --- | --- | --- | --- |
-| `C4-01` | `C1` | The public CLI adds a human/agent interaction and a reviewable file contract across the source/downstream trust boundary. | Compact context map below |
+| `C4-01` | `C3 compact view` | Security-critical collaboration inside the CLI spans plan generation and decoding, authorization verification, sidecar/provenance handling, update guarding and the ownership transaction; `BD-01` and `BD-02` leave two trust-providing bindings unselected. | Embedded C1 context and C3 component/connector map below |
 
 ### C4 Artifact
+
+#### System context (C1 supporting view)
 
 | Element | Interaction / boundary |
 | --- | --- |
@@ -42,13 +46,25 @@ The feature adds a public CLI plan/apply contract at the boundary between a huma
 | Downstream payload + `memory-bank/.lock` + `.lock-history-v1` + protected history registry | Local state, including versioned historical-base state and replay-resistant provenance. The `BD-02`-selected protocol must publish payload, lock, sidecar and authoritative receipt through one atomic commit decision. |
 | Pinned template source | Upstream payload and immutable source identity to be identity-checked. |
 
+#### Component / connector view (C3)
+
+| Component | Provides / owns | Requires and binding / direction |
+| --- | --- | --- |
+| `pull` command orchestrator | Selects read-only planning or apply and prevents the default conservative `pull` path from entering plan/apply behavior. | Invokes the planner for proposal generation; on apply invokes strict decode, authorization verification, current-state revalidation and the transaction coordinator in order. |
+| Resolution planner and deterministic projection | Reads the pinned source, local payload, `.lock` and admissible history state; derives the complete affected-path inventory, allowed actions and canonical plan projection. | Source/lock/payload/history readers → in-process proposal and canonical digest (`SOL-01`, `SOL-03`, `SOL-05`). It never receives authority to approve an action. |
+| Plan codec and digest validator | Bounded strict decoding/encoding, schema validation and canonical whole-plan digest calculation. | Candidate plan file → validated plan/digest → authorization verifier and apply coordinator. Unknown, duplicate or oversized input fails before staging. |
+| Human-authorization verifier (unselected adapter) | Verifies that a trusted reviewer authorized the exact canonical digest and the permitted decision overlays. | Validated digest plus authorization carrier → authorization result. Its carrier, trust policy, credentials and reviewer workflow are the `BD-01`-selected external binding; no plan writer or AI component supplies this authority. |
+| History-state and provenance verifier (unselected adapter) | Validates bounded `.lock-history-v1` state, lock binding, generation/digest and receipt provenance; exposes only verified historical bases. | Sidecar plus exact `.lock` identity ↔ `BD-02`-selected protected registry. Missing or unverifiable provenance yields merge-ineligible history, not inferred state. |
+| Apply coordinator and update guard | Acquires the cooperating-writer guard, regenerates the complete deterministic projection, validates selected scope/actions, and retains the guard through commit. | Validated plan + authorization result + current source/local/lock/history state → one staged ownership update. Any revalidation mismatch rejects before staging. |
+| Ownership transaction and sidecar allocator | Allocates bounded descriptors/snapshots and stages payload, `.lock` and sidecar changes without changing the legacy lock wire format. | Apply coordinator → local filesystem transaction. It must bind the resulting downstream root, lock identity, sidecar generation and digest to the `BD-02` protocol's same commit decision; a fallible post-commit registry write is not permitted. |
+
 ## Architecture Coverage Decision
 
 | Aspect | Status | Canonical owner / refs | Supporting view / artifact | Coverage note |
 | --- | --- | --- | --- | --- |
-| Components / responsibilities | covered | `SOL-01`–`SOL-05` | C1 table | CLI planner, plan codec/validator, quota enforcement and existing ownership transaction have distinct roles. |
-| Connectors / interactions | covered | `CTR-01`–`CTR-02` | none | JSON file and local file/lock reads are explicit connectors. |
-| Configuration / topology | covered | `SOL-01`, `CTR-01` | C1 table | Same local CLI topology; plan binds selected source and downstream paths. |
+| Components / responsibilities | covered | `SOL-01`–`SOL-05` | compact C3 component / connector view | Planner, codec, authorization verifier, history/provenance verifier, update guard and transaction have explicit ownership and provided/required interfaces. |
+| Connectors / interactions | covered | `CTR-01`–`CTR-03` | compact C3 component / connector view | Plan file, authorization handoff, source/local/lock/sidecar reads, protected-registry provenance and transaction/guard bindings have direction and failure boundaries. |
+| Configuration / topology | covered | `SOL-01`–`SOL-05`, `CTR-01`–`CTR-03` | compact C3 component / connector view | The single CLI container binds local components to the pinned source and downstream state; the authorization and registry adapter topologies remain explicitly unselected pending `BD-01`/`BD-02`. |
 | Behavioral semantics | covered | `SOL-02`–`SOL-05`, `INV-*`, `FM-*` | none | Read-only planning, human decision, bounded resource handling, revalidation and atomic commit are specified. |
 | Quality / evolution concerns | covered | `brief.md` `CON-*`; `INV-*`, `FM-*`, `RB-01` | none | Versioned schema, tamper resistance, compatibility and rollback are explicit. |
 
