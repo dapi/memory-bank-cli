@@ -33,7 +33,7 @@ must_not_define:
 ### Scope
 
 - `REQ-01` Provide a machine-readable, non-mutating `pull` plan containing path, ownership, base identity, local/upstream state, safe proposed action, human-decision requirement, and concise conflict context.
-- `REQ-02` Define a versioned, reviewable resolution-plan file that records accepted actions and any reviewed non-overlapping merge result.
+- `REQ-02` Define a versioned, reviewable resolution-plan file whose canonical whole-plan digest is covered by a detached approval attestation from an authorized human-controlled signing key; it records accepted actions and the inputs, algorithm version and result of any reviewed non-overlapping mechanical merge.
 - `REQ-03` Apply a resolution plan only after validating its lock, source identity, local payload and template payload; apply all accepted actions and `.lock` atomically.
 - `REQ-04` Require an explicit human-selected `keep-local`, `take-upstream`, or `apply-reviewed-merge` action for every two-sided `adapted` change; an unresolved path blocks apply.
 - `REQ-05` Preserve deterministic safe actions, including managed no-drift update, user-owned missing-template `keep-and-detach`, one-sided adapted behavior, and a plan-encoded non-overlapping mechanical merge.
@@ -51,7 +51,7 @@ must_not_define:
 - `ASM-01` Issue #54 is the sole product request and has no comments or attached implementation decision.
 - `ASM-02` Current `pull --dry-run --json` already derives a non-mutating ownership report; `pull --ask` collects all terminal answers before mutation.
 - `ASM-03` Current ownership planning validates an existing `.lock` and writes destination payload plus lock through an atomic transaction; lock entries record ownership, digests and modes.
-- `CON-01` A plan must be bound to the reviewed source, lock and payload identities so stale or tampered input fails before mutation.
+- `CON-01` A plan must be bound to the reviewed source, lock and payload identities and to a detached approval attestation over its canonical digest from an authorized human-controlled signing key, so stale, tampered or agent-rewritten input fails before mutation.
 - `CON-02` The CLI must remain deterministic and must never call an LLM or treat an AI proposal as approval.
 - `CON-03` The public `pull` contract and the stable update use case must remain conservative when no plan is applied.
 
@@ -85,16 +85,16 @@ must_not_define:
 ### Exit Criteria
 
 - `EC-01` Planning is read-only and reports enough context for an agent or reviewer without deciding ambiguous adapted paths.
-- `EC-02` A complete plan containing only deterministic actions applies repeatably and atomically.
+- `EC-02` A complete attested plan containing only deterministic actions applies atomically to its matching pre-state. Re-executing it against a changed post-state is rejected as stale; executing it on separate identical pre-state fixtures produces the same result.
 - `EC-03` Every two-sided adapted conflict remains unapplied until an explicit allowed human action is recorded; each selected action gives its specified content and mode result.
-- `EC-04` Stale, malformed or tampered plans fail before mutating any downstream file or `.lock`.
+- `EC-04` Stale, malformed or tampered plans or approval attestations fail before mutating any downstream file or `.lock`.
 - `EC-05` Default `pull` behavior and documentation preserve the conservative agent/human boundary.
 
 ### Traceability Matrix
 
 | Requirement ID | Problem refs | Acceptance refs | Checks | Evidence IDs |
 | --- | --- | --- | --- | --- |
-| `REQ-01`–`REQ-02` | `ASM-01`–`ASM-02`, `CON-02` | `EC-01`, `SC-01` | `CHK-01` | `EVID-01` |
+| `REQ-01`–`REQ-02` | `ASM-01`–`ASM-02`, `CON-01`–`CON-02` | `EC-01`, `SC-01` | `CHK-01`, `CHK-04` | `EVID-01`, `EVID-04` |
 | `REQ-03` | `ASM-03`, `CON-01` | `EC-02`, `SC-02` | `CHK-02` | `EVID-02` |
 | `REQ-04`–`REQ-05` | `ASM-02`–`ASM-03`, `CON-01`–`CON-02` | `EC-03`, `SC-03`–`SC-04` | `CHK-03` | `EVID-03` |
 | `REQ-03`, `REQ-07` | `CON-01` | `EC-04`, `SC-05` | `CHK-04` | `EVID-04` |
@@ -103,25 +103,26 @@ must_not_define:
 ### Acceptance Scenarios
 
 - `SC-01` An agent reads a JSON pull plan for a changed template without filesystem or lock mutation and can identify each required human decision.
-- `SC-02` A reviewer applies a complete deterministic plan against unchanged inputs and receives its specified file and lock updates as one committed result.
+- `SC-02` A reviewer applies a complete attested deterministic plan against unchanged inputs and receives its specified file and lock updates as one committed result; the same plan is rejected if replayed after that commit, while separate identical pre-state fixtures produce the same committed result.
 - `SC-03` A plan with an unresolved two-sided adapted path is rejected without mutation.
 - `SC-04` After a human records each allowed action, apply produces the recorded local, upstream, or reviewed-merge content and executable mode.
-- `SC-05` A changed lock, source ref, local payload, template payload, malformed plan, or injected write failure leaves all downstream files and `.lock` unchanged.
+- `SC-05` A changed lock, source ref, local payload, template payload, malformed/tampered plan or approval attestation, or injected write failure leaves all downstream files and `.lock` unchanged.
 - `SC-06` A user following help and README understands that an AI may prepare a proposal but cannot approve it; ordinary `pull` stays conservative.
 
 ### Negative Coverage
 
 - `NEG-01` Reject an unknown schema/action, a plan with unrecognized fields, or a path outside the payload boundary.
-- `NEG-02` Reject a purported reviewed merge whose encoded result or digest does not match the applied bytes.
+- `NEG-02` Reject a purported reviewed merge whose encoded result or digest does not match the bytes and mode recomputed by the recorded deterministic three-way merge algorithm.
+- `NEG-03` Reject a plan whose canonical digest is not covered by a valid approval attestation from an authorized human-reviewer key.
 
 ### Checks
 
 | Check ID | Covers | How to check | Expected result | Evidence path |
 | --- | --- | --- | --- | --- |
 | `CHK-01` | `EC-01`, `SC-01` | Run CLI and ownership plan serialization/read-only tests. | Planning has no mutation and exposes required identities/context. | `artifacts/ft-054/verify/chk-01/` |
-| `CHK-02` | `EC-02`, `SC-02` | Run hermetic deterministic plan/apply E2E. | Complete safe plan applies atomically and repeatably. | `artifacts/ft-054/verify/chk-02/` |
-| `CHK-03` | `EC-03`, `SC-03`–`SC-04`, `NEG-02` | Run adapted conflict and mode-preservation E2E. | Unresolved conflicts fail; only explicit allowed actions yield recorded results. | `artifacts/ft-054/verify/chk-03/` |
-| `CHK-04` | `EC-04`, `SC-05`, `NEG-01` | Run stale/tamper/path and injected-failure transaction regressions. | Validation fails before mutation; interrupted apply leaves payload and lock unchanged. | `artifacts/ft-054/verify/chk-04/` |
+| `CHK-02` | `EC-02`, `SC-02` | Run hermetic deterministic plan/apply E2E on separate identical pre-state fixtures, then replay on the changed fixture. | Complete attested safe plan applies atomically and identically on fresh fixtures; replay is stale and rejected. | `artifacts/ft-054/verify/chk-02/` |
+| `CHK-03` | `EC-03`, `SC-03`–`SC-04`, `NEG-02` | Run adapted conflict, mechanical-merge recomputation and mode-preservation E2E. | Unresolved conflicts fail; only explicit allowed actions yield validated local, upstream or recomputed merge results. | `artifacts/ft-054/verify/chk-03/` |
+| `CHK-04` | `EC-04`, `SC-05`, `NEG-01`, `NEG-03` | Run stale/tamper/path/attestation and injected-failure transaction regressions. | Validation fails before mutation; interrupted apply leaves payload and lock unchanged. | `artifacts/ft-054/verify/chk-04/` |
 | `CHK-05` | `EC-05`, `SC-06` | Review help/README and run relevant Go test and vet suites. | Boundary and `keep-and-detach` policy agree; required suites pass. | `artifacts/ft-054/verify/chk-05/` |
 
 ### Evidence Contract

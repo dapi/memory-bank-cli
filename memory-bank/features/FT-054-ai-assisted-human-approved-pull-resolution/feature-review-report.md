@@ -84,7 +84,7 @@ Yes.
 
 ## Final Report
 
-- **Status:** superseded by Cycle 3 below.
+- **Status:** superseded by later review cycles below.
 
 ## Cycle 3
 
@@ -109,12 +109,31 @@ None. `DEC-03` is now accepted because the durable evidence carrier exists; `DEC
 
 No.
 
+## Cycle 4
+
+### Review summary
+
+A follow-up contract review confirmed four important gaps: a plan-local digest could be recomputed by its writer and therefore was not human approval; repeat-apply wording conflicted with pre-state identity validation; mechanical-merge derivation was unspecified; and `design.md` and `decision-log.md` formed a provenance cycle. The canonical owners now state a detached authorized-human attestation, deterministic merge derivation/recomputation, fixture-scoped determinism with stale replay rejection, and an acyclic derivation graph.
+
+### Critical and important findings
+
+| Severity | Finding | Resolution |
+| --- | --- | --- |
+| `important` | A plan writer could alter actions or merge bytes and recompute its embedded digest. | `SOL-02`, `CTR-01`, `INV-02` and `NEG-03` require a detached attestation over the canonical whole-plan digest, verified by an authorized human-reviewer public key outside the agent authority. |
+| `important` | “Repeatably” contradicted the rule that apply must match recorded pre-state identities. | `EC-02`, `SC-02`, `CHK-02` and `INV-05` define deterministic execution across identical fresh fixtures and require stale rejection after a successful apply. |
+| `important` | The plan could describe arbitrary bytes as a mechanical merge. | `SOL-03` and `NEG-02` bind base bytes to the lock identity and require versioned deterministic three-way merge recomputation, including overlap rejection. |
+| `important` | Canonical design and derived ledger declared each other as sources. | Removed `decision-log.md` from `design.md` provenance; the derived ledger may depend on canonical design, but canonical design depends only on the brief. |
+
+### Human gate
+
+No. The approved contract now makes the required human authorization technically verifiable rather than a plan-writer convention.
+
 ## Final Report
 
 - **Status:** `done`
-- **Cycles completed:** 3
+- **Cycles completed:** 4
 - **Critical findings closed:** missing solution-space owner for CLI/file/trust/atomicity; closed by `design.md`.
-- **Important findings closed:** missing grounded execution plan; premature mutation of the current-state use case avoided by deferring its update to `STEP-04`; issue #54 routing record added after branch publication.
+- **Important findings closed:** missing grounded execution plan; premature mutation of the current-state use case avoided by deferring its update to `STEP-04`; issue #54 routing record added after branch publication; approval binding, repeatability, mechanical-merge derivation and provenance-order gaps closed in Cycle 4.
 - **Critical/important findings remaining:** none.
 - **Minor findings:** none changed.
 - **Decision log:** [decision-log.md](decision-log.md)
