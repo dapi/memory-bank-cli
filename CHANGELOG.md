@@ -7,6 +7,19 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-08-14
+
+### Added
+
+- Add `memory-bank-cli update` as a verified self-update command for released
+  macOS and Linux binaries.
+- Add `memory-bank-cli pull` for managed Memory Bank template synchronization.
+
+### Changed
+
+- **Breaking:** `update` no longer synchronizes a project template. Use `pull`
+  with the previous template and ownership flags instead.
+
 ## [1.8.1] - 2026-07-26
 
 ### Fixed
