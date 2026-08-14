@@ -4,6 +4,7 @@ package cli
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -22,6 +23,7 @@ import (
 	"github.com/dapi/memory-bank-cli/internal/ownership"
 	"github.com/dapi/memory-bank-cli/internal/push"
 	"github.com/dapi/memory-bank-cli/internal/repository"
+	"github.com/dapi/memory-bank-cli/internal/selfupdate"
 	"golang.org/x/term"
 )
 
@@ -34,6 +36,10 @@ const (
 )
 
 type entrypointFlags []string
+
+var runSelfUpdate = func(version string, stdout, stderr io.Writer) int {
+	return selfupdate.Service{Version: version, Stdout: stdout, Stderr: stderr}.Run(context.Background())
+}
 
 func (values *entrypointFlags) String() string {
 	return fmt.Sprint([]string(*values))
@@ -59,7 +65,9 @@ func Run(arguments []string, version string, stdout, stderr io.Writer) int {
 	case "init":
 		return runOwnership(arguments[1:], "init", os.Stdin, term.IsTerminal(int(os.Stdin.Fd())), stdout, stderr)
 	case "update":
-		return runOwnership(arguments[1:], "update", os.Stdin, term.IsTerminal(int(os.Stdin.Fd())), stdout, stderr)
+		return runUpdate(arguments[1:], version, stdout, stderr)
+	case "pull":
+		return runOwnership(arguments[1:], "pull", os.Stdin, term.IsTerminal(int(os.Stdin.Fd())), stdout, stderr)
 	case "doctor":
 		return runDoctor(arguments[1:], stdout, stderr)
 	case "github":
@@ -89,6 +97,27 @@ func Run(arguments []string, version string, stdout, stderr io.Writer) int {
 	}
 }
 
+func runUpdate(arguments []string, version string, stdout, stderr io.Writer) int {
+	if len(arguments) == 1 && (arguments[0] == "--help" || arguments[0] == "-h") {
+		printUpdateUsage(stdout)
+		return exitSuccess
+	}
+	if len(arguments) != 0 {
+		fmt.Fprintf(stderr, "memory-bank-cli update: unexpected arguments: %v\n", arguments)
+		return exitUsage
+	}
+	return runSelfUpdate(version, stdout, stderr)
+}
+
+func printUpdateUsage(writer io.Writer) {
+	fmt.Fprintln(writer, "Update the installed memory-bank-cli from the latest release.")
+	fmt.Fprintln(writer)
+	fmt.Fprintln(writer, "Usage: memory-bank-cli update")
+	fmt.Fprintln(writer)
+	fmt.Fprintln(writer, "Options:")
+	fmt.Fprintln(writer, "  --help, -h  Show this help")
+}
+
 func printRootUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "Memory Bank documentation tooling.")
 	fmt.Fprintln(writer)
@@ -97,7 +126,8 @@ func printRootUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "Commands:")
 	fmt.Fprintln(writer, "  analyze-graph  Analyse typed execution-context handoff evidence")
 	fmt.Fprintln(writer, "  init    Adopt or install a template and create its ownership lock")
-	fmt.Fprintln(writer, "  update  Safely update a template using its ownership lock")
+	fmt.Fprintln(writer, "  pull    Safely synchronize a template using its ownership lock")
+	fmt.Fprintln(writer, "  update  Update the installed CLI from the latest release")
 	fmt.Fprintln(writer, "  doctor  Diagnose adoption, governance, managed drift, and navigation")
 	fmt.Fprintln(writer, "  lint    Audit markdown navigation integrity")
 	fmt.Fprintln(writer, "  github  Install or update the optional GitHub workflow adapter")
@@ -358,12 +388,12 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 		fmt.Fprintf(stderr, "memory-bank-cli %s: unexpected arguments: %v\n", command, flags.Args())
 		return exitUsage
 	}
-	if *ask && command != "update" {
-		fmt.Fprintln(stderr, "memory-bank-cli init: --ask is only supported by update")
+	if *ask && command != "pull" {
+		fmt.Fprintln(stderr, "memory-bank-cli init: --ask is only supported by pull")
 		return exitUsage
 	}
 	if *ask && !stdinIsTerminal {
-		fmt.Fprintln(stderr, "memory-bank-cli update: --ask requires an interactive terminal; rerun without --ask in CI or piped execution")
+		fmt.Fprintln(stderr, "memory-bank-cli pull: --ask requires an interactive terminal; rerun without --ask in CI or piped execution")
 		return exitFailure
 	}
 	explicitSource := *sourceRootArgument != "" || *templateVersion != "" || *sourceRef != ""
@@ -680,7 +710,7 @@ func printDoctorReport(writer io.Writer, report doctor.Report) {
 		fmt.Fprintf(writer, "Repair plan for %s:\n", report.Repair.Finding)
 		printOwnershipReport(writer, report.Repair.Plan)
 		if report.Repair.Plan.Applied {
-			fmt.Fprintln(writer, "Repair completed: commit memory-bank/.lock before running update.")
+			fmt.Fprintln(writer, "Repair completed: commit memory-bank/.lock before running pull.")
 		}
 	}
 	fmt.Fprintf(writer, "Result: %d error(s), %d warning(s), %d info\n", report.Summary.Errors, report.Summary.Warnings, report.Summary.Info)

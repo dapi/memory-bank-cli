@@ -1,7 +1,7 @@
 # memory-bank-cli
-CLI for installing, updating, validating, and diagnosing Memory Bank templates
+CLI for installing, synchronizing, validating, and diagnosing Memory Bank templates
 
-`init` and `update` treat every tracked regular file below an upstream
+`init` and `pull` treat every tracked regular file below an upstream
 `template/` directory as canonical payload. `template/memory-bank/**` installs
 to `memory-bank/**`; every other path retains its repository-relative suffix.
 Dotfiles and executable files are included, while symlinks are rejected.
@@ -23,18 +23,18 @@ evidence. Add `--json` for the versioned structured report. Recommendations
 retain the contributing node IDs, relation types, and source references;
 unresolved or weakly sourced relations are reported for review.
 
-## Resolve update collisions interactively
+## Resolve pull collisions interactively
 
-`update` preserves user-owned files by default. To decide each managed-file
+`pull` preserves user-owned files by default. To decide each managed-file
 collision interactively, run it from a terminal with `--ask`:
 
 ```sh
-memory-bank-cli update --ask
+memory-bank-cli pull --ask
 ```
 
 Choose `keep` to retain the local file and its ownership, or `overwrite` to
 replace it (including its executable mode) from the source template. All
-answers are collected before changes are applied. `--ask --dry-run` shows the
+answers are collected before changes are applied. `pull --ask --dry-run` shows the
 resolved plan without changing files; `--ask` is rejected when standard input
 is not a terminal.
 
@@ -79,7 +79,7 @@ memory-bank-cli doctor --fix --dry-run
 ```
 
 Rerun without `--dry-run` to create `memory-bank/.lock`, then commit that lock
-before running `update`. The repair fetches `main` from `memory-bank/.repo`'s
+before running `pull`. The repair fetches `main` from `memory-bank/.repo`'s
 clean `origin` or the default upstream. To use a specific trusted checkout,
 pass `--source`, `--template-version`, and `--source-ref` together. The repair
 never replaces an existing lock.
@@ -102,13 +102,25 @@ The command never edits source documents. Missing documents, reports, broken
 links, and invalid Git ranges are included in the output as unresolved sources
 and cause a non-zero exit status.
 
-## Upgrade
+## Update the CLI
 
-Install the desired newer semantic version with the same command:
+Update a released macOS or Linux binary in place:
 
 ```sh
-go install github.com/dapi/memory-bank-cli/cmd/memory-bank-cli@vX.Y.Z
+memory-bank-cli update
 ```
+
+The command resolves the latest stable GitHub Release, selects the binary for
+the current supported platform, verifies it against the release
+`checksums.txt`, verifies the staged binary version, then atomically replaces
+the executable you invoked. If the installed version is current or newer, it
+reports a successful no-op. Windows users should download
+`memory-bank-cli-windows-amd64.exe` from the latest release and replace their
+executable manually.
+
+To synchronize installed Memory Bank content, use `memory-bank-cli pull`.
+Existing automation and documentation using `memory-bank-cli update` for that
+purpose must be migrated to `memory-bank-cli pull`.
 
 ## Breaking release change
 

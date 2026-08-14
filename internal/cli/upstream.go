@@ -87,7 +87,7 @@ func upstreamRemote(repoRoot, fallbackRemote string) (string, error) {
 		return "", fmt.Errorf("inspect memory-bank/.repo status: %w", err)
 	}
 	if status != "" {
-		return "", errors.New("memory-bank/.repo is dirty; commit, stash, or discard its changes before update")
+		return "", errors.New("memory-bank/.repo is dirty; commit, stash, or discard its changes before pull")
 	}
 	remote, err := updateGitOutput(checkout, "remote", "get-url", "origin")
 	if err != nil {

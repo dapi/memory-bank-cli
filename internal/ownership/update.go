@@ -56,7 +56,7 @@ func Init(options Options) (Report, error) {
 	if _, exists, _, err := readLockSnapshot(repo); err != nil {
 		return Report{}, err
 	} else if exists {
-		return Report{}, fmt.Errorf("%s already exists; use memory-bank-cli update", LockFileName)
+		return Report{}, fmt.Errorf("%s already exists; use memory-bank-cli pull", LockFileName)
 	}
 	return run(options, Lock{}, false, repo, "")
 }

@@ -3,6 +3,8 @@ package cli
 import (
 	"bytes"
 	"encoding/json"
+	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -186,6 +188,37 @@ func TestRootRejectsMissingAndUnknownCommands(t *testing.T) {
 	}
 }
 
+func TestUpdateDispatchesSelfUpdaterAndPullKeepsOwnershipFlags(t *testing.T) {
+	original := runSelfUpdate
+	defer func() { runSelfUpdate = original }()
+	called := false
+	runSelfUpdate = func(version string, stdout, stderr io.Writer) int {
+		called = version == "v1.2.3"
+		fmt.Fprintln(stdout, "updated")
+		return exitSuccess
+	}
+	var stdout, stderr bytes.Buffer
+	if exitCode := Run([]string{"update"}, "v1.2.3", &stdout, &stderr); exitCode != exitSuccess || !called || stdout.String() != "updated\n" {
+		t.Fatalf("exit=%d called=%v stdout=%q stderr=%q", exitCode, called, stdout.String(), stderr.String())
+	}
+	if exitCode := Run([]string{"update", "--dry-run"}, "v1.2.3", &stdout, &stderr); exitCode != exitUsage || !strings.Contains(stderr.String(), "unexpected arguments") {
+		t.Fatalf("update arguments exit=%d stderr=%q", exitCode, stderr.String())
+	}
+	for _, helpFlag := range []string{"--help", "-h"} {
+		stdout.Reset()
+		stderr.Reset()
+		called = false
+		if exitCode := Run([]string{"update", helpFlag}, "v1.2.3", &stdout, &stderr); exitCode != exitSuccess || called || !strings.Contains(stdout.String(), "Usage: memory-bank-cli update") {
+			t.Fatalf("update %s exit=%d called=%v stdout=%q stderr=%q", helpFlag, exitCode, called, stdout.String(), stderr.String())
+		}
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := Run([]string{"pull", "--help"}, "v1.2.3", &stdout, &stderr); exitCode != exitSuccess || !strings.Contains(stderr.String(), "-ask") {
+		t.Fatalf("pull help exit=%d stderr=%q", exitCode, stderr.String())
+	}
+}
+
 func TestLintRejectsNegativeDepth(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if exitCode := Run([]string{"lint", "--max-depth", "-1"}, "test", &stdout, &stderr); exitCode != 2 {
@@ -283,11 +316,11 @@ func TestUpdateWithoutSourceUsesRepoUpstreamMain(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if exitCode := Run([]string{"update", "--repo-root", repo}, "test", &stdout, &stderr); exitCode != 0 {
-		t.Fatalf("default update failed with %d: %s", exitCode, stderr.String())
+	if exitCode := Run([]string{"pull", "--repo-root", repo}, "test", &stdout, &stderr); exitCode != 0 {
+		t.Fatalf("default pull failed with %d: %s", exitCode, stderr.String())
 	}
 	if got, err := os.ReadFile(filepath.Join(repo, "memory-bank", "dna", "rule.md")); err != nil || string(got) != "v2\n" {
-		t.Fatalf("default update did not apply main: %q, %v", got, err)
+		t.Fatalf("default pull did not apply main: %q, %v", got, err)
 	}
 	lock, err := os.ReadFile(filepath.Join(repo, "memory-bank", ".lock"))
 	if err != nil || !strings.Contains(string(lock), updatedRef) || !strings.Contains(string(lock), "main@"+updatedRef[:12]) {
@@ -381,7 +414,7 @@ func TestUpdateWithoutSourceRejectsDirtyRepoCheckoutWithoutMutation(t *testing.T
 		t.Fatal(err)
 	}
 	var stdout, stderr bytes.Buffer
-	if exitCode := Run([]string{"update", "--repo-root", repo}, "test", &stdout, &stderr); exitCode != 1 || !strings.Contains(stderr.String(), "dirty") {
+	if exitCode := Run([]string{"pull", "--repo-root", repo}, "test", &stdout, &stderr); exitCode != 1 || !strings.Contains(stderr.String(), "dirty") {
 		t.Fatalf("unexpected exit=%d stderr=%q", exitCode, stderr.String())
 	}
 	after, err := os.ReadFile(filepath.Join(repo, "sentinel"))
@@ -476,7 +509,7 @@ func TestDoctorAndAlternativeAgentTarget(t *testing.T) {
 	}
 	stdout.Reset()
 	stderr.Reset()
-	updateArgs := append([]string{"update"}, args[1:]...)
+	updateArgs := append([]string{"pull"}, args[1:]...)
 	if exitCode := Run(updateArgs, "test", &stdout, &stderr); exitCode != 0 {
 		t.Fatalf("managed-block update failed with %d: %s", exitCode, stderr.String())
 	}
@@ -746,7 +779,7 @@ func TestOwnershipDryRunJSONReportsNewManagedPathCollision(t *testing.T) {
 	updatedRef := commitCLISource(t, source, "add collision")
 	stdout.Reset()
 	stderr.Reset()
-	updateArguments := append([]string{"update"}, baseArguments...)
+	updateArguments := append([]string{"pull"}, baseArguments...)
 	updateArguments = append(updateArguments, "--template-version", "v2", "--source-ref", updatedRef, "--dry-run", "--json")
 	if exitCode := Run(updateArguments, "test", &stdout, &stderr); exitCode != 1 {
 		t.Fatalf("unexpected update exit %d: %s", exitCode, stderr.String())
@@ -804,7 +837,7 @@ func TestUpdateAskResolvesCollisionsWithoutPartialChanges(t *testing.T) {
 	updateArgs := []string{"--repo-root", repo, "--source", source, "--template-version", "v2", "--source-ref", updatedRef, "--ask"}
 	stdout.Reset()
 	stderr.Reset()
-	if exitCode := runOwnership(updateArgs, "update", strings.NewReader("bad\no\nk\n"), true, &stdout, &stderr); exitCode != 0 {
+	if exitCode := runOwnership(updateArgs, "pull", strings.NewReader("bad\no\nk\n"), true, &stdout, &stderr); exitCode != 0 {
 		t.Fatalf("ask update exit=%d stdout=%s stderr=%s", exitCode, stdout.String(), stderr.String())
 	}
 	if !strings.Contains(stderr.String(), "User-owned collision: "+filepath.ToSlash(first)) || !strings.Contains(stderr.String(), "Please enter k/keep or o/overwrite.") {
@@ -829,7 +862,7 @@ func TestUpdateAskResolvesCollisionsWithoutPartialChanges(t *testing.T) {
 	lockBefore := mustReadFile(t, filepath.Join(repo, "memory-bank", ".lock"))
 	stdout.Reset()
 	stderr.Reset()
-	if exitCode := runOwnership(append(append([]string{}, updateArgs...), "--dry-run"), "update", strings.NewReader("o\n"), true, &stdout, &stderr); exitCode != 0 {
+	if exitCode := runOwnership(append(append([]string{}, updateArgs...), "--dry-run"), "pull", strings.NewReader("o\n"), true, &stdout, &stderr); exitCode != 0 {
 		t.Fatalf("ask dry-run exit=%d stderr=%s", exitCode, stderr.String())
 	}
 	if got := string(mustReadFile(t, filepath.Join(repo, second))); got != "local "+second+"\n" {
@@ -853,7 +886,7 @@ func TestUpdateAskResolvesCollisionsWithoutPartialChanges(t *testing.T) {
 	attemptArgs := []string{"--repo-root", repo, "--source", source, "--template-version", "v3", "--source-ref", thirdRef, "--ask"}
 	stdout.Reset()
 	stderr.Reset()
-	if exitCode := runOwnership(attemptArgs, "update", strings.NewReader("o\n"), true, &stdout, &stderr); exitCode != exitFailure || !strings.Contains(stderr.String(), "input ended") {
+	if exitCode := runOwnership(attemptArgs, "pull", strings.NewReader("o\n"), true, &stdout, &stderr); exitCode != exitFailure || !strings.Contains(stderr.String(), "input ended") {
 		t.Fatalf("incomplete answers exit=%d stderr=%s", exitCode, stderr.String())
 	}
 	if got := string(mustReadFile(t, filepath.Join(repo, second))); got != "local "+second+"\n" {
@@ -865,7 +898,7 @@ func TestUpdateAskResolvesCollisionsWithoutPartialChanges(t *testing.T) {
 
 	stdout.Reset()
 	stderr.Reset()
-	if exitCode := runOwnership([]string{"--ask"}, "update", strings.NewReader("o\n"), false, &stdout, &stderr); exitCode != exitFailure || !strings.Contains(stderr.String(), "requires an interactive terminal") {
+	if exitCode := runOwnership([]string{"--ask"}, "pull", strings.NewReader("o\n"), false, &stdout, &stderr); exitCode != exitFailure || !strings.Contains(stderr.String(), "requires an interactive terminal") {
 		t.Fatalf("non-interactive --ask exit=%d stderr=%s", exitCode, stderr.String())
 	}
 }

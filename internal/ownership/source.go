@@ -98,7 +98,7 @@ func verifySourceCheckout(root, expectedRef string) error {
 		return fmt.Errorf("inspect source checkout status: %w", err)
 	}
 	if status != "" {
-		return errors.New("source checkout is dirty; commit or discard changes before init/update")
+		return errors.New("source checkout is dirty; commit or discard changes before init/pull")
 	}
 	payloadRoot, err := selectGitSourcePayloadRoot(root, expectedRef)
 	if err != nil {

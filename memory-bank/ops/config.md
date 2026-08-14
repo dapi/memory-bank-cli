@@ -15,8 +15,8 @@ status: active
 | --- | --- |
 | Repository selection | `--repo-root`; otherwise nearest Git root/current directory is resolved. |
 | Documentation scope | `lint` and `doctor` use `--scope-root` (default `memory-bank`) and `--max-depth` (default 3). |
-| Output | `lint`, `doctor`, `init`, `update` support `--json`; lint also has `--version`. |
-| Template mutation | `init` and `update` accept an explicit reproducible `--source`, `--template-version`, `--source-ref` trio. Without it, each fetches `main` from `memory-bank/.repo`'s clean `origin` or `https://github.com/dapi/memory-bank.git`, records its immutable SHA, and accepts `--dry-run` and `--agent-file`. |
+| Output | `lint`, `doctor`, `init`, `pull` support `--json`; lint also has `--version`. |
+| Template mutation | `init` and `pull` accept an explicit reproducible `--source`, `--template-version`, `--source-ref` trio. Without it, each fetches `main` from `memory-bank/.repo`'s clean `origin` or `https://github.com/dapi/memory-bank.git`, records its immutable SHA, and accepts `--dry-run` and `--agent-file`. |
 | Doctor | `--profile` supports `auto`, `template`, `downstream`; `--agent-file` selects one checked instruction file. |
 
 There is no confirmed environment-variable, secret, remote endpoint or persistent service configuration.

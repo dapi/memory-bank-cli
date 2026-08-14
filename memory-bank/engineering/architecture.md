@@ -47,7 +47,7 @@ internal/push -> ownership payload-path model + local/upstream Git + GitHub PR
 - Safety: source/repository pinning, clean-ref verification, symlink-aware destination handling and atomic/rollback update paths.
 - Contract stability: CLI output supports text and versioned JSON reports; tests assert public fields and exit behavior.
 - Portability: Unix and Windows secure-path variants exist.
-- Bounded external effects: init/update/doctor/lint remain local; `push`
+- Bounded external effects: init/pull/doctor/lint remain local; `push`
   explicitly crosses the configured upstream Git and GitHub boundaries through
   a new branch and PR.
 

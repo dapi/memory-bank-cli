@@ -111,10 +111,9 @@ resolve_ref() {
 step="resolve-cli-ref"
 cli_sha="$(resolve_ref "$cli_ref")"
 cli_install_ref="$cli_sha"
-if [ -n "$release_tag" ] && [ "$cli_ref" = "$release_tag" ] &&
-  [[ "$cli_ref" =~ ^v[0-9]+\.[0-9]+\.[0-9]+([.-][0-9A-Za-z.-]+)?$ ]]; then
-  # Stable release lanes must exercise the documented semantic-version
-  # consumer command. Canary inputs remain bound to their resolved SHA.
+if [ -n "$release_tag" ] && [ "$cli_ref" = "$release_tag" ]; then
+  # Stable releases are installed by tag so the smoke test covers the released
+  # module-consumer path.
   cli_install_ref="$cli_ref"
 fi
 step="resolve-template-ref"
@@ -138,6 +137,16 @@ GOBIN="$bin_root" go install "github.com/dapi/memory-bank-cli/cmd/memory-bank-cl
 cli="$bin_root/memory-bank-cli"
 step="verify-cli-executable"
 test -x "$cli"
+
+# `pull` was introduced after all currently published releases. Detect the
+# installed command contract rather than pinning one legacy tag, so every
+# pre-`pull` release continues to use `update` and later releases use `pull`.
+step="detect-sync-command"
+if "$cli" --help | grep -Eq '^[[:space:]]+pull[[:space:]]'; then
+  sync_command="pull"
+else
+  sync_command="update"
+fi
 
 if [ -n "$release_tag" ]; then
   step="fetch-release-metadata"
@@ -172,13 +181,13 @@ user_owned_file="$downstream_root/memory-bank/features/downstream-owned.txt"
 printf '\nDownstream adaptation.\n' >>"$adapted_file"
 printf 'Downstream-owned file.\n' >"$user_owned_file"
 user_owned_digest="$(sha256sum "$user_owned_file" | awk '{ print $1 }')"
-run_step "update-preservation" "$cli" update --repo-root "$downstream_root" --source "$source_root" --template-version "$template_ref" --source-ref "$template_sha"
+run_step "${sync_command}-preservation" "$cli" "$sync_command" --repo-root "$downstream_root" --source "$source_root" --template-version "$template_ref" --source-ref "$template_sha"
 run_step "verify-adaptation" assert_contains "$adapted_file" "Downstream adaptation."
 run_step "verify-user-owned-content" assert_digest "$user_owned_file" "$user_owned_digest"
 step="commit-baseline"
 git -C "$downstream_root" add --all
 git -C "$downstream_root" -c user.name='Downstream smoke' -c user.email='smoke@example.invalid' commit --quiet -m 'fixture baseline'
-run_step "update-idempotence" "$cli" update --repo-root "$downstream_root" --source "$source_root" --template-version "$template_ref" --source-ref "$template_sha"
+run_step "${sync_command}-idempotence" "$cli" "$sync_command" --repo-root "$downstream_root" --source "$source_root" --template-version "$template_ref" --source-ref "$template_sha"
 run_step "verify-no-diff" git -C "$downstream_root" diff --exit-code
 run_step "verify-clean-repository" assert_clean_repository "$downstream_root"
 run_step "lint" "$cli" lint --repo-root "$downstream_root"
