@@ -194,6 +194,40 @@ func TestExplicitUserOwnedKeepPreservesOwnership(t *testing.T) {
 	}
 }
 
+func TestExplicitUserOwnedRestoreCreatesMissingCanonicalPayload(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	path := "WORKFLOW.md"
+	write(t, source, "memory-bank/dna/seed.md", "seed\n")
+	initialize(t, repo, source)
+
+	lock, exists, err := ReadLock(repo)
+	if err != nil || !exists {
+		t.Fatalf("read initial lock: exists=%v err=%v", exists, err)
+	}
+	lock.Files[path] = File{Ownership: UserOwned}
+	lockData, err := marshalLock(lock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, repo, LockFileName, string(lockData))
+	write(t, source, "template/"+path, "canonical workflow\n")
+
+	options := opts(repo, source, "b")
+	options.UserOwnedResolutions = map[string]bool{path: true}
+	report, err := Update(options)
+	decision := decisionFor(t, report, path)
+	if err != nil || !report.Applied || report.ConflictCount != 0 || decision.Action != UpdateFile || decision.Ownership != Managed {
+		t.Fatalf("explicit restore failed: report=%#v err=%v", report, err)
+	}
+	if got := read(t, repo, path); got != "canonical workflow\n" {
+		t.Fatalf("restored payload=%q", got)
+	}
+	updated, exists, err := ReadLock(repo)
+	if err != nil || !exists || updated.Files[path].Ownership != Managed {
+		t.Fatalf("restored ownership was not managed: lock=%#v exists=%v err=%v", updated.Files[path], exists, err)
+	}
+}
+
 func TestManagedEditAfterPlanningIsNotOverwritten(t *testing.T) {
 	repo, source := t.TempDir(), t.TempDir()
 	path := "memory-bank/dna/rule.md"

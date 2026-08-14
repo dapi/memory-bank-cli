@@ -594,7 +594,7 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 				decision.Action, decision.Reason = Preserve, "preserve downstream adaptation"
 			}
 		}
-		if resolution, resolved := userOwnedResolutions[path]; resolved && class == Managed && exists && file.Ownership == UserOwned {
+		if resolution, resolved := userOwnedResolutions[path]; resolved && class == Managed && file.Ownership == UserOwned {
 			if resolution {
 				decision.Action, decision.Reason = UpdateFile, "replace user-owned file from source by explicit resolution"
 				file = File{Ownership: Managed, BaseDigest: incoming.digest, PayloadDigest: incoming.digest, BaseMode: incoming.mode, PayloadMode: incoming.mode}
@@ -602,7 +602,10 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 				decision.Action, decision.Reason = Preserve, "keep user-owned file by explicit resolution"
 			}
 		}
-		decision.CanOverwrite = class == Managed && exists && file.Ownership == UserOwned
+		// A user-owned path can require an explicit choice both when its local
+		// file still exists and when it was removed downstream. In the latter
+		// case an affirmative resolution restores the canonical managed payload.
+		decision.CanOverwrite = class == Managed && file.Ownership == UserOwned
 		decision.Ownership = file.Ownership
 		if decision.Action == Create || decision.Action == UpdateFile {
 			sourceMutations = append(sourceMutations, mutation{

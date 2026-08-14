@@ -840,7 +840,7 @@ func TestUpdateAskResolvesCollisionsWithoutPartialChanges(t *testing.T) {
 	if exitCode := runOwnership(updateArgs, "pull", strings.NewReader("bad\no\nk\n"), true, &stdout, &stderr); exitCode != 0 {
 		t.Fatalf("ask update exit=%d stdout=%s stderr=%s", exitCode, stdout.String(), stderr.String())
 	}
-	if !strings.Contains(stderr.String(), "User-owned collision: "+filepath.ToSlash(first)) || !strings.Contains(stderr.String(), "Please enter k/keep or o/overwrite.") {
+	if !strings.Contains(stderr.String(), "User-owned template path: "+filepath.ToSlash(first)) || !strings.Contains(stderr.String(), "Please enter k/keep or o/overwrite (r/restore also restores a missing file).") {
 		t.Fatalf("ask prompt omitted collision context or invalid-input guidance: %s", stderr.String())
 	}
 	if got, want := string(mustReadFile(t, filepath.Join(repo, first))), "source "+first+"\n"; got != want {
@@ -900,6 +900,57 @@ func TestUpdateAskResolvesCollisionsWithoutPartialChanges(t *testing.T) {
 	stderr.Reset()
 	if exitCode := runOwnership([]string{"--ask"}, "pull", strings.NewReader("o\n"), false, &stdout, &stderr); exitCode != exitFailure || !strings.Contains(stderr.String(), "requires an interactive terminal") {
 		t.Fatalf("non-interactive --ask exit=%d stderr=%s", exitCode, stderr.String())
+	}
+}
+
+func TestUpdateAskRestoresMissingUserOwnedCanonicalFile(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	seed := filepath.Join(source, "template", "memory-bank", "dna", "seed.md")
+	if err := os.MkdirAll(filepath.Dir(seed), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(seed, []byte("seed\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	initialRef := commitCLISource(t, source, "initial source")
+	initArgs := []string{"init", "--repo-root", repo, "--source", source, "--template-version", "v1", "--source-ref", initialRef}
+	var stdout, stderr bytes.Buffer
+	if exitCode := Run(initArgs, "test", &stdout, &stderr); exitCode != exitSuccess {
+		t.Fatalf("init exit=%d stderr=%s", exitCode, stderr.String())
+	}
+
+	path := "WORKFLOW.md"
+	lock, exists, err := ownership.ReadLock(repo)
+	if err != nil || !exists {
+		t.Fatalf("read initial lock: exists=%v err=%v", exists, err)
+	}
+	lock.Files[path] = ownership.File{Ownership: ownership.UserOwned}
+	lockData, err := json.MarshalIndent(lock, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(repo, "memory-bank", ".lock"), append(lockData, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(source, "template", path), []byte("canonical workflow\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	updatedRef := commitCLISource(t, source, "add workflow")
+	args := []string{"--repo-root", repo, "--source", source, "--template-version", "v2", "--source-ref", updatedRef, "--ask"}
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := runOwnership(args, "pull", strings.NewReader("restore\n"), true, &stdout, &stderr); exitCode != exitSuccess {
+		t.Fatalf("ask restore exit=%d stdout=%s stderr=%s", exitCode, stdout.String(), stderr.String())
+	}
+	if !strings.Contains(stderr.String(), "User-owned template path: "+path) || !strings.Contains(stderr.String(), "downstream-owned file was deleted") {
+		t.Fatalf("restore prompt omitted missing-path context: %s", stderr.String())
+	}
+	if got := string(mustReadFile(t, filepath.Join(repo, path))); got != "canonical workflow\n" {
+		t.Fatalf("restored payload=%q", got)
+	}
+	updatedLock, exists, err := ownership.ReadLock(repo)
+	if err != nil || !exists || updatedLock.Files[path].Ownership != ownership.Managed {
+		t.Fatalf("restored ownership was not managed: lock=%#v exists=%v err=%v", updatedLock.Files[path], exists, err)
 	}
 }
 
