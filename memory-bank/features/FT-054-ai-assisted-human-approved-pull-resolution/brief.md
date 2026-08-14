@@ -9,7 +9,7 @@ derived_from:
   - ../../use-cases/UC-002-update-template.md
   - "https://github.com/dapi/memory-bank-cli/issues/54"
 status: active
-delivery_status: blocked_pending_human_approval
+delivery_status: planned
 audience: humans_and_agents
 must_not_define:
   - selected_solution
