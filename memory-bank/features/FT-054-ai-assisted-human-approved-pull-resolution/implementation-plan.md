@@ -1,12 +1,12 @@
 ---
-title: "FT-054: Implementation Plan"
+title: "FT-054: Blocked Implementation Plan"
 doc_kind: feature
 doc_function: derived
-purpose: "Grounded execution plan for FT-054 without redefining canonical problem or solution facts."
+purpose: "Blocked, grounded execution plan for FT-054; it is not executable until the canonical Plan Ready blocker is resolved."
 derived_from:
   - brief.md
   - design.md
-status: active
+status: blocked
 audience: humans_and_agents
 must_not_define:
   - ft_054_scope
@@ -16,11 +16,11 @@ must_not_define:
   - ft_054_validation_profile
 ---
 
-# FT-054: Implementation Plan
+# FT-054: Blocked Implementation Plan
 
 ## Goal
 
-Deliver the opt-in, human-approved resolution-plan workflow specified by `brief.md` and `design.md`, with a plan/apply validation boundary before the existing atomic ownership transaction.
+After `brief.md` `BD-01` is resolved, deliver the opt-in, human-approved resolution-plan workflow specified by `brief.md` and `design.md`, with a plan/apply validation boundary before the existing atomic ownership transaction. This is a blocked planning artifact, not authorization to begin implementation or to call FT-054 Plan Ready.
 
 ## Grounding / Support References
 
@@ -42,14 +42,14 @@ Deliver the opt-in, human-approved resolution-plan workflow specified by `brief.
 
 ## Open Questions
 
-`DEC-04` blocks execution: a human must approve the authorization carrier and verification format, canonicalization procedure, trust policy/configuration, credential lifecycle and reviewer authorization workflow. Exact flag spelling/field names may be selected during implementation only after that authorization contract is approved.
+`BD-01` blocks execution: a human must approve the authorization carrier and verification format, canonicalization procedure, trust policy/configuration, credential lifecycle and reviewer authorization workflow. Exact flag spelling/field names may be selected during implementation only after that authorization contract is approved.
 
 ## Preconditions
 
 | Precondition ID | Requirement | Evidence / action |
 | --- | --- | --- |
 | `PRE-01` | A clean working tree and hermetic fixture source/downstream repos are available. | Follow existing CLI ownership test setup. |
-| `PRE-02` | No apply is attempted until `DEC-04` is approved, strict plan validation, valid human authorization and all required human decisions succeed. | `BD-01`, `INV-02`, `INV-03`; `CHK-03`–`CHK-04`. |
+| `PRE-02` | No implementation or apply is attempted until `BD-01` is resolved, strict plan validation, valid human authorization and all required human decisions succeed. | `BD-01`, `INV-02`, `INV-03`; `CHK-03`–`CHK-04`. |
 
 ## Workstreams
 
@@ -72,7 +72,7 @@ Deliver the opt-in, human-approved resolution-plan workflow specified by `brief.
 | Step ID | Actor | Implements | Goal | Touchpoints | Verifies | Evidence IDs | Blocked by | Needs approval | Escalate if |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | `STEP-01` | either | `REQ-01`–`REQ-02`, `SOL-01`–`SOL-02`, `CTR-01` | After `BD-01` approval, add versioned strict plan model, canonical digest and selected human-authorization verification with read-only planning output. | `internal/ownership`, `internal/cli`, focused tests | `CHK-01`, `CHK-04` | `EVID-01`, `EVID-04` | `PRE-01`, `BD-01` | approved authorization workflow | representation cannot bind all required review identities or distinguish a human authorization from an agent-written plan |
-| `STEP-02` | either | `REQ-03`–`REQ-05`, `SOL-03`–`SOL-05`, `CTR-02`, `INV-02`–`INV-08`, `FM-04` | Add validated apply and action resolution, including bounded atomic retention and digest verification of historical-base snapshots; schema-versioned snapshot, plan-field, aggregate-plan and merge-input quota enforcement; an exclusive update guard; transaction-scoped recomputation of the complete affected-path set and final identity/action-coverage validation; `mbc-diff3-lines-v1` recomputation; reviewed result/mode; managed no-drift update; and deterministic keep-and-detach that preserves bytes/mode while removing its lock entry. Mark mechanical merge unavailable for legacy or quota-unavailable entries without a verified snapshot; never synthesize one from a digest. | `internal/ownership`, CLI tests/E2E | `CHK-02`, `CHK-03`, `CHK-04` | `EVID-02`, `EVID-03`, `EVID-04` | `STEP-01`, `PRE-02` | human decision and valid authorization exist before apply; no runtime prompt required | an action, affected-path set, resource bound, mechanical merge or final pre-commit state cannot be validated before staging |
+| `STEP-02` | either | `REQ-03`–`REQ-05`, `SOL-03`–`SOL-05`, `CTR-02`, `INV-02`–`INV-08`, `FM-04` | Add validated apply and action resolution, including bounded atomic retention and digest verification of historical-base snapshots; schema-versioned snapshot, plan-field, aggregate-plan, merge-input and aggregate LCS-work quota enforcement; an exclusive update guard; transaction-scoped recomputation of the complete affected-path set and final identity/action-coverage validation; `mbc-diff3-lines-v1` recomputation; reviewed result/mode; managed no-drift update; and deterministic keep-and-detach that preserves bytes/mode while removing its lock entry. Mark mechanical merge unavailable for legacy or quota-unavailable entries without a verified snapshot; never synthesize one from a digest. | `internal/ownership`, CLI tests/E2E | `CHK-02`, `CHK-03`, `CHK-04` | `EVID-02`, `EVID-03`, `EVID-04` | `STEP-01`, `PRE-02` | human decision and valid authorization exist before apply; no runtime prompt required | an action, affected-path set, resource bound, mechanical merge or final pre-commit state cannot be validated before staging |
 | `STEP-03` | either | `REQ-03`, `REQ-07`, `SOL-04`, `FM-*` | Route valid results through the guarded atomic transaction and add stale/tamper/cooperating-writer/injected-failure E2E; record the advisory guard's non-cooperating-writer boundary. | ownership transaction and regression tests | `CHK-04` | `EVID-04` | `STEP-02` | none | payload and lock cannot be proved unchanged after failure or a cooperating writer can interleave after final validation |
 | `STEP-04` | either | `REQ-06`, `RB-01` | Update help, README and UC-002; run standard profile suites and retain evidence. | `README.md`, `memory-bank/use-cases/UC-002-update-template.md`, Go tests/vet | `CHK-05` | `EVID-05` | `STEP-03` | none | documentation implies AI approval or default pull changes |
 
@@ -81,7 +81,7 @@ Deliver the opt-in, human-approved resolution-plan workflow specified by `brief.
 | Checkpoint ID | After | Pass criterion | Evidence |
 | --- | --- | --- | --- |
 | `CP-01` | `STEP-01` | Plan is read-only, strict, has a canonical digest and accepts only the `BD-01`-approved human authorization. | `EVID-01`, `EVID-04` |
-| `CP-02` | `STEP-02` | The plan exactly covers the recomputed affected-path set; every adapted two-sided path requires an explicit valid action; every mechanical merge is reproducible from validated inputs and has the exact recorded output; every `SOL-05` resource bound has its specified safe outcome. | `EVID-02`, `EVID-03`, `EVID-04` |
+| `CP-02` | `STEP-02` | The plan exactly covers the recomputed affected-path set; every adapted two-sided path requires an explicit valid action; every mechanical merge is reproducible from validated inputs and has the exact recorded output; every `SOL-05` resource bound, including aggregate LCS work, has its specified safe outcome. | `EVID-02`, `EVID-03`, `EVID-04` |
 | `CP-03` | `STEP-03` | Stale/tampered/failed or cooperating-writer apply preserves all payload and lock state, with no validation-to-commit interleaving; the non-cooperating-writer boundary is documented. | `EVID-04` |
 | `CP-04` | `STEP-04` | Documentation and standard suite evidence agree with canonical contract. | `EVID-05` |
 
@@ -92,4 +92,4 @@ Deliver the opt-in, human-approved resolution-plan workflow specified by `brief.
 
 ## Test Strategy
 
-Automated coverage: plan codec/canonical-digest/read-only CLI output (`CHK-01`); deterministic safe apply on identical pre-state fixtures plus stale replay rejection (`CHK-02`); recomputation of the complete affected-path set with omitted, duplicate and extra-action rejection; all one-sided and two-sided adapted actions; managed no-drift update; user-owned missing-template detach with content/mode/ownership/lock assertions; historical-base snapshot retention and verification; legacy-missing-base rejection; every `SOL-05` boundary (per-snapshot, aggregate snapshot, per-field, aggregate plan and merge-input lines), including unavailable-base and no-mutation outcomes; and `mbc-diff3-lines-v1` recomputation with LCS tie-break, collision, line-ending, binary and mode-conflict cases (`CHK-03`); stale/tamper/path/human-authorization, cooperating-writer and transaction-interruption coverage (`CHK-04`); help/docs plus applicable Go test/vet (`CHK-05`). These are hermetic local fixtures and are also the required CI evidence under the selected standard profile. Tests use the `BD-01`-approved fixture authorization workflow, while production approval uses the approved human-controlled workflow; real review is a human operational act, not plan data an agent can author.
+Automated coverage: plan codec/canonical-digest/read-only CLI output (`CHK-01`); deterministic safe apply on identical pre-state fixtures plus stale replay rejection (`CHK-02`); recomputation of the complete affected-path set with omitted, duplicate and extra-action rejection; all one-sided and two-sided adapted actions; managed no-drift update; user-owned missing-template detach with content/mode/ownership/lock assertions; historical-base snapshot retention and verification; legacy-missing-base rejection; every `SOL-05` boundary (per-snapshot, aggregate snapshot, per-field, aggregate plan, merge-input lines and aggregate LCS work), including unavailable-base and no-mutation outcomes; and `mbc-diff3-lines-v1` recomputation with LCS tie-break, collision, line-ending, binary and mode-conflict cases (`CHK-03`); stale/tamper/path/human-authorization, cooperating-writer and transaction-interruption coverage (`CHK-04`); help/docs plus applicable Go test/vet (`CHK-05`). These are hermetic local fixtures and are also the required CI evidence under the selected standard profile. Tests use the `BD-01`-approved fixture authorization workflow, while production approval uses the approved human-controlled workflow; real review is a human operational act, not plan data an agent can author.
