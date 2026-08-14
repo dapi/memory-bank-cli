@@ -106,12 +106,6 @@ type ResolutionPlanEntry struct {
 	ReviewedMode          string   `json:"reviewed_mode,omitempty"`
 }
 
-type AdaptedResolution struct {
-	Action string
-	Data   []byte
-	Mode   string
-}
-
 type Options struct {
 	RepoRoot        string
 	SourceRoot      string
@@ -122,7 +116,6 @@ type Options struct {
 	// explicit resolution: false keeps local content, true replaces it with the
 	// incoming source payload.
 	UserOwnedResolutions    map[string]bool
-	AdaptedResolutions      map[string]AdaptedResolution
 	ExpectedLockDigest      string
 	ExpectedPaths           []destinationPrecondition
 	DetachUserOwnedRemovals bool

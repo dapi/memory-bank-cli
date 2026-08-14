@@ -116,7 +116,7 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 	if err := verifySource(pinnedSource.root, options.SourceRef); err != nil {
 		return Report{}, fmt.Errorf("source checkout changed while reading template: %w", err)
 	}
-	mutations, decisions, next, err := buildPlan(repo, source, old, hasLock, options.UserOwnedResolutions, options.AdaptedResolutions, options.DetachUserOwnedRemovals)
+	mutations, decisions, next, err := buildPlan(repo, source, old, hasLock, options.UserOwnedResolutions, options.DetachUserOwnedRemovals)
 	if err != nil {
 		return Report{}, err
 	}
@@ -419,7 +419,7 @@ func modeMatches(observed, expected string) bool {
 	return observed == "" || observed == expected
 }
 
-func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock bool, userOwnedResolutions map[string]bool, adaptedResolutions map[string]AdaptedResolution, detachUserOwnedRemovals bool) ([]mutation, []Decision, Lock, error) {
+func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock bool, userOwnedResolutions map[string]bool, detachUserOwnedRemovals bool) ([]mutation, []Decision, Lock, error) {
 	if _, err := inspectRepoRoot(repo.root, repo.info); err != nil {
 		return nil, nil, Lock{}, err
 	}
@@ -468,29 +468,14 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 			cleanRemovals[path] = currentDigest
 			removalMutationIndex[path] = len(removalMutations)
 			removalMutations = append(removalMutations, mutation{decision: decision, expectedExists: true, expectedDigest: currentDigest, expectedMode: currentMode})
-		case prior.Ownership == Adapted && (currentDigest != prior.BaseDigest || !modeMatches(currentMode, prior.BaseMode)):
-			if resolution, resolved := adaptedResolutions[path]; resolved {
-				switch resolution.Action {
-				case "keep-local":
-					decision.Action, decision.Reason = Preserve, "keep and detach adapted file removed upstream"
-				case "take-upstream":
-					decision.Action, decision.Reason = Delete, "remove adapted file by reviewed upstream deletion"
-					cleanRemovals[path] = currentDigest
-					removalMutationIndex[path] = len(removalMutations)
-					removalMutations = append(removalMutations, mutation{decision: decision, expectedExists: true, expectedDigest: currentDigest, expectedMode: currentMode})
-				case "apply-reviewed-merge":
-					if resolution.Mode != "100644" && resolution.Mode != "100755" {
-						return nil, nil, Lock{}, fmt.Errorf("invalid reviewed merge resolution for %s", path)
-					}
-					decision.Action, decision.Reason = UpdateFile, "apply reviewed merge and detach adapted file removed upstream"
-					removalMutations = append(removalMutations, mutation{decision: decision, data: resolution.Data, mode: fileMode(resolution.Mode), modeSet: true, expectedExists: true, expectedDigest: currentDigest, expectedMode: currentMode})
-				default:
-					return nil, nil, Lock{}, fmt.Errorf("invalid adapted removal resolution %q for %s", resolution.Action, path)
-				}
-			} else {
-				decision.Action, decision.Reason = Conflict, "adapted file changed downstream and was removed upstream"
-				next.Files[path] = prior
-			}
+		case prior.Ownership == Adapted:
+			// An upstream deletion establishes an absent upstream base. The
+			// existing lock deliberately has no absent-base representation, and
+			// dropping the entry would lose the state needed for a later upstream
+			// reappearance. Keep this as a conflict until the protected history
+			// carrier can retain a tombstone atomically.
+			decision.Action, decision.Reason = Conflict, "adapted file was removed upstream; absent-base history is unavailable"
+			next.Files[path] = prior
 		case prior.Ownership == Managed:
 			decision.Action, decision.Reason = Conflict, "removed managed file has downstream drift"
 			next.Files[path] = prior
@@ -636,26 +621,6 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 				decision.Action, decision.Reason = UpdateFile, "unmodified adapted file follows new template base"
 			} else {
 				decision.Action, decision.Reason = Preserve, "preserve downstream adaptation"
-			}
-		}
-		if resolution, resolved := adaptedResolutions[path]; resolved && file.Ownership == Adapted && decision.Action == Conflict {
-			file = File{Ownership: Adapted, BaseDigest: incoming.digest, BaseMode: incoming.mode}
-			switch resolution.Action {
-			case "keep-local":
-				decision.Action, decision.Reason = Preserve, "keep adapted file by reviewed resolution"
-			case "take-upstream":
-				decision.Action, decision.Reason = UpdateFile, "take upstream adapted file by reviewed resolution"
-				if class == Managed {
-					file = File{Ownership: Managed, BaseDigest: incoming.digest, PayloadDigest: incoming.digest, BaseMode: incoming.mode, PayloadMode: incoming.mode}
-				}
-			case "apply-reviewed-merge":
-				if digest(resolution.Data) == "" || (resolution.Mode != "100644" && resolution.Mode != "100755") {
-					return nil, nil, Lock{}, fmt.Errorf("invalid reviewed merge resolution for %s", path)
-				}
-				decision.Action, decision.Reason = UpdateFile, "apply reviewed merge for adapted file"
-				mutationData, mutationMode = resolution.Data, fileMode(resolution.Mode)
-			default:
-				return nil, nil, Lock{}, fmt.Errorf("invalid adapted resolution %q for %s", resolution.Action, path)
 			}
 		}
 		if resolution, resolved := userOwnedResolutions[path]; resolved && class == Managed && file.Ownership == UserOwned {

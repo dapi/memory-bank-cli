@@ -219,6 +219,36 @@ func TestUpdateDispatchesSelfUpdaterAndPullKeepsOwnershipFlags(t *testing.T) {
 	}
 }
 
+func TestApplyPlanIsUnavailableAndCarrierIsBounded(t *testing.T) {
+	planPath := filepath.Join(t.TempDir(), "resolution-plan.json")
+	if err := os.WriteFile(planPath, []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	var stdout, stderr bytes.Buffer
+	if exitCode := Run([]string{"pull", "--apply-plan", planPath}, "test", &stdout, &stderr); exitCode != exitFailure {
+		t.Fatalf("apply-plan exit=%d, want failure", exitCode)
+	}
+	if !strings.Contains(stderr.String(), ownership.ErrResolutionPlanApplicationUnavailable.Error()) {
+		t.Fatalf("apply-plan stderr=%q", stderr.String())
+	}
+
+	oversizedPath := filepath.Join(t.TempDir(), "oversized-resolution-plan.json")
+	file, err := os.Create(oversizedPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := file.Truncate(maxResolutionPlanCarrierBytes + 1); err != nil {
+		file.Close()
+		t.Fatal(err)
+	}
+	if err := file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := validateResolutionPlanCarrier(oversizedPath); err == nil || !strings.Contains(err.Error(), "exceeds") {
+		t.Fatalf("oversized carrier error=%v, want limit rejection", err)
+	}
+}
+
 func TestLintRejectsNegativeDepth(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if exitCode := Run([]string{"lint", "--max-depth", "-1"}, "test", &stdout, &stderr); exitCode != 2 {

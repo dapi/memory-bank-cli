@@ -376,7 +376,7 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 	sourceRef := flags.String("source-ref", "", "full commit SHA matching the source checkout HEAD")
 	dryRun := flags.Bool("dry-run", false, "print the complete mutation plan without applying it")
 	planOutput := flags.Bool("plan", false, "print a versioned, machine-readable pull resolution plan without applying it")
-	applyPlan := flags.String("apply-plan", "", "apply a reviewed versioned pull resolution plan from FILE")
+	applyPlan := flags.String("apply-plan", "", "reserved for human-authorized resolution plans; currently unavailable")
 	ask := flags.Bool("ask", false, "interactively resolve user-owned managed-file collisions")
 	agentFile := flags.String("agent-file", "AGENTS.md", "single repository-relative agent instruction file to manage")
 	jsonOutput := addJSONOutputFlag(flags)
@@ -413,6 +413,14 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 	if *planOutput && *applyPlan != "" {
 		fmt.Fprintln(stderr, "memory-bank-cli pull: --plan cannot be combined with --apply-plan")
 		return exitUsage
+	}
+	if *applyPlan != "" {
+		if err := validateResolutionPlanCarrier(*applyPlan); err != nil {
+			fmt.Fprintln(stderr, "read resolution plan:", err)
+			return exitFailure
+		}
+		fmt.Fprintln(stderr, ownership.ErrResolutionPlanApplicationUnavailable)
+		return exitFailure
 	}
 	if *ask && !stdinIsTerminal {
 		fmt.Fprintln(stderr, "memory-bank-cli pull: --ask requires an interactive terminal; rerun without --ask in CI or piped execution")
@@ -452,44 +460,6 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 		}
 		if _, writeErr := fmt.Fprintln(stdout, string(encoded)); writeErr != nil {
 			fmt.Fprintln(stderr, writeErr)
-			return exitFailure
-		}
-		return exitSuccess
-	}
-	if *applyPlan != "" {
-		data, readErr := os.ReadFile(*applyPlan)
-		if readErr != nil {
-			fmt.Fprintln(stderr, readErr)
-			return exitFailure
-		}
-		if duplicateErr := rejectDuplicateJSONMembers(data); duplicateErr != nil {
-			fmt.Fprintln(stderr, "read resolution plan:", duplicateErr)
-			return exitFailure
-		}
-		decoder := json.NewDecoder(bytes.NewReader(data))
-		decoder.DisallowUnknownFields()
-		var plan ownership.ResolutionPlan
-		decodeErr := decoder.Decode(&plan)
-		if decodeErr == nil {
-			var extra any
-			if decoder.Decode(&extra) != io.EOF {
-				decodeErr = errors.New("resolution plan has trailing JSON content")
-			}
-		}
-		if decodeErr != nil {
-			fmt.Fprintln(stderr, "read resolution plan:", decodeErr)
-			return exitFailure
-		}
-		report, applyErr := ownership.ApplyResolutionPlan(options, plan)
-		if applyErr != nil {
-			fmt.Fprintln(stderr, applyErr)
-			return exitFailure
-		}
-		if err := writeResult(stdout, *jsonOutput, report, func(writer io.Writer) { printOwnershipReport(writer, report) }); err != nil {
-			fmt.Fprintln(stderr, err)
-			return exitFailure
-		}
-		if report.ConflictCount > 0 {
 			return exitFailure
 		}
 		return exitSuccess
@@ -536,6 +506,37 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 		return exitFailure
 	}
 	return exitSuccess
+}
+
+const maxResolutionPlanCarrierBytes int64 = 16 << 20
+
+// validateResolutionPlanCarrier bounds an untrusted carrier before any future
+// decoder is allowed to inspect it. The streaming count is retained in
+// addition to Stat so a concurrent replacement cannot bypass the limit.
+func validateResolutionPlanCarrier(filePath string) error {
+	info, err := os.Stat(filePath)
+	if err != nil {
+		return err
+	}
+	if !info.Mode().IsRegular() {
+		return fmt.Errorf("resolution plan must be a regular file")
+	}
+	if info.Size() > maxResolutionPlanCarrierBytes {
+		return fmt.Errorf("resolution plan exceeds %d-byte limit", maxResolutionPlanCarrierBytes)
+	}
+	file, err := os.Open(filePath)
+	if err != nil {
+		return err
+	}
+	defer file.Close()
+	read, err := io.Copy(io.Discard, io.LimitReader(file, maxResolutionPlanCarrierBytes+1))
+	if err != nil {
+		return err
+	}
+	if read > maxResolutionPlanCarrierBytes {
+		return fmt.Errorf("resolution plan exceeds %d-byte limit", maxResolutionPlanCarrierBytes)
+	}
+	return nil
 }
 
 func rejectDuplicateJSONMembers(data []byte) error {

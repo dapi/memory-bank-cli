@@ -1,12 +1,18 @@
 package ownership
 
 import (
-	"encoding/base64"
+	"errors"
 	"fmt"
-	"reflect"
 	"sort"
 	"strings"
 )
+
+// ErrResolutionPlanApplicationUnavailable is returned until FT-054 has a
+// selected, independently verifiable human-authorization mechanism and its
+// protected historical-base state. A plan writer is not an authorization
+// authority, so accepting selected actions before those controls exist would
+// turn the plan itself into an authority to modify downstream content.
+var ErrResolutionPlanApplicationUnavailable = errors.New("resolution plan application is unavailable until human authorization and protected historical-base verification are implemented")
 
 // PlanPull creates a versioned, read-only plan for an existing ownership lock.
 // It performs the same source provenance checks as Update but never calls the
@@ -60,7 +66,7 @@ func PlanPull(options Options) (ResolutionPlan, error) {
 	if err := verifySource(pinnedSource.root, options.SourceRef); err != nil {
 		return ResolutionPlan{}, fmt.Errorf("source checkout changed while reading template: %w", err)
 	}
-	_, decisions, _, err := buildPlan(repo, source, lock, true, nil, nil, true)
+	_, decisions, _, err := buildPlan(repo, source, lock, true, nil, true)
 	if err != nil {
 		return ResolutionPlan{}, err
 	}
@@ -94,9 +100,12 @@ func PlanPull(options Options) (ResolutionPlan, error) {
 			entry.UpstreamDigest, entry.UpstreamMode = incoming.digest, incoming.mode
 			entry.UpstreamSourceRef, entry.UpstreamPath = options.SourceRef, sourceTreePath(payloadRoot, decision.Path)
 		}
-		if decision.Action == Conflict && decision.Ownership == Adapted {
+		if decision.Action == Conflict && requiresResolutionDecision(decision, prior) {
 			entry.RequiresHumanDecision = true
-			entry.AllowedActions = []string{"keep-local", "take-upstream", "apply-reviewed-merge"}
+			// A reviewed merge requires a verified historical-base snapshot and a
+			// deterministic re-computation of its result. Neither exists in the
+			// current lock format, so only non-merge actions can be proposed.
+			entry.AllowedActions = []string{"keep-local", "take-upstream"}
 		}
 		entries = append(entries, entry)
 	}
@@ -104,74 +113,23 @@ func PlanPull(options Options) (ResolutionPlan, error) {
 	return ResolutionPlan{FormatVersion: ResolutionPlanVersion, Template: Template{Version: options.TemplateVersion, SourceRef: options.SourceRef}, LockDigest: lockDigest, Entries: entries}, nil
 }
 
-// ApplyResolutionPlan re-generates the plan from current state, rejects any
-// stale or altered review carrier, and only then delegates mutation to Update.
-func ApplyResolutionPlan(options Options, plan ResolutionPlan) (Report, error) {
-	if plan.FormatVersion != ResolutionPlanVersion {
-		return Report{}, fmt.Errorf("unsupported resolution plan format %d", plan.FormatVersion)
+func requiresResolutionDecision(decision Decision, prior File) bool {
+	if decision.Action != Conflict {
+		return false
 	}
-	if plan.Template.Version != options.TemplateVersion || plan.Template.SourceRef != options.SourceRef {
-		return Report{}, fmt.Errorf("resolution plan template identity does not match apply inputs")
-	}
-	repo, err := pinRepoRoot(options.RepoRoot)
-	if err != nil {
-		return Report{}, err
-	}
-	_, agentDecision, err := buildAgentPlan(repo, options.AgentFile)
-	if err != nil {
-		return Report{}, err
-	}
-	if agentDecision.Action != Preserve {
-		return Report{}, fmt.Errorf("agent instruction state is not current; resolve it with ordinary pull before applying a resolution plan")
-	}
-	current, err := PlanPull(options)
-	if err != nil {
-		return Report{}, err
-	}
-	reviewed := plan
-	resolutions := make(map[string]AdaptedResolution)
-	for index := range reviewed.Entries {
-		entry := &reviewed.Entries[index]
-		if !entry.RequiresHumanDecision {
-			if entry.SelectedAction != "" || entry.ReviewedContent != "" || entry.ReviewedDigest != "" || entry.ReviewedMode != "" {
-				return Report{}, fmt.Errorf("resolution supplied for non-human-decision path %s", entry.Path)
-			}
-			continue
-		}
-		if entry.SelectedAction == "" {
-			return Report{}, fmt.Errorf("resolution plan leaves adapted path unresolved: %s", entry.Path)
-		}
-		if !containsAction(entry.AllowedActions, entry.SelectedAction) {
-			return Report{}, fmt.Errorf("resolution plan has invalid action %q for %s", entry.SelectedAction, entry.Path)
-		}
-		resolution := AdaptedResolution{Action: entry.SelectedAction}
-		if entry.SelectedAction == "apply-reviewed-merge" {
-			data, decodeErr := base64.StdEncoding.DecodeString(entry.ReviewedContent)
-			if decodeErr != nil || entry.ReviewedDigest == "" || digest(data) != entry.ReviewedDigest || (entry.ReviewedMode != "100644" && entry.ReviewedMode != "100755") {
-				return Report{}, fmt.Errorf("resolution plan has invalid reviewed merge for %s", entry.Path)
-			}
-			resolution.Data, resolution.Mode = data, entry.ReviewedMode
-		}
-		resolutions[entry.Path] = resolution
-		entry.SelectedAction, entry.ReviewedContent, entry.ReviewedDigest, entry.ReviewedMode = "", "", "", ""
-	}
-	if !reflect.DeepEqual(reviewed, current) {
-		return Report{}, fmt.Errorf("resolution plan is stale or tampered; regenerate and review it before applying")
-	}
-	options.AdaptedResolutions = resolutions
-	options.ExpectedLockDigest = plan.LockDigest
-	options.ExpectedPaths = planPreconditions(plan)
-	options.DetachUserOwnedRemovals = true
-	options.SkipAgentInstructions = true
-	return Update(options)
+	// Adapted conflicts always require a human decision. A managed file only
+	// becomes selectable when it is an already tracked managed path with local
+	// drift; unmanaged collisions continue through the conservative default
+	// pull path.
+	return prior.Ownership == Adapted || prior.Ownership == Managed && decision.Ownership == Managed
 }
 
-func planPreconditions(plan ResolutionPlan) []destinationPrecondition {
-	result := make([]destinationPrecondition, 0, len(plan.Entries))
-	for _, entry := range plan.Entries {
-		result = append(result, destinationPrecondition{path: entry.Path, exists: entry.LocalDigest != "", digest: entry.LocalDigest, mode: entry.LocalMode})
-	}
-	return result
+// ApplyResolutionPlan is intentionally unavailable until the feature's
+// authorization and protected historical-base contracts are implemented.
+// Keeping this guard before reading or acting on plan fields prevents an AI or
+// any other plan writer from treating selected_action as human approval.
+func ApplyResolutionPlan(options Options, plan ResolutionPlan) (Report, error) {
+	return Report{}, ErrResolutionPlanApplicationUnavailable
 }
 
 func sourceTreePath(payloadRoot, downstream string) string {
@@ -182,13 +140,4 @@ func sourceTreePath(payloadRoot, downstream string) string {
 		return payloadRoot + "/" + strings.TrimPrefix(downstream, downstreamPayloadRoot+"/")
 	}
 	return payloadRoot + "/" + downstream
-}
-
-func containsAction(actions []string, target string) bool {
-	for _, action := range actions {
-		if action == target {
-			return true
-		}
-	}
-	return false
 }

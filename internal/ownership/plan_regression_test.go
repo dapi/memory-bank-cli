@@ -4,6 +4,7 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
+	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -492,7 +493,7 @@ func TestPlanPullBindsAdaptedConflictWithoutMutation(t *testing.T) {
 		if entry.Path != path {
 			continue
 		}
-		if !entry.RequiresHumanDecision || entry.ProposedAction != Conflict || entry.LocalDigest == "" || entry.UpstreamDigest == "" || len(entry.AllowedActions) != 3 {
+		if !entry.RequiresHumanDecision || entry.ProposedAction != Conflict || entry.LocalDigest == "" || entry.UpstreamDigest == "" || len(entry.AllowedActions) != 2 {
 			t.Fatalf("adapted conflict plan entry is incomplete: %#v", entry)
 		}
 		if got := read(t, repo, path); got != "local\n" {
@@ -506,7 +507,67 @@ func TestPlanPullBindsAdaptedConflictWithoutMutation(t *testing.T) {
 	t.Fatalf("adapted conflict missing from plan: %#v", plan.Entries)
 }
 
-func TestApplyResolutionPlanRequiresAndAppliesHumanDecision(t *testing.T) {
+func TestPlanPullExposesNonMergeChoicesForManagedLocalDrift(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	path := "memory-bank/dna/model.md"
+	write(t, source, path, "base\n")
+	initialize(t, repo, source)
+	write(t, repo, path, "local\n")
+	write(t, source, path, "upstream\n")
+
+	plan, err := PlanPull(opts(repo, source, "b"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, entry := range plan.Entries {
+		if entry.Path != path {
+			continue
+		}
+		if entry.Ownership != Managed || !entry.RequiresHumanDecision || entry.ProposedAction != Conflict {
+			t.Fatalf("managed local-drift conflict is not selectable: %#v", entry)
+		}
+		if got, want := entry.AllowedActions, []string{"keep-local", "take-upstream"}; !reflect.DeepEqual(got, want) {
+			t.Fatalf("allowed actions = %#v, want %#v", got, want)
+		}
+		return
+	}
+	t.Fatalf("managed local-drift conflict missing from plan: %#v", plan.Entries)
+}
+
+func TestAdaptedUpstreamDeletionRemainsConflictWithoutAbsentBaseHistory(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	path := "memory-bank/domain/model.md"
+	write(t, source, path, "base\n")
+	initialize(t, repo, source)
+	lock, exists, err := ReadLock(repo)
+	if err != nil || !exists {
+		t.Fatalf("read lock: exists=%v err=%v", exists, err)
+	}
+	lock.Files[path] = File{Ownership: Adapted, BaseDigest: digest([]byte("base\n")), BaseMode: "100644"}
+	lockData, err := marshalLock(lock)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, repo, LockFileName, string(lockData))
+	lockBefore := read(t, repo, LockFileName)
+	if err := os.Remove(filepath.Join(source, filepath.FromSlash(path))); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Update(opts(repo, source, "b"))
+	decision := decisionFor(t, report, path)
+	if err != nil || report.Applied || decision.Action != Conflict || decision.Reason != "adapted file was removed upstream; absent-base history is unavailable" {
+		t.Fatalf("adapted upstream deletion = report=%#v err=%v", report, err)
+	}
+	if got := read(t, repo, path); got != "base\n" {
+		t.Fatalf("conflict changed payload: %q", got)
+	}
+	if got := read(t, repo, LockFileName); got != lockBefore {
+		t.Fatal("conflict changed lock")
+	}
+}
+
+func TestApplyResolutionPlanIsUnavailableWithoutHumanAuthorization(t *testing.T) {
 	repo, source := t.TempDir(), t.TempDir()
 	path := "memory-bank/domain/model.md"
 	write(t, source, path, "base\n")
@@ -518,24 +579,23 @@ func TestApplyResolutionPlanRequiresAndAppliesHumanDecision(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := ApplyResolutionPlan(options, plan); err == nil {
-		t.Fatal("unresolved plan applied")
+	if _, err := ApplyResolutionPlan(options, plan); !errors.Is(err, ErrResolutionPlanApplicationUnavailable) {
+		t.Fatalf("unresolved plan error = %v, want unavailable", err)
 	}
 	for index := range plan.Entries {
 		if plan.Entries[index].Path == path {
 			plan.Entries[index].SelectedAction = "take-upstream"
 		}
 	}
-	report, err := ApplyResolutionPlan(options, plan)
-	if err != nil || !report.Applied || decisionFor(t, report, path).Action != UpdateFile {
-		t.Fatalf("reviewed take-upstream did not apply: report=%#v err=%v", report, err)
+	if _, err := ApplyResolutionPlan(options, plan); !errors.Is(err, ErrResolutionPlanApplicationUnavailable) {
+		t.Fatalf("selected plan error = %v, want unavailable", err)
 	}
-	if got := read(t, repo, path); got != "upstream\n" {
-		t.Fatalf("take-upstream content=%q", got)
+	if got := read(t, repo, path); got != "local\n" {
+		t.Fatalf("unavailable apply changed content=%q", got)
 	}
 }
 
-func TestApplyResolutionPlanResolvesCanonicalAdaptedMigration(t *testing.T) {
+func TestApplyResolutionPlanCannotResolveCanonicalAdaptedMigration(t *testing.T) {
 	repo, source := t.TempDir(), t.TempDir()
 	path := "memory-bank/domain/model.md"
 	write(t, source, "template/"+path, "base\n")
@@ -562,15 +622,10 @@ func TestApplyResolutionPlanResolvesCanonicalAdaptedMigration(t *testing.T) {
 			plan.Entries[index].SelectedAction = "take-upstream"
 		}
 	}
-	report, err := ApplyResolutionPlan(options, plan)
-	if err != nil || !report.Applied {
-		t.Fatalf("canonical adapted resolution failed: report=%#v err=%v", report, err)
+	if _, err := ApplyResolutionPlan(options, plan); !errors.Is(err, ErrResolutionPlanApplicationUnavailable) {
+		t.Fatalf("canonical adapted resolution error = %v, want unavailable", err)
 	}
-	if got := read(t, repo, path); got != "upstream\n" {
-		t.Fatalf("unexpected content %q", got)
-	}
-	updated, _, err := ReadLock(repo)
-	if err != nil || updated.Files[path].Ownership != Managed {
-		t.Fatalf("take-upstream did not adopt canonical ownership: %#v err=%v", updated.Files[path], err)
+	if got := read(t, repo, path); got != "local\n" {
+		t.Fatalf("unavailable apply changed content=%q", got)
 	}
 }
