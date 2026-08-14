@@ -160,6 +160,27 @@ Yes. Approve `BD-01` / `DEC-04`: the authorization carrier and verification form
 
 ## Final Report
 
+- **Status:** superseded by Cycle 6.
+
+## Cycle 6
+
+### Review summary
+
+A contract review confirmed that matching identities alone would not prevent an agent-authored plan from misrepresenting review context, and that extending the strictly decoded `.lock` format would prevent a safe binary rollback. The canonical design now requires trusted regeneration of every non-decision review-context field and stores historical-base state in a lock-bound compatibility sidecar while preserving the `.lock` wire format. The derived feature index no longer introduces a process exception that belongs, if anywhere, to the canonical Feature Flow.
+
+### Critical and important findings
+
+| Severity | Finding | Resolution |
+| --- | --- | --- |
+| `critical` | An AI could preserve current identities while misrepresenting ownership/state labels, proposed or allowed actions, reasons, or other review context. | `SOL-01`, `SOL-04`, `CTR-01`, `INV-02`, `REQ-01`, `EC-04`, `SC-05` and `CHK-04` now require deterministic trusted regeneration and exact comparison of every non-decision field; only selected actions, their mechanically derived decision state and separate authorization are a decision overlay. |
+| `critical` | Historical-base data written into the strict `.lock` format would block rollback to an older binary. | `SOL-03`, `SOL-04`, `CTR-02`, `INV-07`–`INV-08`, `RB-01` and `CHK-03` preserve `.lock` and use an atomically committed, lock-bound `.lock-history-v1` sidecar, with downgrade and stale-sidecar coverage. |
+| `important` | The derived package index created a blocked-plan exception despite declaring Feature Flow as its source. | Removed the derived exception; the index now defers solely to the canonical Feature Flow rule. |
+
+### Human gate
+
+Yes. `BD-01` / `DEC-04` remains the only implementation gate: approve the authorization carrier and verification format, canonicalization procedure, trust policy/configuration, credential lifecycle and reviewer authorization workflow.
+
+## Final Report
+
 - **Status:** `reopened_pending_human_approval`
-- **Critical/important findings remaining:** `BD-01` / `DEC-04` human-authorization approval; `DEC-03` remains an important publication follow-up to refresh Feature Flow routing links to the immutable carrier for this revised package snapshot.
-- **Implemented-product documentation:** current README does not advertise the planned workflow.
+- **Critical/important findings remaining:** `BD-01` / `DEC-04` human-authorization approval; `DEC-03` remains the publication-routing follow-up.
