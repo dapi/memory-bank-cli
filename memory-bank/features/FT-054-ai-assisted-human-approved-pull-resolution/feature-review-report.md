@@ -229,3 +229,26 @@ Yes. `BD-01` / `DEC-04` remains the implementation gate; no implementation plan 
 
 - **Status:** `reopened_pending_human_approval`
 - **Critical/important findings remaining:** `BD-01` / `DEC-04` human-authorization approval; `DEC-03` publication-routing follow-up.
+
+## Cycle 9
+
+### Review summary
+
+A focused integrity review found that a lock-identity-bound sidecar could be replayed across intentional present/absent transitions sharing the same legacy `.lock` serialization, stale-state recovery unnecessarily rejected the required non-merge choices, and first adoption could mistake a pre-existing well-formed reserved-path file for CLI state. The canonical contract now requires a protected monotonic receipt for each fresh sidecar generation and digest, explicit absence-checked first adoption, and a full-scope recovery that permits authorized non-merge actions while prohibiting only unresolved and reviewed-merge actions.
+
+### Critical and important findings
+
+| Severity | Finding | Resolution |
+| --- | --- | --- |
+| `critical` | Lock identity could not independently prove sidecar freshness when historical present/absent states shared a legacy lock serialization. | `SOL-03`, `CTR-03`, `INV-07`, `FM-05`, `SC-04i` and `CHK-03` require a fresh sidecar generation/digest to exactly match a protected monotonic receipt before any historical state is authoritative; replay is merge-ineligible. |
+| `critical` | The stale-sidecar recovery gate rejected human-selected non-merge actions, contrary to `REQ-02`. | `SOL-03`, `EC-04`, `SC-04e`, `SC-04i` and `CHK-03` permit only full-scope, fully resolved deterministic or authorized non-merge recovery, while still rejecting bounded, unresolved and reviewed-merge recovery. |
+| `important` | A well-formed file at the newly reserved path had no durable CLI provenance during first rollout. | `SOL-03`, `CTR-03`, `FM-05`, `SC-04i`, `NEG-04` and `CHK-03` require explicit absence-checked first adoption and reject any pre-existing reserved-path object without consuming or overwriting it. |
+
+### Human gate
+
+Yes. `BD-01` / `DEC-04` remains the implementation gate; the protected receipt must satisfy the established authority boundary and must not grant the agent or plan writer access to its credential.
+
+## Final Report
+
+- **Status:** `reopened_pending_human_approval`
+- **Critical/important findings remaining:** `BD-01` / `DEC-04` human-authorization approval; `DEC-03` publication-routing follow-up.
