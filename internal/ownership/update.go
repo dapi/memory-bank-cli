@@ -112,7 +112,7 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 	if err := verifySource(pinnedSource.root, options.SourceRef); err != nil {
 		return Report{}, fmt.Errorf("source checkout changed while reading template: %w", err)
 	}
-	mutations, decisions, next, err := buildPlan(repo, source, old, hasLock, options.UserOwnedResolutions)
+	mutations, decisions, next, err := buildPlan(repo, source, old, hasLock, options.UserOwnedResolutions, options.AdaptedResolutions)
 	if err != nil {
 		return Report{}, err
 	}
@@ -401,7 +401,7 @@ func modeMatches(observed, expected string) bool {
 	return observed == "" || observed == expected
 }
 
-func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock bool, userOwnedResolutions map[string]bool) ([]mutation, []Decision, Lock, error) {
+func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock bool, userOwnedResolutions map[string]bool, adaptedResolutions map[string]AdaptedResolution) ([]mutation, []Decision, Lock, error) {
 	if _, err := inspectRepoRoot(repo.root, repo.info); err != nil {
 		return nil, nil, Lock{}, err
 	}
@@ -503,6 +503,7 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 			}
 		}
 		decision := Decision{Path: path, Ownership: class}
+		mutationData, mutationMode := incoming.data, fileMode(incoming.mode)
 		file := File{Ownership: class, BaseDigest: incoming.digest, BaseMode: incoming.mode}
 		if class == Managed || class == Generated {
 			file.PayloadDigest = incoming.digest
@@ -594,6 +595,23 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 				decision.Action, decision.Reason = Preserve, "preserve downstream adaptation"
 			}
 		}
+		if resolution, resolved := adaptedResolutions[path]; resolved && class == Adapted && decision.Action == Conflict {
+			file = File{Ownership: Adapted, BaseDigest: incoming.digest, BaseMode: incoming.mode}
+			switch resolution.Action {
+			case "keep-local":
+				decision.Action, decision.Reason = Preserve, "keep adapted file by reviewed resolution"
+			case "take-upstream":
+				decision.Action, decision.Reason = UpdateFile, "take upstream adapted file by reviewed resolution"
+			case "apply-reviewed-merge":
+				if digest(resolution.Data) == "" || (resolution.Mode != "100644" && resolution.Mode != "100755") {
+					return nil, nil, Lock{}, fmt.Errorf("invalid reviewed merge resolution for %s", path)
+				}
+				decision.Action, decision.Reason = UpdateFile, "apply reviewed merge for adapted file"
+				mutationData, mutationMode = resolution.Data, fileMode(resolution.Mode)
+			default:
+				return nil, nil, Lock{}, fmt.Errorf("invalid adapted resolution %q for %s", resolution.Action, path)
+			}
+		}
 		if resolution, resolved := userOwnedResolutions[path]; resolved && class == Managed && file.Ownership == UserOwned {
 			if resolution {
 				decision.Action, decision.Reason = UpdateFile, "replace user-owned file from source by explicit resolution"
@@ -609,7 +627,7 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 		decision.Ownership = file.Ownership
 		if decision.Action == Create || decision.Action == UpdateFile {
 			sourceMutations = append(sourceMutations, mutation{
-				decision: decision, data: incoming.data, mode: fileMode(incoming.mode), modeSet: true, expectedExists: exists, expectedDigest: currentDigest, expectedMode: currentMode, topology: topology,
+				decision: decision, data: mutationData, mode: mutationMode, modeSet: true, expectedExists: exists, expectedDigest: currentDigest, expectedMode: currentMode, topology: topology,
 			})
 			if topology != nil {
 				for _, prerequisite := range topology.files {

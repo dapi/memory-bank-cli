@@ -38,6 +38,30 @@ answers are collected before changes are applied. `pull --ask --dry-run` shows t
 resolved plan without changing files; `--ask` is rejected when standard input
 is not a terminal.
 
+## Review pull resolutions asynchronously
+
+Generate a versioned, read-only plan when an agent or reviewer needs durable
+conflict context:
+
+```sh
+memory-bank-cli pull --plan > memory-bank/.update-plans/main.json
+```
+
+An AI may prepare that JSON for review, but it cannot approve a decision. For
+each two-sided adapted-file conflict, a human must select `keep-local`,
+`take-upstream`, or `apply-reviewed-merge`; the latter includes the exact
+base64-encoded result, digest, and mode being approved. Apply only the reviewed
+plan:
+
+```sh
+memory-bank-cli pull --apply-plan memory-bank/.update-plans/main.json
+```
+
+Before mutation, the CLI rechecks the lock, source identity and every recorded
+local/upstream payload identity. A stale, malformed, tampered, or unresolved
+plan fails without changing downstream files or the lock. Default `pull`
+remains conservative; user-owned files that disappeared upstream stay local.
+
 ## Publish managed changes upstream
 
 From a downstream Git repository with a clean upstream checkout at `memory-bank/.repo`, preview the managed changes that can be proposed upstream:

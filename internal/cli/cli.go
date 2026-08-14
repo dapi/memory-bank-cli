@@ -375,6 +375,8 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 	templateVersion := flags.String("template-version", "", "human-readable template version")
 	sourceRef := flags.String("source-ref", "", "full commit SHA matching the source checkout HEAD")
 	dryRun := flags.Bool("dry-run", false, "print the complete mutation plan without applying it")
+	planOutput := flags.Bool("plan", false, "print a versioned, machine-readable pull resolution plan without applying it")
+	applyPlan := flags.String("apply-plan", "", "apply a reviewed versioned pull resolution plan from FILE")
 	ask := flags.Bool("ask", false, "interactively resolve user-owned managed-file collisions")
 	agentFile := flags.String("agent-file", "AGENTS.md", "single repository-relative agent instruction file to manage")
 	jsonOutput := addJSONOutputFlag(flags)
@@ -390,6 +392,18 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 	}
 	if *ask && command != "pull" {
 		fmt.Fprintln(stderr, "memory-bank-cli init: --ask is only supported by pull")
+		return exitUsage
+	}
+	if *planOutput && command != "pull" {
+		fmt.Fprintln(stderr, "memory-bank-cli init: --plan is only supported by pull")
+		return exitUsage
+	}
+	if *planOutput && *ask {
+		fmt.Fprintln(stderr, "memory-bank-cli pull: --plan cannot be combined with --ask")
+		return exitUsage
+	}
+	if *planOutput && *applyPlan != "" {
+		fmt.Fprintln(stderr, "memory-bank-cli pull: --plan cannot be combined with --apply-plan")
 		return exitUsage
 	}
 	if *ask && !stdinIsTerminal {
@@ -416,6 +430,59 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 		RepoRoot: repoRoot, SourceRoot: sourceRoot, TemplateVersion: resolvedVersion,
 		SourceRef: resolvedRef, DryRun: *dryRun,
 		AgentFile: *agentFile,
+	}
+	if *planOutput {
+		plan, planErr := ownership.PlanPull(options)
+		if planErr != nil {
+			fmt.Fprintln(stderr, planErr)
+			return exitFailure
+		}
+		encoded, encodeErr := json.MarshalIndent(plan, "", "  ")
+		if encodeErr != nil {
+			fmt.Fprintln(stderr, encodeErr)
+			return exitFailure
+		}
+		if _, writeErr := fmt.Fprintln(stdout, string(encoded)); writeErr != nil {
+			fmt.Fprintln(stderr, writeErr)
+			return exitFailure
+		}
+		return exitSuccess
+	}
+	if *applyPlan != "" {
+		file, readErr := os.Open(*applyPlan)
+		if readErr != nil {
+			fmt.Fprintln(stderr, readErr)
+			return exitFailure
+		}
+		decoder := json.NewDecoder(file)
+		decoder.DisallowUnknownFields()
+		var plan ownership.ResolutionPlan
+		decodeErr := decoder.Decode(&plan)
+		if decodeErr == nil {
+			var extra any
+			if decoder.Decode(&extra) != io.EOF {
+				decodeErr = errors.New("resolution plan has trailing JSON content")
+			}
+		}
+		closeErr := file.Close()
+		if decodeErr != nil {
+			fmt.Fprintln(stderr, "read resolution plan:", decodeErr)
+			return exitFailure
+		}
+		if closeErr != nil {
+			fmt.Fprintln(stderr, closeErr)
+			return exitFailure
+		}
+		report, applyErr := ownership.ApplyResolutionPlan(options, plan)
+		if applyErr != nil {
+			fmt.Fprintln(stderr, applyErr)
+			return exitFailure
+		}
+		if err := writeResult(stdout, *jsonOutput, report, func(writer io.Writer) { printOwnershipReport(writer, report) }); err != nil {
+			fmt.Fprintln(stderr, err)
+			return exitFailure
+		}
+		return exitSuccess
 	}
 	var report ownership.Report
 	if *ask {

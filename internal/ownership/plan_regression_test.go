@@ -471,3 +471,66 @@ func TestDirectoryToFileTransitionRejectsUntrackedTopology(t *testing.T) {
 		t.Fatal("rejected transition changed the lock")
 	}
 }
+
+func TestPlanPullBindsAdaptedConflictWithoutMutation(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	path := "memory-bank/domain/model.md"
+	write(t, source, path, "base\n")
+	initialize(t, repo, source)
+	write(t, repo, path, "local\n")
+	write(t, source, path, "upstream\n")
+	lockBefore := read(t, repo, LockFileName)
+
+	plan, err := PlanPull(opts(repo, source, "b"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if plan.FormatVersion != ResolutionPlanVersion || plan.LockDigest == "" || plan.Template.SourceRef == "" {
+		t.Fatalf("plan missing identity binding: %#v", plan)
+	}
+	for _, entry := range plan.Entries {
+		if entry.Path != path {
+			continue
+		}
+		if !entry.RequiresHumanDecision || entry.ProposedAction != Conflict || entry.LocalDigest == "" || entry.UpstreamDigest == "" || len(entry.AllowedActions) != 3 {
+			t.Fatalf("adapted conflict plan entry is incomplete: %#v", entry)
+		}
+		if got := read(t, repo, path); got != "local\n" {
+			t.Fatalf("planning changed local payload: %q", got)
+		}
+		if got := read(t, repo, LockFileName); got != lockBefore {
+			t.Fatal("planning changed lock")
+		}
+		return
+	}
+	t.Fatalf("adapted conflict missing from plan: %#v", plan.Entries)
+}
+
+func TestApplyResolutionPlanRequiresAndAppliesHumanDecision(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	path := "memory-bank/domain/model.md"
+	write(t, source, path, "base\n")
+	initialize(t, repo, source)
+	write(t, repo, path, "local\n")
+	write(t, source, path, "upstream\n")
+	options := opts(repo, source, "b")
+	plan, err := PlanPull(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := ApplyResolutionPlan(options, plan); err == nil {
+		t.Fatal("unresolved plan applied")
+	}
+	for index := range plan.Entries {
+		if plan.Entries[index].Path == path {
+			plan.Entries[index].SelectedAction = "take-upstream"
+		}
+	}
+	report, err := ApplyResolutionPlan(options, plan)
+	if err != nil || !report.Applied || decisionFor(t, report, path).Action != UpdateFile {
+		t.Fatalf("reviewed take-upstream did not apply: report=%#v err=%v", report, err)
+	}
+	if got := read(t, repo, path); got != "upstream\n" {
+		t.Fatalf("take-upstream content=%q", got)
+	}
+}

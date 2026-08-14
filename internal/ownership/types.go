@@ -4,9 +4,10 @@ package ownership
 import "time"
 
 const (
-	LockFileName         = "memory-bank/.lock"
-	CurrentSchemaVersion = 1
-	ReportFormatVersion  = 1
+	LockFileName          = "memory-bank/.lock"
+	CurrentSchemaVersion  = 1
+	ReportFormatVersion   = 1
+	ResolutionPlanVersion = 1
 )
 
 type Class string
@@ -71,6 +72,40 @@ type Report struct {
 	DriftCount    int        `json:"drift_count"`
 }
 
+// ResolutionPlan is a reviewable, non-mutating snapshot of a pull update.
+// It is deliberately separate from Report: the plan binds a later approval to
+// the lock, source and payload identities observed while it was generated.
+type ResolutionPlan struct {
+	FormatVersion int                   `json:"format_version"`
+	Template      Template              `json:"template"`
+	LockDigest    string                `json:"lock_digest"`
+	Entries       []ResolutionPlanEntry `json:"entries"`
+}
+
+type ResolutionPlanEntry struct {
+	Path                  string   `json:"path"`
+	Ownership             Class    `json:"ownership"`
+	BaseDigest            string   `json:"base_digest,omitempty"`
+	LocalDigest           string   `json:"local_digest,omitempty"`
+	LocalMode             string   `json:"local_mode,omitempty"`
+	UpstreamDigest        string   `json:"upstream_digest,omitempty"`
+	UpstreamMode          string   `json:"upstream_mode,omitempty"`
+	ProposedAction        Action   `json:"proposed_action"`
+	Reason                string   `json:"reason"`
+	RequiresHumanDecision bool     `json:"requires_human_decision"`
+	AllowedActions        []string `json:"allowed_actions,omitempty"`
+	SelectedAction        string   `json:"selected_action,omitempty"`
+	ReviewedContent       string   `json:"reviewed_content_base64,omitempty"`
+	ReviewedDigest        string   `json:"reviewed_digest,omitempty"`
+	ReviewedMode          string   `json:"reviewed_mode,omitempty"`
+}
+
+type AdaptedResolution struct {
+	Action string
+	Data   []byte
+	Mode   string
+}
+
 type Options struct {
 	RepoRoot        string
 	SourceRoot      string
@@ -81,6 +116,7 @@ type Options struct {
 	// explicit resolution: false keeps local content, true replaces it with the
 	// incoming source payload.
 	UserOwnedResolutions map[string]bool
+	AdaptedResolutions   map[string]AdaptedResolution
 	AgentFile            string
 	Now                  func() time.Time
 	// verifySource is replaced by unit tests that use synthetic source trees.

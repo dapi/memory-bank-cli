@@ -9,7 +9,7 @@ derived_from:
   - ../../use-cases/UC-002-update-template.md
   - "https://github.com/dapi/memory-bank-cli/issues/54"
 status: active
-delivery_status: planned
+delivery_status: in_progress
 audience: humans_and_agents
 must_not_define:
   - selected_solution
@@ -133,4 +133,3 @@ must_not_define:
 | `EVID-03` | Adapted-action and mode E2E output | Go test runner | `artifacts/ft-054/verify/chk-03/` | `CHK-03` |
 | `EVID-04` | Staleness/tamper and transaction-failure output | Go test runner | `artifacts/ft-054/verify/chk-04/` | `CHK-04` |
 | `EVID-05` | Documentation audit plus applicable Go test/vet output | Implementer / Go toolchain | `artifacts/ft-054/verify/chk-05/` | `CHK-05` |
-
