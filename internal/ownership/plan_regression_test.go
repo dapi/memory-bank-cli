@@ -496,6 +496,9 @@ func TestPlanPullBindsAdaptedConflictWithoutMutation(t *testing.T) {
 		if !entry.RequiresHumanDecision || entry.ProposedAction != Conflict || entry.LocalDigest == "" || entry.UpstreamDigest == "" || len(entry.AllowedActions) != 2 {
 			t.Fatalf("adapted conflict plan entry is incomplete: %#v", entry)
 		}
+		if entry.BaseDigest != "" || entry.BaseMode != "" || entry.BaseSourceRef != "" || entry.BasePath != "" {
+			t.Fatalf("plan must omit unverified historical-base identity: %#v", entry)
+		}
 		if got := read(t, repo, path); got != "local\n" {
 			t.Fatalf("planning changed local payload: %q", got)
 		}
@@ -505,6 +508,26 @@ func TestPlanPullBindsAdaptedConflictWithoutMutation(t *testing.T) {
 		return
 	}
 	t.Fatalf("adapted conflict missing from plan: %#v", plan.Entries)
+}
+
+func TestSourceTreePathInvertsPayloadMapping(t *testing.T) {
+	tests := []struct {
+		payloadRoot string
+		downstream  string
+		want        string
+	}{
+		{targetSourcePayloadRoot, "memory-bank/dna/rule.md", "template/memory-bank/dna/rule.md"},
+		{targetSourcePayloadRoot, ".github/workflows/check.yml", "template/.github/workflows/check.yml"},
+		{legacySourcePayloadRoot, "memory-bank/dna/rule.md", "memory-bank/dna/rule.md"},
+		{legacyTemplateSourcePayloadRoot, "memory-bank/dna/rule.md", "memory-bank-template/dna/rule.md"},
+	}
+	for _, test := range tests {
+		t.Run(test.payloadRoot, func(t *testing.T) {
+			if got := sourceTreePath(test.payloadRoot, test.downstream); got != test.want {
+				t.Fatalf("sourceTreePath(%q, %q) = %q, want %q", test.payloadRoot, test.downstream, got, test.want)
+			}
+		})
+	}
 }
 
 func TestPlanPullExposesNonMergeChoicesForManagedLocalDrift(t *testing.T) {

@@ -82,7 +82,12 @@ func PlanPull(options Options) (ResolutionPlan, error) {
 		incoming, sourceExists := source[decision.Path]
 		prior := lock.Files[decision.Path]
 		identity := identities[decision.Path]
-		entry := ResolutionPlanEntry{Path: decision.Path, LocalPath: decision.Path, Ownership: decision.Ownership, BaseDigest: prior.BaseDigest, BaseMode: prior.BaseMode, BaseSourceRef: lock.Template.SourceRef, BasePath: decision.Path, ProposedAction: decision.Action, Reason: decision.Reason}
+		// The lock records a base digest and mode but does not retain a per-entry
+		// source identity. In particular, lock.Template.SourceRef can advance for
+		// another path while this entry keeps an older base. Do not present that
+		// global ref as a reviewable base binding until protected historical-base
+		// state provides a verified per-entry identity.
+		entry := ResolutionPlanEntry{Path: decision.Path, LocalPath: decision.Path, Ownership: decision.Ownership, ProposedAction: decision.Action, Reason: decision.Reason}
 		if identity.exists {
 			entry.LocalDigest = identity.digest
 			entry.LocalMode = identity.mode
@@ -152,8 +157,11 @@ func sourceTreePath(payloadRoot, downstream string) string {
 	if payloadRoot == "" {
 		return downstream
 	}
-	if payloadRoot == targetSourcePayloadRoot && strings.HasPrefix(downstream, downstreamPayloadRoot+"/") {
-		return payloadRoot + "/" + strings.TrimPrefix(downstream, downstreamPayloadRoot+"/")
+	// This is the inverse of downstreamPayloadPath. Legacy source roots map
+	// their relative payload below memory-bank/, while canonical template/
+	// sources preserve every downstream component.
+	if payloadRoot != targetSourcePayloadRoot && strings.HasPrefix(downstream, downstreamPayloadRoot+"/") {
+		downstream = strings.TrimPrefix(downstream, downstreamPayloadRoot+"/")
 	}
 	return payloadRoot + "/" + downstream
 }
