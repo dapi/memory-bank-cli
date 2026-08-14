@@ -34,7 +34,7 @@ must_not_define:
 
 - `REQ-01` Provide a machine-readable, non-mutating `pull` plan containing path, ownership, base identity, local/upstream state, safe proposed action, human-decision requirement, and concise conflict context.
 - `REQ-02` Define a versioned, reviewable resolution-plan file with independently verifiable, tamper-resistant human authorization over its canonical whole-plan digest; it records accepted actions and the inputs, algorithm version and result of any reviewed non-overlapping mechanical merge.
-- `REQ-03` Apply a resolution plan only after validating its lock, source identity, local payload and template payload under a writer-serialization boundary; perform final revalidation and apply all accepted actions and `.lock` atomically.
+- `REQ-03` Apply a resolution plan only after validating its lock, source identity, local payload and template payload under a cooperating-writer serialization boundary; perform final revalidation and apply all accepted actions and `.lock` atomically.
 - `REQ-04` Require an explicit human-selected `keep-local`, `take-upstream`, or `apply-reviewed-merge` action for every two-sided `adapted` change; an unresolved path blocks apply.
 - `REQ-05` Preserve deterministic safe actions, including managed no-drift update, user-owned missing-template `keep-and-detach`, one-sided adapted behavior, and a plan-encoded non-overlapping mechanical merge.
 - `REQ-06` Keep default `pull` conservative and backward-compatible; document the agent/human boundary and `keep-and-detach` policy.
@@ -87,7 +87,7 @@ must_not_define:
 - `EC-01` Planning is read-only and reports enough context for an agent or reviewer without deciding ambiguous adapted paths.
 - `EC-02` A complete human-authorized plan containing only deterministic actions applies atomically to its matching serialized pre-state. Re-executing it against a changed post-state is rejected as stale; executing it on separate identical pre-state fixtures produces the same result.
 - `EC-03` Every two-sided adapted conflict remains unapplied until an explicit allowed human action is recorded; each selected action gives its specified content and mode result.
-- `EC-04` Stale, malformed or tampered plans or human-authorization material fail before mutating any downstream file or `.lock`; a competing writer cannot interleave a change between final validation and commit.
+- `EC-04` Stale, malformed or tampered plans or human-authorization material fail before mutating any downstream file or `.lock`; a competing writer that uses the update guard cannot interleave a change between final validation and commit. Non-cooperating writers are outside this mutual-exclusion guarantee and may cause a later stale-state rejection if their change is observed before commit.
 - `EC-05` Default `pull` behavior and documentation preserve the conservative agent/human boundary.
 
 ### Traceability Matrix
@@ -96,7 +96,7 @@ must_not_define:
 | --- | --- | --- | --- | --- |
 | `REQ-01`–`REQ-02` | `ASM-01`–`ASM-02`, `CON-01`–`CON-02` | `EC-01`, `SC-01` | `CHK-01`, `CHK-04` | `EVID-01`, `EVID-04` |
 | `REQ-03` | `ASM-03`, `CON-01` | `EC-02`, `EC-04`, `SC-02`, `SC-05` | `CHK-02`, `CHK-04` | `EVID-02`, `EVID-04` |
-| `REQ-04`–`REQ-05` | `ASM-02`–`ASM-03`, `CON-01`–`CON-02` | `EC-03`, `SC-03`–`SC-04` | `CHK-03` | `EVID-03` |
+| `REQ-04`–`REQ-05` | `ASM-02`–`ASM-03`, `CON-01`–`CON-02` | `EC-03`, `SC-03`–`SC-04d` | `CHK-03` | `EVID-03` |
 | `REQ-03`, `REQ-07` | `CON-01` | `EC-04`, `SC-05` | `CHK-04` | `EVID-04` |
 | `REQ-06` | `CON-02`–`CON-03` | `EC-05`, `SC-06` | `CHK-05` | `EVID-05` |
 
@@ -108,7 +108,9 @@ must_not_define:
 - `SC-04` After a human records each allowed action, apply produces the recorded local, upstream, or reviewed-merge content and executable mode.
 - `SC-04a` For an `adapted` path with only local drift, apply keeps the local content and mode and retains `adapted` ownership.
 - `SC-04b` For an `adapted` path with only upstream drift, apply takes the upstream content and mode and retains `adapted` ownership.
-- `SC-05` A changed lock, source ref, local payload, template payload, malformed/tampered plan or human-authorization material, concurrent writer attempt, or injected write failure leaves all downstream files and `.lock` unchanged or rejects the stale plan before commit.
+- `SC-04c` For a managed path with no local drift and changed upstream content, apply writes the recorded upstream bytes and executable mode, retains `managed` ownership, and atomically updates the path's `.lock` entry to the resulting upstream identity and mode.
+- `SC-04d` For a user-owned path missing from the template, apply `keep-and-detach` without changing its bytes or executable mode, removes that path's ownership entry from `.lock`, and commits the unchanged payload with the updated lock atomically.
+- `SC-05` A changed lock, source ref, local payload, template payload, malformed/tampered plan or human-authorization material, competing cooperating-writer attempt, or injected write failure leaves all downstream files and `.lock` unchanged or rejects the stale plan before commit. A non-cooperating writer is outside the serialization guarantee; if its mutation is observed by final validation, apply rejects before commit.
 - `SC-06` A user following help and README understands that an AI may prepare a proposal but cannot approve it; ordinary `pull` stays conservative.
 
 ### Negative Coverage
@@ -123,8 +125,8 @@ must_not_define:
 | --- | --- | --- | --- | --- |
 | `CHK-01` | `EC-01`, `SC-01` | Run CLI and ownership plan serialization/read-only tests. | Planning has no mutation and exposes required identities/context. | `artifacts/ft-054/verify/chk-01/` |
 | `CHK-02` | `EC-02`, `SC-02` | Run hermetic deterministic plan/apply E2E on separate identical pre-state fixtures, then replay on the changed fixture. | Complete human-authorized safe plan applies atomically and identically on fresh fixtures; replay is stale and rejected. | `artifacts/ft-054/verify/chk-02/` |
-| `CHK-03` | `EC-03`, `SC-03`–`SC-04b`, `NEG-02` | Run adapted conflict, one-sided adapted-action, mechanical-merge recomputation and mode-preservation E2E. | Unresolved conflicts fail; one-sided adapted paths preserve their specified ownership/content/mode; only explicit allowed two-sided actions yield validated local, upstream or recomputed merge results. | `artifacts/ft-054/verify/chk-03/` |
-| `CHK-04` | `EC-04`, `SC-05`, `NEG-01`, `NEG-03` | Run stale/tamper/path/human-authorization, competing-writer and injected-failure transaction regressions. | Validation fails before mutation; a writer cannot interleave after final validation; interrupted apply leaves payload and lock unchanged. | `artifacts/ft-054/verify/chk-04/` |
+| `CHK-03` | `EC-03`, `SC-03`–`SC-04d`, `NEG-02` | Run adapted conflict, one-sided adapted-action, managed no-drift update, user-owned missing-template detach, mechanical-merge recomputation and mode-preservation E2E. | Unresolved conflicts fail; each safe action produces its specified content, mode, ownership and lock state; only explicit allowed two-sided actions yield validated local, upstream or recomputed merge results. | `artifacts/ft-054/verify/chk-03/` |
+| `CHK-04` | `EC-04`, `SC-05`, `NEG-01`, `NEG-03` | Run stale/tamper/path/human-authorization, cooperating-writer and injected-failure transaction regressions. | Validation fails before mutation; a cooperating writer cannot interleave after final validation; interrupted apply leaves payload and lock unchanged. | `artifacts/ft-054/verify/chk-04/` |
 | `CHK-05` | `EC-05`, `SC-06` | Review help/README and run relevant Go test and vet suites. | Boundary and `keep-and-detach` policy agree; required suites pass. | `artifacts/ft-054/verify/chk-05/` |
 
 ### Evidence Contract
@@ -133,6 +135,6 @@ must_not_define:
 | --- | --- | --- | --- | --- |
 | `EVID-01` | Read-only plan test output and sample JSON | Go test runner | `artifacts/ft-054/verify/chk-01/` | `CHK-01` |
 | `EVID-02` | Deterministic apply E2E output | Go test runner | `artifacts/ft-054/verify/chk-02/` | `CHK-02` |
-| `EVID-03` | Adapted-action and mode E2E output | Go test runner | `artifacts/ft-054/verify/chk-03/` | `CHK-03` |
+| `EVID-03` | Adapted and deterministic-safe-action content/mode/ownership/lock E2E output | Go test runner | `artifacts/ft-054/verify/chk-03/` | `CHK-03` |
 | `EVID-04` | Staleness/tamper and transaction-failure output | Go test runner | `artifacts/ft-054/verify/chk-04/` | `CHK-04` |
 | `EVID-05` | Documentation audit plus applicable Go test/vet output | Implementer / Go toolchain | `artifacts/ft-054/verify/chk-05/` | `CHK-05` |
