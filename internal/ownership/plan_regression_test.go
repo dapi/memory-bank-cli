@@ -4,7 +4,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"reflect"
 	"runtime"
 	"strings"
 	"testing"
@@ -473,110 +472,6 @@ func TestDirectoryToFileTransitionRejectsUntrackedTopology(t *testing.T) {
 	}
 }
 
-func TestPlanPullBindsAdaptedConflictWithoutMutation(t *testing.T) {
-	repo, source := t.TempDir(), t.TempDir()
-	path := "memory-bank/domain/model.md"
-	write(t, source, path, "base\n")
-	initialize(t, repo, source)
-	write(t, repo, path, "local\n")
-	write(t, source, path, "upstream\n")
-	lockBefore := read(t, repo, LockFileName)
-
-	plan, err := PlanPull(opts(repo, source, "b"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	if plan.FormatVersion != ResolutionPlanVersion || plan.LockDigest == "" || plan.Template.SourceRef == "" {
-		t.Fatalf("plan missing identity binding: %#v", plan)
-	}
-	for _, entry := range plan.Entries {
-		if entry.Path != path {
-			continue
-		}
-		if !entry.RequiresHumanDecision || entry.ProposedAction != Conflict || entry.LocalDigest == "" || entry.UpstreamDigest == "" || len(entry.AllowedActions) != 2 {
-			t.Fatalf("adapted conflict plan entry is incomplete: %#v", entry)
-		}
-		if entry.BaseDigest != "" || entry.BaseMode != "" || entry.BaseSourceRef != "" || entry.BasePath != "" {
-			t.Fatalf("plan must omit unverified historical-base identity: %#v", entry)
-		}
-		if got := read(t, repo, path); got != "local\n" {
-			t.Fatalf("planning changed local payload: %q", got)
-		}
-		if got := read(t, repo, LockFileName); got != lockBefore {
-			t.Fatal("planning changed lock")
-		}
-		return
-	}
-	t.Fatalf("adapted conflict missing from plan: %#v", plan.Entries)
-}
-
-func TestSourceTreePathInvertsPayloadMapping(t *testing.T) {
-	tests := []struct {
-		payloadRoot string
-		downstream  string
-		want        string
-	}{
-		{targetSourcePayloadRoot, "memory-bank/dna/rule.md", "template/memory-bank/dna/rule.md"},
-		{targetSourcePayloadRoot, ".github/workflows/check.yml", "template/.github/workflows/check.yml"},
-		{legacySourcePayloadRoot, "memory-bank/dna/rule.md", "memory-bank/dna/rule.md"},
-		{legacyTemplateSourcePayloadRoot, "memory-bank/dna/rule.md", "memory-bank-template/dna/rule.md"},
-	}
-	for _, test := range tests {
-		t.Run(test.payloadRoot, func(t *testing.T) {
-			if got := sourceTreePath(test.payloadRoot, test.downstream); got != test.want {
-				t.Fatalf("sourceTreePath(%q, %q) = %q, want %q", test.payloadRoot, test.downstream, got, test.want)
-			}
-		})
-	}
-}
-
-func TestPlanPullExposesNonMergeChoicesForManagedLocalDrift(t *testing.T) {
-	repo, source := t.TempDir(), t.TempDir()
-	path := "memory-bank/dna/model.md"
-	write(t, source, path, "base\n")
-	initialize(t, repo, source)
-	write(t, repo, path, "local\n")
-	write(t, source, path, "upstream\n")
-
-	plan, err := PlanPull(opts(repo, source, "b"))
-	if err != nil {
-		t.Fatal(err)
-	}
-	for _, entry := range plan.Entries {
-		if entry.Path != path {
-			continue
-		}
-		if entry.Ownership != Managed || !entry.RequiresHumanDecision || entry.ProposedAction != Conflict {
-			t.Fatalf("managed local-drift conflict is not selectable: %#v", entry)
-		}
-		if got, want := entry.AllowedActions, []string{"keep-local", "take-upstream"}; !reflect.DeepEqual(got, want) {
-			t.Fatalf("allowed actions = %#v, want %#v", got, want)
-		}
-		return
-	}
-	t.Fatalf("managed local-drift conflict missing from plan: %#v", plan.Entries)
-}
-
-func TestVerifyPlanIdentitiesRejectsLocalChangeDuringPlanConstruction(t *testing.T) {
-	repoRoot := t.TempDir()
-	path := "memory-bank/domain/model.md"
-	write(t, repoRoot, path, "before\n")
-	repo, err := pinRepoRoot(repoRoot)
-	if err != nil {
-		t.Fatal(err)
-	}
-	identity, err := captureDestinationIdentity(repo, path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	write(t, repoRoot, path, "after\n")
-
-	err = verifyPlanIdentities(repo, map[string]destinationIdentity{path: identity})
-	if err == nil || !strings.Contains(err.Error(), "destination changed while constructing resolution plan") {
-		t.Fatalf("identity revalidation error=%v", err)
-	}
-}
-
 func TestAdaptedUpstreamDeletionPreservesLocalFileAndAllowsOtherUpdates(t *testing.T) {
 	repo, source := t.TempDir(), t.TempDir()
 	path := "memory-bank/domain/model.md"
@@ -613,68 +508,5 @@ func TestAdaptedUpstreamDeletionPreservesLocalFileAndAllowsOtherUpdates(t *testi
 	lockAfter, exists, err := ReadLock(repo)
 	if err != nil || !exists || lockAfter.Files[path] != lock.Files[path] {
 		t.Fatalf("adapted ownership was not retained: lock=%#v exists=%v err=%v", lockAfter.Files[path], exists, err)
-	}
-}
-
-func TestApplyResolutionPlanIsUnavailableWithoutHumanAuthorization(t *testing.T) {
-	repo, source := t.TempDir(), t.TempDir()
-	path := "memory-bank/domain/model.md"
-	write(t, source, path, "base\n")
-	initialize(t, repo, source)
-	write(t, repo, path, "local\n")
-	write(t, source, path, "upstream\n")
-	options := opts(repo, source, "b")
-	plan, err := PlanPull(options)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := ApplyResolutionPlan(options, plan); !errors.Is(err, ErrResolutionPlanApplicationUnavailable) {
-		t.Fatalf("unresolved plan error = %v, want unavailable", err)
-	}
-	for index := range plan.Entries {
-		if plan.Entries[index].Path == path {
-			plan.Entries[index].SelectedAction = "take-upstream"
-		}
-	}
-	if _, err := ApplyResolutionPlan(options, plan); !errors.Is(err, ErrResolutionPlanApplicationUnavailable) {
-		t.Fatalf("selected plan error = %v, want unavailable", err)
-	}
-	if got := read(t, repo, path); got != "local\n" {
-		t.Fatalf("unavailable apply changed content=%q", got)
-	}
-}
-
-func TestApplyResolutionPlanCannotResolveCanonicalAdaptedMigration(t *testing.T) {
-	repo, source := t.TempDir(), t.TempDir()
-	path := "memory-bank/domain/model.md"
-	write(t, source, "template/"+path, "base\n")
-	initialize(t, repo, source)
-	lock, exists, err := ReadLock(repo)
-	if err != nil || !exists {
-		t.Fatalf("read lock: exists=%v err=%v", exists, err)
-	}
-	lock.Files[path] = File{Ownership: Adapted, BaseDigest: digest([]byte("base\n")), BaseMode: "100644"}
-	lockData, err := marshalLock(lock)
-	if err != nil {
-		t.Fatal(err)
-	}
-	write(t, repo, LockFileName, string(lockData))
-	write(t, repo, path, "local\n")
-	write(t, source, "template/"+path, "upstream\n")
-	options := opts(repo, source, "b")
-	plan, err := PlanPull(options)
-	if err != nil {
-		t.Fatal(err)
-	}
-	for index := range plan.Entries {
-		if plan.Entries[index].Path == path {
-			plan.Entries[index].SelectedAction = "take-upstream"
-		}
-	}
-	if _, err := ApplyResolutionPlan(options, plan); !errors.Is(err, ErrResolutionPlanApplicationUnavailable) {
-		t.Fatalf("canonical adapted resolution error = %v, want unavailable", err)
-	}
-	if got := read(t, repo, path); got != "local\n" {
-		t.Fatalf("unavailable apply changed content=%q", got)
 	}
 }

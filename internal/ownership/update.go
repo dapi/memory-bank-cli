@@ -40,20 +40,8 @@ type mutation struct {
 
 type destinationPrecondition struct {
 	path   string
-	exists bool
 	digest string
 	mode   string
-}
-
-// destinationIdentity is the local file state observed while deriving a
-// plan. Digest and mode always come from the same opened file identity.
-// topology is retained when a source path is blocked by a removable tree so a
-// read-only resolution plan can revalidate that tree before it is returned.
-type destinationIdentity struct {
-	exists   bool
-	digest   string
-	mode     string
-	topology *topologySnapshot
 }
 
 var immutableRefPattern = regexp.MustCompile(`^[0-9a-fA-F]{40}([0-9a-fA-F]{24})?$`)
@@ -86,9 +74,6 @@ func Update(options Options) (Report, error) {
 	}
 	if !exists {
 		return Report{}, ErrLockNotFound
-	}
-	if options.ExpectedLockDigest != "" && options.ExpectedLockDigest != lockDigest {
-		return Report{}, errors.New("reviewed ownership lock changed; regenerate and review the resolution plan")
 	}
 	return run(options, lock, true, repo, lockDigest)
 }
@@ -127,7 +112,7 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 	if err := verifySource(pinnedSource.root, options.SourceRef); err != nil {
 		return Report{}, fmt.Errorf("source checkout changed while reading template: %w", err)
 	}
-	mutations, decisions, next, err := buildPlan(repo, source, old, hasLock, options.UserOwnedResolutions, options.DetachUserOwnedRemovals, nil)
+	mutations, decisions, next, err := buildPlan(repo, source, old, hasLock, options.UserOwnedResolutions)
 	if err != nil {
 		return Report{}, err
 	}
@@ -136,16 +121,14 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 	if agentTarget == "" {
 		agentTarget = agentinstructions.DefaultTarget
 	}
-	if !options.SkipAgentInstructions {
-		if _, templateOwnsAgentFile := source[filepath.ToSlash(agentTarget)]; !templateOwnsAgentFile {
-			agentMutation, agentDecision, err := buildAgentPlan(repo, options.AgentFile)
-			if err != nil {
-				return Report{}, err
-			}
-			decisions = append(decisions, agentDecision)
-			if agentMutation != nil {
-				mutations = append(mutations, *agentMutation)
-			}
+	if _, templateOwnsAgentFile := source[filepath.ToSlash(agentTarget)]; !templateOwnsAgentFile {
+		agentMutation, agentDecision, err := buildAgentPlan(repo, options.AgentFile)
+		if err != nil {
+			return Report{}, err
+		}
+		decisions = append(decisions, agentDecision)
+		if agentMutation != nil {
+			mutations = append(mutations, *agentMutation)
 		}
 	}
 	report := Report{FormatVersion: ReportFormatVersion, DryRun: options.DryRun, Decisions: decisions}
@@ -158,9 +141,7 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 		return report, nil
 	}
 	template := Template{Version: options.TemplateVersion, SourceRef: options.SourceRef}
-	// A detach-only plan changes only lock membership, while ordinary preserved
-	// drift must retain its established no-write behavior.
-	needsLockWrite := !hasLock || templateMutationCount > 0 || old.SchemaVersion != CurrentSchemaVersion || old.Template != template || len(old.Files) != len(next.Files)
+	needsLockWrite := !hasLock || templateMutationCount > 0 || old.SchemaVersion != CurrentSchemaVersion || old.Template != template
 	if !needsLockWrite {
 		if len(mutations) == 0 {
 			return report, nil
@@ -187,22 +168,12 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 	if err != nil {
 		return Report{}, err
 	}
-	mutatedPaths := make(map[string]bool, len(mutations))
-	for _, mutation := range mutations {
-		mutatedPaths[mutation.decision.Path] = true
-	}
-	remainingReviewedPaths := make([]destinationPrecondition, 0, len(options.ExpectedPaths))
-	for _, precondition := range options.ExpectedPaths {
-		if !mutatedPaths[precondition.path] {
-			remainingReviewedPaths = append(remainingReviewedPaths, precondition)
-		}
-	}
 	mutations = append(mutations, mutation{
 		decision:       Decision{Path: LockFileName, Action: UpdateFile, Reason: "record successful update"},
 		data:           lockData,
 		expectedExists: hasLock,
 		expectedDigest: lockDigest,
-		preconditions:  append(lockPreconditions(next), remainingReviewedPaths...),
+		preconditions:  lockPreconditions(next),
 	})
 	if err := applyAtomicallyPinned(options, mutations, repo); err != nil {
 		var committed *committedError
@@ -430,7 +401,7 @@ func modeMatches(observed, expected string) bool {
 	return observed == "" || observed == expected
 }
 
-func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock bool, userOwnedResolutions map[string]bool, detachUserOwnedRemovals bool, identities map[string]destinationIdentity) ([]mutation, []Decision, Lock, error) {
+func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock bool, userOwnedResolutions map[string]bool) ([]mutation, []Decision, Lock, error) {
 	if _, err := inspectRepoRoot(repo.root, repo.info); err != nil {
 		return nil, nil, Lock{}, err
 	}
@@ -453,20 +424,23 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 	sort.Strings(removed)
 	for _, path := range removed {
 		prior := old.Files[path]
-		identity, err := captureDestinationIdentity(repo, path)
+		currentDigest, exists, err := digestDestinationFile(repo, path)
 		if err != nil {
 			return nil, nil, Lock{}, err
 		}
-		if identities != nil {
-			identities[path] = identity
-		}
-		currentDigest, exists := identity.digest, identity.exists
 		decision := Decision{Path: path, Ownership: prior.Ownership}
-		currentMode := identity.mode
+		currentMode := ""
+		if exists {
+			_, info, _, inspectErr := inspectDestination(repo, path)
+			if inspectErr != nil {
+				return nil, nil, Lock{}, inspectErr
+			}
+			currentMode = observedMode(info.Mode().Perm())
+		}
 		switch {
 		case !exists:
 			decision.Action, decision.Reason = Preserve, "file already absent"
-		case prior.Ownership == Managed && currentDigest == prior.PayloadDigest && modeMatches(currentMode, prior.PayloadMode):
+		case prior.Ownership == Managed && currentDigest == prior.PayloadDigest && destinationModeMatches(repo, path, prior.PayloadMode):
 			decision.Action, decision.Reason = Delete, "unmodified managed file was removed upstream"
 			cleanRemovals[path] = currentDigest
 			removalMutationIndex[path] = len(removalMutations)
@@ -479,8 +453,6 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 		case prior.Ownership == Managed:
 			decision.Action, decision.Reason = Conflict, "removed managed file has downstream drift"
 			next.Files[path] = prior
-		case prior.Ownership == UserOwned && detachUserOwnedRemovals:
-			decision.Action, decision.Reason = Preserve, "keep and detach user-owned file removed upstream"
 		default:
 			decision.Action, decision.Reason = Preserve, "downstream-owned file is never deleted"
 			next.Files[path] = prior
@@ -509,20 +481,13 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 		if err != nil {
 			return nil, nil, Lock{}, err
 		}
-		identity := destinationIdentity{exists: exists, digest: currentDigest, topology: topology}
 		currentMode := ""
 		if exists {
-			identity, err = captureDestinationIdentity(repo, path)
-			if err != nil {
-				return nil, nil, Lock{}, err
+			_, info, _, inspectErr := inspectDestination(repo, path)
+			if inspectErr != nil {
+				return nil, nil, Lock{}, inspectErr
 			}
-			if !identity.exists || identity.digest != currentDigest {
-				return nil, nil, Lock{}, fmt.Errorf("destination changed while planning: %s", path)
-			}
-			currentMode = identity.mode
-		}
-		if identities != nil {
-			identities[path] = identity
+			currentMode = observedMode(info.Mode().Perm())
 		}
 		priorBaseMode, priorPayloadMode := prior.BaseMode, prior.PayloadMode
 		if priorBaseMode == "" {
@@ -538,7 +503,6 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 			}
 		}
 		decision := Decision{Path: path, Ownership: class}
-		mutationData, mutationMode := incoming.data, fileMode(incoming.mode)
 		file := File{Ownership: class, BaseDigest: incoming.digest, BaseMode: incoming.mode}
 		if class == Managed || class == Generated {
 			file.PayloadDigest = incoming.digest
@@ -645,7 +609,7 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 		decision.Ownership = file.Ownership
 		if decision.Action == Create || decision.Action == UpdateFile {
 			sourceMutations = append(sourceMutations, mutation{
-				decision: decision, data: mutationData, mode: mutationMode, modeSet: true, expectedExists: exists, expectedDigest: currentDigest, expectedMode: currentMode, topology: topology,
+				decision: decision, data: incoming.data, mode: fileMode(incoming.mode), modeSet: true, expectedExists: exists, expectedDigest: currentDigest, expectedMode: currentMode, topology: topology,
 			})
 			if topology != nil {
 				for _, prerequisite := range topology.files {
@@ -663,6 +627,14 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 	return mutations, decisions, next, nil
 }
 
+func destinationModeMatches(repo pinnedRepo, relative, expected string) bool {
+	if expected == "" {
+		return true
+	}
+	_, info, exists, err := inspectDestination(repo, relative)
+	return err == nil && exists && modeMatches(observedMode(info.Mode().Perm()), expected)
+}
+
 func lockPreconditions(lock Lock) []destinationPrecondition {
 	paths := make([]string, 0, len(lock.Files))
 	for path, file := range lock.Files {
@@ -673,7 +645,7 @@ func lockPreconditions(lock Lock) []destinationPrecondition {
 	sort.Strings(paths)
 	result := make([]destinationPrecondition, 0, len(paths))
 	for _, path := range paths {
-		result = append(result, destinationPrecondition{path: path, exists: true, digest: lock.Files[path].PayloadDigest, mode: lock.Files[path].PayloadMode})
+		result = append(result, destinationPrecondition{path: path, digest: lock.Files[path].PayloadDigest, mode: lock.Files[path].PayloadMode})
 	}
 	return result
 }
@@ -762,11 +734,6 @@ func applyAtomicallyPinnedWithOps(options Options, mutations []mutation, repo pi
 	}
 	repoRoot := repo.root
 	options.RepoRoot = repoRoot
-	for _, precondition := range options.ExpectedPaths {
-		if err := verifyDestinationPrecondition(repo, precondition); err != nil {
-			return fmt.Errorf("validate reviewed state %s: %w", precondition.path, err)
-		}
-	}
 	staging, err := os.MkdirTemp(repoRoot, ".memory-bank-update-")
 	if err != nil {
 		return fmt.Errorf("create update staging: %w", err)
@@ -1099,13 +1066,7 @@ func verifyDestinationPrecondition(repo pinnedRepo, precondition destinationPrec
 	if err != nil {
 		return err
 	}
-	if exists != precondition.exists {
-		return errors.New("managed payload existence changed before lock commit")
-	}
 	if !exists {
-		return nil
-	}
-	if !precondition.exists {
 		return errors.New("managed payload is missing")
 	}
 	readInfo, data, err := secureReadDestination(repo, precondition.path)
@@ -1308,28 +1269,6 @@ func digestDestinationFile(repo pinnedRepo, relative string) (string, bool, erro
 		return "", false, err
 	}
 	return digest(data), true, nil
-}
-
-func captureDestinationIdentity(repo pinnedRepo, relative string) (destinationIdentity, error) {
-	_, inspected, exists, err := inspectDestination(repo, relative)
-	if err != nil {
-		return destinationIdentity{}, err
-	}
-	if !exists {
-		return destinationIdentity{}, nil
-	}
-	opened, data, err := secureReadDestination(repo, relative)
-	if err != nil {
-		return destinationIdentity{}, err
-	}
-	if !os.SameFile(inspected, opened) {
-		return destinationIdentity{}, fmt.Errorf("destination file changed while reading: %s", relative)
-	}
-	return destinationIdentity{
-		exists: true,
-		digest: digest(data),
-		mode:   observedMode(opened.Mode().Perm()),
-	}, nil
 }
 
 func digest(data []byte) string {
