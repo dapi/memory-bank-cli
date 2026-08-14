@@ -14,5 +14,5 @@ audience: humans_and_agents
 
 - [brief.md](brief.md) — canonical problem, scope, validation decision and acceptance contract.
 - [design.md](design.md) — selected plan/apply safety contract and C1 context.
-- [decision-log.md](decision-log.md) — FPF-backed decision provenance and routing follow-up.
+- [decision-log.md](decision-log.md) — FPF-backed decision provenance, including the two unresolved security-boundary gates.
 - [feature-review-report.md](feature-review-report.md) — bounded review-improve record.

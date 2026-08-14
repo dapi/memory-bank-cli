@@ -252,3 +252,27 @@ Yes. `BD-01` / `DEC-04` remains the implementation gate; the protected receipt m
 
 - **Status:** `reopened_pending_human_approval`
 - **Critical/important findings remaining:** `BD-01` / `DEC-04` human-authorization approval; `DEC-03` publication-routing follow-up.
+
+## Cycle 10
+
+### Review summary
+
+A follow-up review found that receipt finalization after the payload/lock transaction violated the all-or-nothing contract, that the protected-registry boundary had not been selected, that obsolete stale-recovery wording contradicted the allowed authorized non-merge recovery, and that the brief again prescribed design-owned compatibility mechanics. The canonical design now requires one atomic commit decision for payload, lock, compatibility state and authoritative provenance; `BD-02` / `DEC-05` records the unresolved registry decision, and `DEC-02` remains pending until it is resolved. The brief now specifies only the required collision, replay-resistance, recovery and atomicity outcomes.
+
+### Critical and important findings
+
+| Severity | Finding | Resolution |
+| --- | --- | --- |
+| `critical` | A fallible receipt-finalization write followed the committed apply. | `SOL-03`, `CTR-03` and `FM-03` require a prepared receipt to become authoritative through the same atomic commit decision as payload, lock and compatibility state; failure leaves the prior authoritative state intact. |
+| `critical` | The registry carrier/topology, trust root, credential lifecycle and recovery behavior were unspecified. | Added blocking `BD-02` / `DEC-05`; `DEC-02` is pending until that design is approved. |
+| `important` | Two contradictory stale-recovery rules remained in the canonical design. | Replaced the obsolete deterministic-only rule with the final full-scope rule permitting resolved authorized non-merge actions and prohibiting only bounded, unresolved and reviewed-merge recovery. |
+| `important` | The brief repeated selected control-path and provenance mechanics. | `SC-04i`, `NEG-04` and `CHK-03` now retain outcome-level acceptance only; `design.md` owns representation and protocol choices. |
+
+### Human gate
+
+Yes. Approve both `BD-01` / `DEC-04` (human authorization) and `BD-02` / `DEC-05` (protected-registry carrier and atomic receipt-publication protocol). Until both are resolved, do not implement or publish FT-054 as Plan Ready.
+
+## Final Report
+
+- **Status:** `reopened_pending_human_approval`
+- **Critical/important findings remaining:** `BD-01` / `DEC-04` human-authorization approval; `BD-02` / `DEC-05` protected-registry atomicity approval; `DEC-03` publication-routing follow-up.
