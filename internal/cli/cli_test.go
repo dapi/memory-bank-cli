@@ -204,6 +204,14 @@ func TestUpdateDispatchesSelfUpdaterAndPullKeepsOwnershipFlags(t *testing.T) {
 	if exitCode := Run([]string{"update", "--dry-run"}, "v1.2.3", &stdout, &stderr); exitCode != exitUsage || !strings.Contains(stderr.String(), "unexpected arguments") {
 		t.Fatalf("update arguments exit=%d stderr=%q", exitCode, stderr.String())
 	}
+	for _, helpFlag := range []string{"--help", "-h"} {
+		stdout.Reset()
+		stderr.Reset()
+		called = false
+		if exitCode := Run([]string{"update", helpFlag}, "v1.2.3", &stdout, &stderr); exitCode != exitSuccess || called || !strings.Contains(stdout.String(), "Usage: memory-bank-cli update") {
+			t.Fatalf("update %s exit=%d called=%v stdout=%q stderr=%q", helpFlag, exitCode, called, stdout.String(), stderr.String())
+		}
+	}
 	stdout.Reset()
 	stderr.Reset()
 	if exitCode := Run([]string{"pull", "--help"}, "v1.2.3", &stdout, &stderr); exitCode != exitSuccess || !strings.Contains(stderr.String(), "-ask") {

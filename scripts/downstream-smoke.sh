@@ -111,15 +111,10 @@ resolve_ref() {
 step="resolve-cli-ref"
 cli_sha="$(resolve_ref "$cli_ref")"
 cli_install_ref="$cli_sha"
-sync_command="pull"
 if [ -n "$release_tag" ] && [ "$cli_ref" = "$release_tag" ]; then
   # Stable releases are installed by tag so the smoke test covers the released
-  # module-consumer path. v1.0.1 predates `pull`, so only that legacy release
-  # retains its older synchronization command.
+  # module-consumer path.
   cli_install_ref="$cli_ref"
-fi
-if [ "$release_tag" = "v1.0.1" ] && [ "$cli_ref" = "$release_tag" ]; then
-  sync_command="update"
 fi
 step="resolve-template-ref"
 template_sha="$(resolve_ref "$template_ref")"
@@ -142,6 +137,16 @@ GOBIN="$bin_root" go install "github.com/dapi/memory-bank-cli/cmd/memory-bank-cl
 cli="$bin_root/memory-bank-cli"
 step="verify-cli-executable"
 test -x "$cli"
+
+# `pull` was introduced after all currently published releases. Detect the
+# installed command contract rather than pinning one legacy tag, so every
+# pre-`pull` release continues to use `update` and later releases use `pull`.
+step="detect-sync-command"
+if "$cli" --help | grep -Eq '^[[:space:]]+pull[[:space:]]'; then
+  sync_command="pull"
+else
+  sync_command="update"
+fi
 
 if [ -n "$release_tag" ]; then
   step="fetch-release-metadata"

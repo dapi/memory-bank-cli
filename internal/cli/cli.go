@@ -65,11 +65,7 @@ func Run(arguments []string, version string, stdout, stderr io.Writer) int {
 	case "init":
 		return runOwnership(arguments[1:], "init", os.Stdin, term.IsTerminal(int(os.Stdin.Fd())), stdout, stderr)
 	case "update":
-		if len(arguments) != 1 {
-			fmt.Fprintf(stderr, "memory-bank-cli update: unexpected arguments: %v\n", arguments[1:])
-			return exitUsage
-		}
-		return runSelfUpdate(version, stdout, stderr)
+		return runUpdate(arguments[1:], version, stdout, stderr)
 	case "pull":
 		return runOwnership(arguments[1:], "pull", os.Stdin, term.IsTerminal(int(os.Stdin.Fd())), stdout, stderr)
 	case "doctor":
@@ -99,6 +95,27 @@ func Run(arguments []string, version string, stdout, stderr io.Writer) int {
 		printRootUsage(stderr)
 		return exitUsage
 	}
+}
+
+func runUpdate(arguments []string, version string, stdout, stderr io.Writer) int {
+	if len(arguments) == 1 && (arguments[0] == "--help" || arguments[0] == "-h") {
+		printUpdateUsage(stdout)
+		return exitSuccess
+	}
+	if len(arguments) != 0 {
+		fmt.Fprintf(stderr, "memory-bank-cli update: unexpected arguments: %v\n", arguments)
+		return exitUsage
+	}
+	return runSelfUpdate(version, stdout, stderr)
+}
+
+func printUpdateUsage(writer io.Writer) {
+	fmt.Fprintln(writer, "Update the installed memory-bank-cli from the latest release.")
+	fmt.Fprintln(writer)
+	fmt.Fprintln(writer, "Usage: memory-bank-cli update")
+	fmt.Fprintln(writer)
+	fmt.Fprintln(writer, "Options:")
+	fmt.Fprintln(writer, "  --help, -h  Show this help")
 }
 
 func printRootUsage(writer io.Writer) {
