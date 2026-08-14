@@ -469,7 +469,7 @@ func askUserOwnedCollisions(stdin io.Reader, writer io.Writer, report ownership.
 			continue
 		}
 		for {
-			fmt.Fprintf(writer, "User-owned collision: %s\nPlanned safe action: keep local file (%s).\nChoose [k]eep local or [o]verwrite from source: ", decision.Path, decision.Reason)
+			fmt.Fprintf(writer, "User-owned template path: %s\nPlanned safe action: keep local state (%s).\nChoose [k]eep local state or [o]verwrite/restore from source: ", decision.Path, decision.Reason)
 			if !scanner.Scan() {
 				if err := scanner.Err(); err != nil {
 					return nil, fmt.Errorf("read --ask response: %w", err)
@@ -480,11 +480,11 @@ func askUserOwnedCollisions(stdin io.Reader, writer io.Writer, report ownership.
 			case "k", "keep":
 				overwrites[decision.Path] = false
 				break
-			case "o", "overwrite":
+			case "o", "overwrite", "r", "restore":
 				overwrites[decision.Path] = true
 				break
 			default:
-				fmt.Fprintln(writer, "Please enter k/keep or o/overwrite.")
+				fmt.Fprintln(writer, "Please enter k/keep or o/overwrite (r/restore also restores a missing file).")
 				continue
 			}
 			break
