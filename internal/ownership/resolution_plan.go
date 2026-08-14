@@ -66,8 +66,12 @@ func PlanPull(options Options) (ResolutionPlan, error) {
 	if err := verifySource(pinnedSource.root, options.SourceRef); err != nil {
 		return ResolutionPlan{}, fmt.Errorf("source checkout changed while reading template: %w", err)
 	}
-	_, decisions, _, err := buildPlan(repo, source, lock, true, nil, true)
+	identities := make(map[string]destinationIdentity)
+	_, decisions, _, err := buildPlan(repo, source, lock, true, nil, true, identities)
 	if err != nil {
+		return ResolutionPlan{}, err
+	}
+	if err := verifyPlanIdentities(repo, identities); err != nil {
 		return ResolutionPlan{}, err
 	}
 	entries := make([]ResolutionPlanEntry, 0, len(decisions))
@@ -77,24 +81,11 @@ func PlanPull(options Options) (ResolutionPlan, error) {
 		// resolution-plan entry.
 		incoming, sourceExists := source[decision.Path]
 		prior := lock.Files[decision.Path]
-		localDigest, exists, err := digestDestinationFile(repo, decision.Path)
-		if err != nil {
-			// buildPlan has already captured and validated clean topology changes.
-			// A second regular-file lookup cannot traverse the old topology; leave
-			// its local identity empty rather than rejecting a deterministic plan.
-			localDigest, exists = "", false
-		}
+		identity := identities[decision.Path]
 		entry := ResolutionPlanEntry{Path: decision.Path, LocalPath: decision.Path, Ownership: decision.Ownership, BaseDigest: prior.BaseDigest, BaseMode: prior.BaseMode, BaseSourceRef: lock.Template.SourceRef, BasePath: decision.Path, ProposedAction: decision.Action, Reason: decision.Reason}
-		if exists {
-			entry.LocalDigest = localDigest
-			_, info, stillExists, inspectErr := inspectDestination(repo, decision.Path)
-			if inspectErr != nil || !stillExists || info == nil {
-				if inspectErr == nil {
-					inspectErr = fmt.Errorf("destination changed while reading plan")
-				}
-				return ResolutionPlan{}, inspectErr
-			}
-			entry.LocalMode = observedMode(info.Mode().Perm())
+		if identity.exists {
+			entry.LocalDigest = identity.digest
+			entry.LocalMode = identity.mode
 		}
 		if sourceExists {
 			entry.UpstreamDigest, entry.UpstreamMode = incoming.digest, incoming.mode
@@ -111,6 +102,31 @@ func PlanPull(options Options) (ResolutionPlan, error) {
 	}
 	sort.Slice(entries, func(i, j int) bool { return entries[i].Path < entries[j].Path })
 	return ResolutionPlan{FormatVersion: ResolutionPlanVersion, Template: Template{Version: options.TemplateVersion, SourceRef: options.SourceRef}, LockDigest: lockDigest, Entries: entries}, nil
+}
+
+func verifyPlanIdentities(repo pinnedRepo, identities map[string]destinationIdentity) error {
+	paths := make([]string, 0, len(identities))
+	for path := range identities {
+		paths = append(paths, path)
+	}
+	sort.Strings(paths)
+	for _, path := range paths {
+		expected := identities[path]
+		if expected.topology != nil {
+			if err := verifyTopologySnapshot(repo, path, expected.topology); err != nil {
+				return fmt.Errorf("destination changed while constructing resolution plan: %s: %w", path, err)
+			}
+			continue
+		}
+		observed, err := captureDestinationIdentity(repo, path)
+		if err != nil {
+			return fmt.Errorf("destination changed while constructing resolution plan: %s: %w", path, err)
+		}
+		if observed.exists != expected.exists || observed.digest != expected.digest || observed.mode != expected.mode {
+			return fmt.Errorf("destination changed while constructing resolution plan: %s", path)
+		}
+	}
+	return nil
 }
 
 func requiresResolutionDecision(decision Decision, prior File) bool {

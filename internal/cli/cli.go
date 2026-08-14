@@ -375,8 +375,6 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 	templateVersion := flags.String("template-version", "", "human-readable template version")
 	sourceRef := flags.String("source-ref", "", "full commit SHA matching the source checkout HEAD")
 	dryRun := flags.Bool("dry-run", false, "print the complete mutation plan without applying it")
-	planOutput := flags.Bool("plan", false, "print a versioned, machine-readable pull resolution plan without applying it")
-	applyPlan := flags.String("apply-plan", "", "reserved for human-authorized resolution plans; currently unavailable")
 	ask := flags.Bool("ask", false, "interactively resolve user-owned managed-file collisions")
 	agentFile := flags.String("agent-file", "AGENTS.md", "single repository-relative agent instruction file to manage")
 	jsonOutput := addJSONOutputFlag(flags)
@@ -393,34 +391,6 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 	if *ask && command != "pull" {
 		fmt.Fprintln(stderr, "memory-bank-cli init: --ask is only supported by pull")
 		return exitUsage
-	}
-	if *planOutput && command != "pull" {
-		fmt.Fprintln(stderr, "memory-bank-cli init: --plan is only supported by pull")
-		return exitUsage
-	}
-	if *applyPlan != "" && command != "pull" {
-		fmt.Fprintln(stderr, "memory-bank-cli init: --apply-plan is only supported by pull")
-		return exitUsage
-	}
-	if *applyPlan != "" && *ask {
-		fmt.Fprintln(stderr, "memory-bank-cli pull: --apply-plan cannot be combined with --ask")
-		return exitUsage
-	}
-	if *planOutput && *ask {
-		fmt.Fprintln(stderr, "memory-bank-cli pull: --plan cannot be combined with --ask")
-		return exitUsage
-	}
-	if *planOutput && *applyPlan != "" {
-		fmt.Fprintln(stderr, "memory-bank-cli pull: --plan cannot be combined with --apply-plan")
-		return exitUsage
-	}
-	if *applyPlan != "" {
-		if err := validateResolutionPlanCarrier(*applyPlan); err != nil {
-			fmt.Fprintln(stderr, "read resolution plan:", err)
-			return exitFailure
-		}
-		fmt.Fprintln(stderr, ownership.ErrResolutionPlanApplicationUnavailable)
-		return exitFailure
 	}
 	if *ask && !stdinIsTerminal {
 		fmt.Fprintln(stderr, "memory-bank-cli pull: --ask requires an interactive terminal; rerun without --ask in CI or piped execution")
@@ -446,23 +416,6 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 		RepoRoot: repoRoot, SourceRoot: sourceRoot, TemplateVersion: resolvedVersion,
 		SourceRef: resolvedRef, DryRun: *dryRun,
 		AgentFile: *agentFile,
-	}
-	if *planOutput {
-		plan, planErr := ownership.PlanPull(options)
-		if planErr != nil {
-			fmt.Fprintln(stderr, planErr)
-			return exitFailure
-		}
-		encoded, encodeErr := json.MarshalIndent(plan, "", "  ")
-		if encodeErr != nil {
-			fmt.Fprintln(stderr, encodeErr)
-			return exitFailure
-		}
-		if _, writeErr := fmt.Fprintln(stdout, string(encoded)); writeErr != nil {
-			fmt.Fprintln(stderr, writeErr)
-			return exitFailure
-		}
-		return exitSuccess
 	}
 	var report ownership.Report
 	if *ask {
@@ -506,86 +459,6 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 		return exitFailure
 	}
 	return exitSuccess
-}
-
-const maxResolutionPlanCarrierBytes int64 = 16 << 20
-
-// validateResolutionPlanCarrier bounds an untrusted carrier before any future
-// decoder is allowed to inspect it. The streaming count is retained in
-// addition to Stat so a concurrent replacement cannot bypass the limit.
-func validateResolutionPlanCarrier(filePath string) error {
-	info, err := os.Stat(filePath)
-	if err != nil {
-		return err
-	}
-	if !info.Mode().IsRegular() {
-		return fmt.Errorf("resolution plan must be a regular file")
-	}
-	if info.Size() > maxResolutionPlanCarrierBytes {
-		return fmt.Errorf("resolution plan exceeds %d-byte limit", maxResolutionPlanCarrierBytes)
-	}
-	file, err := os.Open(filePath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	read, err := io.Copy(io.Discard, io.LimitReader(file, maxResolutionPlanCarrierBytes+1))
-	if err != nil {
-		return err
-	}
-	if read > maxResolutionPlanCarrierBytes {
-		return fmt.Errorf("resolution plan exceeds %d-byte limit", maxResolutionPlanCarrierBytes)
-	}
-	return nil
-}
-
-func rejectDuplicateJSONMembers(data []byte) error {
-	decoder := json.NewDecoder(bytes.NewReader(data))
-	if err := scanJSONValue(decoder); err != nil {
-		return err
-	}
-	if token, err := decoder.Token(); err != io.EOF {
-		return fmt.Errorf("trailing JSON content: %v", token)
-	}
-	return nil
-}
-
-func scanJSONValue(decoder *json.Decoder) error {
-	token, err := decoder.Token()
-	if err != nil {
-		return err
-	}
-	delimiter, ok := token.(json.Delim)
-	if !ok {
-		return nil
-	}
-	switch delimiter {
-	case '{':
-		seen := make(map[string]bool)
-		for decoder.More() {
-			keyToken, keyErr := decoder.Token()
-			if keyErr != nil {
-				return keyErr
-			}
-			key := strings.ToLower(keyToken.(string))
-			if seen[key] {
-				return fmt.Errorf("duplicate JSON member %q", keyToken)
-			}
-			seen[key] = true
-			if valueErr := scanJSONValue(decoder); valueErr != nil {
-				return valueErr
-			}
-		}
-		_, err = decoder.Token()
-	case '[':
-		for decoder.More() {
-			if err := scanJSONValue(decoder); err != nil {
-				return err
-			}
-		}
-		_, err = decoder.Token()
-	}
-	return err
 }
 
 func askUserOwnedCollisions(stdin io.Reader, writer io.Writer, report ownership.Report) (map[string]bool, error) {

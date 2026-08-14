@@ -534,10 +534,32 @@ func TestPlanPullExposesNonMergeChoicesForManagedLocalDrift(t *testing.T) {
 	t.Fatalf("managed local-drift conflict missing from plan: %#v", plan.Entries)
 }
 
-func TestAdaptedUpstreamDeletionRemainsConflictWithoutAbsentBaseHistory(t *testing.T) {
+func TestVerifyPlanIdentitiesRejectsLocalChangeDuringPlanConstruction(t *testing.T) {
+	repoRoot := t.TempDir()
+	path := "memory-bank/domain/model.md"
+	write(t, repoRoot, path, "before\n")
+	repo, err := pinRepoRoot(repoRoot)
+	if err != nil {
+		t.Fatal(err)
+	}
+	identity, err := captureDestinationIdentity(repo, path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	write(t, repoRoot, path, "after\n")
+
+	err = verifyPlanIdentities(repo, map[string]destinationIdentity{path: identity})
+	if err == nil || !strings.Contains(err.Error(), "destination changed while constructing resolution plan") {
+		t.Fatalf("identity revalidation error=%v", err)
+	}
+}
+
+func TestAdaptedUpstreamDeletionPreservesLocalFileAndAllowsOtherUpdates(t *testing.T) {
 	repo, source := t.TempDir(), t.TempDir()
 	path := "memory-bank/domain/model.md"
+	updatedPath := "memory-bank/dna/rule.md"
 	write(t, source, path, "base\n")
+	write(t, source, updatedPath, "before\n")
 	initialize(t, repo, source)
 	lock, exists, err := ReadLock(repo)
 	if err != nil || !exists {
@@ -549,21 +571,25 @@ func TestAdaptedUpstreamDeletionRemainsConflictWithoutAbsentBaseHistory(t *testi
 		t.Fatal(err)
 	}
 	write(t, repo, LockFileName, string(lockData))
-	lockBefore := read(t, repo, LockFileName)
 	if err := os.Remove(filepath.Join(source, filepath.FromSlash(path))); err != nil {
 		t.Fatal(err)
 	}
+	write(t, source, updatedPath, "after\n")
 
 	report, err := Update(opts(repo, source, "b"))
 	decision := decisionFor(t, report, path)
-	if err != nil || report.Applied || decision.Action != Conflict || decision.Reason != "adapted file was removed upstream; absent-base history is unavailable" {
+	if err != nil || !report.Applied || report.ConflictCount != 0 || decision.Action != Preserve || decision.Reason != "downstream-owned file is never deleted" {
 		t.Fatalf("adapted upstream deletion = report=%#v err=%v", report, err)
 	}
 	if got := read(t, repo, path); got != "base\n" {
-		t.Fatalf("conflict changed payload: %q", got)
+		t.Fatalf("preserved payload changed: %q", got)
 	}
-	if got := read(t, repo, LockFileName); got != lockBefore {
-		t.Fatal("conflict changed lock")
+	if got := read(t, repo, updatedPath); got != "after\n" {
+		t.Fatalf("safe upstream update was not applied: %q", got)
+	}
+	lockAfter, exists, err := ReadLock(repo)
+	if err != nil || !exists || lockAfter.Files[path] != lock.Files[path] {
+		t.Fatalf("adapted ownership was not retained: lock=%#v exists=%v err=%v", lockAfter.Files[path], exists, err)
 	}
 }
 

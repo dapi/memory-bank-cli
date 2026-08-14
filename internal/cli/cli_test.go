@@ -219,33 +219,22 @@ func TestUpdateDispatchesSelfUpdaterAndPullKeepsOwnershipFlags(t *testing.T) {
 	}
 }
 
-func TestApplyPlanIsUnavailableAndCarrierIsBounded(t *testing.T) {
-	planPath := filepath.Join(t.TempDir(), "resolution-plan.json")
-	if err := os.WriteFile(planPath, []byte("{}"), 0o600); err != nil {
-		t.Fatal(err)
+func TestResolutionPlanFlagsAreNotRegistered(t *testing.T) {
+	for _, arguments := range [][]string{{"pull", "--plan"}, {"pull", "--apply-plan", "resolution-plan.json"}} {
+		var stdout, stderr bytes.Buffer
+		if exitCode := Run(arguments, "test", &stdout, &stderr); exitCode != exitUsage {
+			t.Fatalf("%v exit=%d, want usage", arguments, exitCode)
+		}
+		if !strings.Contains(stderr.String(), "flag provided but not defined") {
+			t.Fatalf("%v stderr=%q", arguments, stderr.String())
+		}
 	}
 	var stdout, stderr bytes.Buffer
-	if exitCode := Run([]string{"pull", "--apply-plan", planPath}, "test", &stdout, &stderr); exitCode != exitFailure {
-		t.Fatalf("apply-plan exit=%d, want failure", exitCode)
+	if exitCode := Run([]string{"pull", "--help"}, "test", &stdout, &stderr); exitCode != exitSuccess {
+		t.Fatalf("help exit=%d stderr=%q", exitCode, stderr.String())
 	}
-	if !strings.Contains(stderr.String(), ownership.ErrResolutionPlanApplicationUnavailable.Error()) {
-		t.Fatalf("apply-plan stderr=%q", stderr.String())
-	}
-
-	oversizedPath := filepath.Join(t.TempDir(), "oversized-resolution-plan.json")
-	file, err := os.Create(oversizedPath)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := file.Truncate(maxResolutionPlanCarrierBytes + 1); err != nil {
-		file.Close()
-		t.Fatal(err)
-	}
-	if err := file.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := validateResolutionPlanCarrier(oversizedPath); err == nil || !strings.Contains(err.Error(), "exceeds") {
-		t.Fatalf("oversized carrier error=%v, want limit rejection", err)
+	if strings.Contains(stderr.String(), "-plan") || strings.Contains(stderr.String(), "-apply-plan") {
+		t.Fatalf("private resolution-plan flags leaked into help: %q", stderr.String())
 	}
 }
 
