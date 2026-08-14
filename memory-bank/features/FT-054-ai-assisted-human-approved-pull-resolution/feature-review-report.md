@@ -161,5 +161,5 @@ Yes. Approve `BD-01` / `DEC-04`: the attestation/signature format, canonicalizat
 ## Final Report
 
 - **Status:** `reopened_pending_human_approval`
-- **Critical/important findings remaining:** `BD-01` / `DEC-04` approval.
+- **Critical/important findings remaining:** `BD-01` / `DEC-04` human-authorization approval; `DEC-03` remains an important publication follow-up to refresh Feature Flow routing links to the immutable carrier for this revised package snapshot.
 - **Implemented-product documentation:** current README does not advertise the planned workflow.
