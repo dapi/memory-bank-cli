@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [2.1.0] - 2026-08-15
+
 ### Added
 
 - Add reviewed `pull --plan FILE` and `pull --apply-plan FILE` workflows for
@@ -186,7 +188,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Add opt-in GitHub workflow integration and managed Memory Bank blocks.
 - Add Go install, Homebrew, and platform-specific release artifacts.
 
-[Unreleased]: https://github.com/dapi/memory-bank-cli/compare/v2.0.1...HEAD
+[Unreleased]: https://github.com/dapi/memory-bank-cli/compare/v2.1.0...HEAD
+[2.1.0]: https://github.com/dapi/memory-bank-cli/compare/v2.0.1...v2.1.0
 [2.0.1]: https://github.com/dapi/memory-bank-cli/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/dapi/memory-bank-cli/compare/v1.8.1...v2.0.0
 [1.8.1]: https://github.com/dapi/memory-bank-cli/compare/v1.8.0...v1.8.1

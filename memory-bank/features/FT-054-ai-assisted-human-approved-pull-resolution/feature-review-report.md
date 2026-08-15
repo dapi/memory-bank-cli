@@ -324,3 +324,28 @@ published.
 - **Status:** `implementation_complete_pending_ci`.
 - **Critical/important findings remaining:** none in the implementation;
   publication routing and release evidence remain pending.
+
+## Cycle 12
+
+### Review summary
+
+PR #56 passed `Validate`, `Local init/update E2E` and `Stable downstream
+smoke`, merged to `main` as `b9ec3a2`, and closed issue #54. The feature
+lifecycle is complete and the implementation plan is archived. Release
+`v2.1.0` is the selected minor version because the change adds backward-
+compatible public plan/apply commands.
+
+### Critical and important findings
+
+None.
+
+### Human gate
+
+No. The user authorized implementation and release; publication continues
+through the tag-triggered release workflow.
+
+## Final Report
+
+- **Status:** `done_pending_release_workflow`.
+- **Critical/important findings remaining:** none.
+- **Release carrier:** `v2.1.0` from this versioned changelog commit.
