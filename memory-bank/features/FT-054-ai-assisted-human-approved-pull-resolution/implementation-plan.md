@@ -6,7 +6,7 @@ purpose: "Execution plan for the accepted trusted-local resolution workflow."
 derived_from:
   - brief.md
   - design.md
-status: active
+status: archived
 audience: humans_and_agents
 must_not_define:
   - ft_054_scope

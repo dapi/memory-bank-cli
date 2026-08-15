@@ -7,7 +7,7 @@ derived_from:
   - ../../flows/feature.md
   - https://github.com/dapi/memory-bank-cli/issues/54
 status: active
-delivery_status: in_progress
+delivery_status: done
 audience: humans_and_agents
 ---
 

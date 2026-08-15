@@ -26,7 +26,7 @@ solution. This ledger records why those decisions were accepted.
 | `DEC-03` | accepted | Use a trusted-local authorization model rather than cryptographic reviewer identity. | The user approved this boundary on 2026-08-15. The CLI can prove state/result integrity but cannot distinguish a human from another process on the same account without an external authority. | No signing keys, reviewer registry or credential lifecycle; review remains visible in Git/user workflow. |
 | `DEC-04` | accepted | Recover historical base from `.lock.template.source_ref` and verify the Git blob against `BaseDigest`/`BaseMode`. | The immutable source identity and base digest already exist; the upstream fetch contains reachable history. | No lock-history sidecar or protected receipt registry. Missing/mismatched history disables merge only. |
 | `DEC-05` | accepted | Use deterministic non-overlapping line merge and include its exact result in the reviewed plan. | This allows mechanical assistance without claiming semantic correctness. | Apply recomputes exact bytes/mode; overlap keeps merge unavailable. |
-| `DEC-06` | pending | Refresh issue #54 with the final implementation/PR/release carrier. | Feature Flow requires a current tracker route. | Complete during publication. |
+| `DEC-06` | accepted | Route issue #54 through the final implementation and release carrier. | PR #56 passed all required checks, merged as `b9ec3a2`, and closed issue #54. | Release `v2.1.0` carries the versioned changelog and installable binaries. |
 
 ## Open Questions
 
