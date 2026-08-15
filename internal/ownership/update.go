@@ -117,6 +117,17 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 	if err := verifySource(pinnedSource.root, options.SourceRef); err != nil {
 		return Report{}, fmt.Errorf("source checkout changed while reading template: %w", err)
 	}
+	// An ordinary pull resolves only mechanically provable adapted-file merges:
+	// a locked historical base is available and the two line edits do not
+	// overlap. Everything else remains a conflict for --plan/--apply-plan (or
+	// another explicit resolution), so this never substitutes a semantic choice.
+	if hasLock && options.AdaptedResolutions == nil {
+		automatic, automaticErr := automaticAdaptedMergeResolutions(repo, pinnedSource, source, old, options)
+		if automaticErr != nil {
+			return Report{}, automaticErr
+		}
+		options.AdaptedResolutions = automatic
+	}
 	mutations, decisions, next, err := buildPlan(repo, source, old, hasLock, options.UserOwnedResolutions, options.AdaptedResolutions, options.DetachUserOwnedRemovals)
 	if err != nil {
 		return Report{}, err
@@ -200,6 +211,61 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 	}
 	report.Applied = true
 	return report, nil
+}
+
+// automaticAdaptedMergeResolutions finds only non-overlapping, Git-verified
+// three-way merges. Missing history, unreadable paths, overlapping edits, and
+// all non-adapted conflicts deliberately remain unresolved.
+func automaticAdaptedMergeResolutions(repo pinnedRepo, currentSource pinnedSource, source map[string]payload, old Lock, options Options) (map[string]AdaptedResolution, error) {
+	_, decisions, _, err := buildPlan(repo, source, old, true, nil, nil, false)
+	if err != nil {
+		return nil, err
+	}
+	hasCandidate := false
+	for _, decision := range decisions {
+		if decision.Action == Conflict && decision.Ownership == Adapted {
+			hasCandidate = true
+			break
+		}
+	}
+	if !hasCandidate || options.verifySource != nil {
+		return nil, nil
+	}
+
+	historical, err := readGitSource(currentSource, old.Template.SourceRef)
+	if err != nil {
+		// Ordinary pull remains usable when an old source object was pruned or
+		// otherwise cannot be verified; it will report the original conflict.
+		return nil, nil
+	}
+	resolutions := make(map[string]AdaptedResolution)
+	for _, decision := range decisions {
+		if decision.Action != Conflict || decision.Ownership != Adapted {
+			continue
+		}
+		prior, tracked := old.Files[decision.Path]
+		incoming, sourceExists := source[decision.Path]
+		base, baseExists := historical[decision.Path]
+		if !tracked || !sourceExists || !baseExists || base.digest != prior.BaseDigest || !modeMatches(base.mode, prior.BaseMode) {
+			continue
+		}
+		info, localData, localExists, readErr := readPlanDestination(repo, decision.Path)
+		if readErr != nil {
+			return nil, readErr
+		}
+		if !localExists {
+			continue
+		}
+		merged, mode, mergeErr := mechanicalMerge(base.data, localData, incoming.data, base.mode, observedMode(info.Mode().Perm()), incoming.mode)
+		if mergeErr != nil {
+			continue
+		}
+		resolutions[decision.Path] = AdaptedResolution{Action: "apply-automatic-merge", Data: merged, Mode: mode}
+	}
+	if len(resolutions) == 0 {
+		return nil, nil
+	}
+	return resolutions, nil
 }
 
 func buildAgentPlan(repo pinnedRepo, target string) (*mutation, Decision, error) {
@@ -639,11 +705,15 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 				if class == Managed {
 					file = File{Ownership: Managed, BaseDigest: incoming.digest, PayloadDigest: incoming.digest, BaseMode: incoming.mode, PayloadMode: incoming.mode}
 				}
-			case "apply-reviewed-merge":
+			case "apply-reviewed-merge", "apply-automatic-merge":
 				if resolution.Mode != "100644" && resolution.Mode != "100755" {
 					return nil, nil, Lock{}, fmt.Errorf("invalid reviewed merge resolution for %s", path)
 				}
-				decision.Action, decision.Reason = UpdateFile, "apply reviewed merge for adapted file"
+				if resolution.Action == "apply-automatic-merge" {
+					decision.Action, decision.Reason = UpdateFile, "automatically merge non-overlapping adapted changes"
+				} else {
+					decision.Action, decision.Reason = UpdateFile, "apply reviewed merge for adapted file"
+				}
 				mutationData, mutationMode = resolution.Data, fileMode(resolution.Mode)
 			default:
 				return nil, nil, Lock{}, fmt.Errorf("invalid adapted resolution %q for %s", resolution.Action, path)

@@ -239,6 +239,26 @@ func TestReviewedPlanDoesNotOfferUnrepresentableLocalDeletion(t *testing.T) {
 	}
 }
 
+func TestOrdinaryPullLeavesOverlappingAdaptedChangesForReview(t *testing.T) {
+	_, repo, options, path := resolutionConflictFixture(t)
+	beforeLock := read(t, repo, LockFileName)
+	beforeContent := read(t, repo, path)
+
+	report, err := Update(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Applied || report.ConflictCount != 1 {
+		t.Fatalf("overlapping ordinary pull report=%#v", report)
+	}
+	if got := read(t, repo, path); got != beforeContent {
+		t.Fatalf("overlapping ordinary pull changed adapted file: %q", got)
+	}
+	if got := read(t, repo, LockFileName); got != beforeLock {
+		t.Fatal("overlapping ordinary pull changed lock")
+	}
+}
+
 func resolutionConflictFixture(t *testing.T) (string, string, Options, string) {
 	t.Helper()
 	source, repo := t.TempDir(), t.TempDir()

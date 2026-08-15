@@ -234,7 +234,7 @@ func TestResolutionPlanFlagsArePublicAndMutuallyExclusive(t *testing.T) {
 	}
 }
 
-func TestResolutionPlanCLIReviewsCanonicalMigrationAndSecondPullIsNoOp(t *testing.T) {
+func TestPullAutomaticallyMergesNonOverlappingCanonicalMigrationAndSecondPullIsNoOp(t *testing.T) {
 	repo, source := t.TempDir(), t.TempDir()
 	path := filepath.Join("memory-bank", "domain", "model.md")
 	legacySourcePath := filepath.Join(source, path)
@@ -284,30 +284,22 @@ func TestResolutionPlanCLIReviewsCanonicalMigrationAndSecondPullIsNoOp(t *testin
 	if err := json.Unmarshal(mustReadFile(t, planPath), &plan); err != nil {
 		t.Fatal(err)
 	}
-	selected := false
-	for index := range plan.Entries {
-		if plan.Entries[index].Path == filepath.ToSlash(path) {
-			if plan.Entries[index].Merge == nil {
-				t.Fatalf("plan has no merge: %#v", plan.Entries[index])
+	found := false
+	for _, entry := range plan.Entries {
+		if entry.Path == filepath.ToSlash(path) {
+			if entry.Merge == nil {
+				t.Fatalf("plan has no merge: %#v", entry)
 			}
-			plan.Entries[index].SelectedAction = "apply-reviewed-merge"
-			selected = true
+			found = true
 		}
 	}
-	if !selected {
+	if !found {
 		t.Fatalf("adapted conflict missing: %#v", plan.Entries)
-	}
-	encoded, err := json.MarshalIndent(plan, "", "  ")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.WriteFile(planPath, append(encoded, '\n'), 0o600); err != nil {
-		t.Fatal(err)
 	}
 	stdout.Reset()
 	stderr.Reset()
-	if exitCode := Run(append(append([]string{}, pullArgs...), "--apply-plan", planPath), "test", &stdout, &stderr); exitCode != exitSuccess {
-		t.Fatalf("apply exit=%d stdout=%q stderr=%q", exitCode, stdout.String(), stderr.String())
+	if exitCode := Run(pullArgs, "test", &stdout, &stderr); exitCode != exitSuccess {
+		t.Fatalf("automatic pull exit=%d stdout=%q stderr=%q", exitCode, stdout.String(), stderr.String())
 	}
 	if got, want := string(mustReadFile(t, filepath.Join(repo, path))), "title\nupstream\nbase\nlocal\ntail\n"; got != want {
 		t.Fatalf("merged=%q, want %q", got, want)

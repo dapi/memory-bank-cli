@@ -24,10 +24,11 @@ reviewable merge. Re-running `pull` repeats the same unapplied plan.
 
 ### Outcome
 
-`pull` can emit a complete, non-mutating resolution plan. An agent may prepare
-candidate decisions and mechanical merge results, a human reviews the plan,
-and the CLI applies the reviewed result only while every recorded input still
-matches. The default `pull` remains conservative.
+`pull` automatically applies a verified deterministic merge when the locked
+Git base is available and local/upstream line edits do not overlap. A complete,
+non-mutating resolution plan remains available for ambiguous cases and audit:
+an agent may prepare candidate decisions, a human reviews the plan, and the CLI
+applies the reviewed result only while every recorded input still matches.
 
 ### Scope
 
@@ -46,8 +47,9 @@ matches. The default `pull` remains conservative.
   stale, malformed or altered plan before mutation.
 - `REQ-05` Apply the selected resolutions, all deterministic safe changes and
   the new `.lock` through the existing atomic ownership transaction.
-- `REQ-06` Keep ordinary `pull` and `pull --ask` backward compatible; the CLI
-  does not call an LLM or infer a semantic document decision.
+- `REQ-06` Keep ordinary `pull` and `pull --ask` backward compatible. Ordinary
+  `pull` auto-applies only a Git-verified, deterministic non-overlapping line
+  merge; the CLI does not call an LLM or infer a semantic document decision.
 - `REQ-07` Keep user-owned content that disappeared upstream and detach its
   obsolete lock entry during reviewed full-plan apply.
 - `REQ-08` Document the trusted-local review model, commands, plan editing
@@ -115,10 +117,11 @@ former `BD-01` and `BD-02` without a sidecar or protected registry.
   affected path and required human decision.
 - `EC-02` A complete reviewed plan applies atomically only against its exact
   recorded source, lock and local state.
-- `EC-03` Every two-sided adapted conflict remains unresolved until an explicit
-  currently allowed action is selected.
-- `EC-04` A verified non-overlapping merge writes exactly the reviewed bytes and
-  mode; unavailable or overlapping history cannot select merge.
+- `EC-03` Every two-sided adapted conflict without a verified non-overlapping
+  merge remains unresolved until an explicit currently allowed action is
+  selected.
+- `EC-04` Ordinary `pull` writes a verified non-overlapping merge atomically;
+  unavailable or overlapping history cannot auto-merge.
 - `EC-05` Stale, malformed or altered plans and injected transaction failures
   leave payload and lock unchanged.
 - `EC-06` A successful full-plan apply advances `.lock`; the next ordinary
@@ -136,9 +139,9 @@ former `BD-01` and `BD-02` without a sidecar or protected registry.
   the adapted base, preventing the same conflict on the next pull.
 - `SC-04` `take-upstream` writes upstream bytes/mode and adopts canonical
   managed ownership during legacy-to-canonical migration.
-- `SC-05` `apply-reviewed-merge` is offered only when the old source blob
-  matches `.lock`; its exact deterministic result is embedded, reviewed and
-  recomputed at apply.
+- `SC-05` Ordinary `pull` applies a deterministic merge only when the old
+  source blob matches `.lock` and the line edits do not overlap. The same exact
+  result is embedded for optional reviewed apply.
 - `SC-06` If historical Git data is missing, mismatched, non-textual,
   overlapping or mode-ambiguous, planning keeps non-merge choices available and
   marks reviewed merge unavailable.
@@ -147,9 +150,8 @@ former `BD-01` and `BD-02` without a sidecar or protected registry.
   causes stale/tamper rejection with no partial mutation.
 - `SC-09` A user-owned file removed upstream stays untouched and its obsolete
   lock entry is detached in the same successful reviewed transaction.
-- `SC-10` Kirasa's three current canonical-migration conflicts produce clean
-  merge candidates, apply with the managed updates, and leave a second pull at
-  no-op.
+- `SC-10` Kirasa's three current canonical-migration conflicts automatically
+  merge with the managed updates and leave a second pull at no-op.
 
 ### Negative Coverage
 
