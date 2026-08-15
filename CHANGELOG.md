@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [2.2.0] - 2026-08-15
+
 ### Changed
 
 - Let ordinary `pull` automatically apply Git-verified, deterministic
@@ -194,7 +196,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 - Add opt-in GitHub workflow integration and managed Memory Bank blocks.
 - Add Go install, Homebrew, and platform-specific release artifacts.
 
-[Unreleased]: https://github.com/dapi/memory-bank-cli/compare/v2.1.0...HEAD
+[Unreleased]: https://github.com/dapi/memory-bank-cli/compare/v2.2.0...HEAD
+[2.2.0]: https://github.com/dapi/memory-bank-cli/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/dapi/memory-bank-cli/compare/v2.0.1...v2.1.0
 [2.0.1]: https://github.com/dapi/memory-bank-cli/compare/v2.0.0...v2.0.1
 [2.0.0]: https://github.com/dapi/memory-bank-cli/compare/v1.8.1...v2.0.0
