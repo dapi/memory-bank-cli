@@ -39,9 +39,11 @@ type mutation struct {
 }
 
 type destinationPrecondition struct {
-	path   string
-	digest string
-	mode   string
+	path           string
+	checkExistence bool
+	exists         bool
+	digest         string
+	mode           string
 }
 
 var immutableRefPattern = regexp.MustCompile(`^[0-9a-fA-F]{40}([0-9a-fA-F]{24})?$`)
@@ -74,6 +76,9 @@ func Update(options Options) (Report, error) {
 	}
 	if !exists {
 		return Report{}, ErrLockNotFound
+	}
+	if options.ExpectedLockDigest != "" && options.ExpectedLockDigest != lockDigest {
+		return Report{}, errors.New("reviewed ownership lock changed; regenerate and review the resolution plan")
 	}
 	return run(options, lock, true, repo, lockDigest)
 }
@@ -112,7 +117,7 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 	if err := verifySource(pinnedSource.root, options.SourceRef); err != nil {
 		return Report{}, fmt.Errorf("source checkout changed while reading template: %w", err)
 	}
-	mutations, decisions, next, err := buildPlan(repo, source, old, hasLock, options.UserOwnedResolutions)
+	mutations, decisions, next, err := buildPlan(repo, source, old, hasLock, options.UserOwnedResolutions, options.AdaptedResolutions, options.DetachUserOwnedRemovals)
 	if err != nil {
 		return Report{}, err
 	}
@@ -121,7 +126,7 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 	if agentTarget == "" {
 		agentTarget = agentinstructions.DefaultTarget
 	}
-	if _, templateOwnsAgentFile := source[filepath.ToSlash(agentTarget)]; !templateOwnsAgentFile {
+	if _, templateOwnsAgentFile := source[filepath.ToSlash(agentTarget)]; !templateOwnsAgentFile && !options.SkipAgentInstructions {
 		agentMutation, agentDecision, err := buildAgentPlan(repo, options.AgentFile)
 		if err != nil {
 			return Report{}, err
@@ -141,7 +146,7 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 		return report, nil
 	}
 	template := Template{Version: options.TemplateVersion, SourceRef: options.SourceRef}
-	needsLockWrite := !hasLock || templateMutationCount > 0 || old.SchemaVersion != CurrentSchemaVersion || old.Template != template
+	needsLockWrite := !hasLock || templateMutationCount > 0 || old.SchemaVersion != CurrentSchemaVersion || old.Template != template || len(old.Files) != len(next.Files)
 	if !needsLockWrite {
 		if len(mutations) == 0 {
 			return report, nil
@@ -168,12 +173,22 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 	if err != nil {
 		return Report{}, err
 	}
+	mutatedPaths := make(map[string]bool, len(mutations))
+	for _, item := range mutations {
+		mutatedPaths[item.decision.Path] = true
+	}
+	remainingReviewedPaths := make([]destinationPrecondition, 0, len(options.ExpectedPaths))
+	for _, precondition := range options.ExpectedPaths {
+		if !mutatedPaths[precondition.path] {
+			remainingReviewedPaths = append(remainingReviewedPaths, precondition)
+		}
+	}
 	mutations = append(mutations, mutation{
 		decision:       Decision{Path: LockFileName, Action: UpdateFile, Reason: "record successful update"},
 		data:           lockData,
 		expectedExists: hasLock,
 		expectedDigest: lockDigest,
-		preconditions:  lockPreconditions(next),
+		preconditions:  append(lockPreconditions(next), remainingReviewedPaths...),
 	})
 	if err := applyAtomicallyPinned(options, mutations, repo); err != nil {
 		var committed *committedError
@@ -401,7 +416,7 @@ func modeMatches(observed, expected string) bool {
 	return observed == "" || observed == expected
 }
 
-func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock bool, userOwnedResolutions map[string]bool) ([]mutation, []Decision, Lock, error) {
+func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock bool, userOwnedResolutions map[string]bool, adaptedResolutions map[string]AdaptedResolution, detachUserOwnedRemovals bool) ([]mutation, []Decision, Lock, error) {
 	if _, err := inspectRepoRoot(repo.root, repo.info); err != nil {
 		return nil, nil, Lock{}, err
 	}
@@ -450,9 +465,28 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 			cleanRemovals[path] = currentDigest
 			removalMutationIndex[path] = len(removalMutations)
 			removalMutations = append(removalMutations, mutation{decision: decision, expectedExists: true, expectedDigest: currentDigest, expectedMode: currentMode})
+		case prior.Ownership == Adapted && (currentDigest != prior.BaseDigest || !modeMatches(currentMode, prior.BaseMode)):
+			if resolution, resolved := adaptedResolutions[path]; resolved {
+				switch resolution.Action {
+				case "keep-local":
+					decision.Action, decision.Reason = Preserve, "keep and detach adapted file removed upstream"
+				case "take-upstream":
+					decision.Action, decision.Reason = Delete, "remove adapted file by reviewed upstream deletion"
+					cleanRemovals[path] = currentDigest
+					removalMutationIndex[path] = len(removalMutations)
+					removalMutations = append(removalMutations, mutation{decision: decision, expectedExists: true, expectedDigest: currentDigest, expectedMode: currentMode})
+				default:
+					return nil, nil, Lock{}, fmt.Errorf("invalid adapted removal resolution %q for %s", resolution.Action, path)
+				}
+			} else {
+				decision.Action, decision.Reason = Conflict, "adapted file changed downstream and was removed upstream"
+				next.Files[path] = prior
+			}
 		case prior.Ownership == Managed:
 			decision.Action, decision.Reason = Conflict, "removed managed file has downstream drift"
 			next.Files[path] = prior
+		case prior.Ownership == UserOwned && detachUserOwnedRemovals:
+			decision.Action, decision.Reason = Preserve, "keep and detach user-owned file removed upstream"
 		default:
 			decision.Action, decision.Reason = Preserve, "downstream-owned file is never deleted"
 			next.Files[path] = prior
@@ -503,6 +537,7 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 			}
 		}
 		decision := Decision{Path: path, Ownership: class}
+		mutationData, mutationMode := incoming.data, fileMode(incoming.mode)
 		file := File{Ownership: class, BaseDigest: incoming.digest, BaseMode: incoming.mode}
 		if class == Managed || class == Generated {
 			file.PayloadDigest = incoming.digest
@@ -594,6 +629,26 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 				decision.Action, decision.Reason = Preserve, "preserve downstream adaptation"
 			}
 		}
+		if resolution, resolved := adaptedResolutions[path]; resolved && file.Ownership == Adapted && decision.Action == Conflict {
+			file = File{Ownership: Adapted, BaseDigest: incoming.digest, BaseMode: incoming.mode}
+			switch resolution.Action {
+			case "keep-local":
+				decision.Action, decision.Reason = Preserve, "keep adapted file by reviewed resolution"
+			case "take-upstream":
+				decision.Action, decision.Reason = UpdateFile, "take upstream adapted file by reviewed resolution"
+				if class == Managed {
+					file = File{Ownership: Managed, BaseDigest: incoming.digest, PayloadDigest: incoming.digest, BaseMode: incoming.mode, PayloadMode: incoming.mode}
+				}
+			case "apply-reviewed-merge":
+				if resolution.Mode != "100644" && resolution.Mode != "100755" {
+					return nil, nil, Lock{}, fmt.Errorf("invalid reviewed merge resolution for %s", path)
+				}
+				decision.Action, decision.Reason = UpdateFile, "apply reviewed merge for adapted file"
+				mutationData, mutationMode = resolution.Data, fileMode(resolution.Mode)
+			default:
+				return nil, nil, Lock{}, fmt.Errorf("invalid adapted resolution %q for %s", resolution.Action, path)
+			}
+		}
 		if resolution, resolved := userOwnedResolutions[path]; resolved && class == Managed && file.Ownership == UserOwned {
 			if resolution {
 				decision.Action, decision.Reason = UpdateFile, "replace user-owned file from source by explicit resolution"
@@ -609,7 +664,7 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 		decision.Ownership = file.Ownership
 		if decision.Action == Create || decision.Action == UpdateFile {
 			sourceMutations = append(sourceMutations, mutation{
-				decision: decision, data: incoming.data, mode: fileMode(incoming.mode), modeSet: true, expectedExists: exists, expectedDigest: currentDigest, expectedMode: currentMode, topology: topology,
+				decision: decision, data: mutationData, mode: mutationMode, modeSet: true, expectedExists: exists, expectedDigest: currentDigest, expectedMode: currentMode, topology: topology,
 			})
 			if topology != nil {
 				for _, prerequisite := range topology.files {
@@ -1065,6 +1120,12 @@ func verifyDestinationPrecondition(repo pinnedRepo, precondition destinationPrec
 	_, info, exists, err := inspectDestination(repo, precondition.path)
 	if err != nil {
 		return err
+	}
+	if precondition.checkExistence && exists != precondition.exists {
+		return errors.New("reviewed payload presence changed before lock commit")
+	}
+	if !exists && precondition.checkExistence {
+		return nil
 	}
 	if !exists {
 		return errors.New("managed payload is missing")
