@@ -40,8 +40,14 @@ is not a terminal.
 
 ## Prepare and apply a reviewed pull plan
 
-When both an adapted downstream document and its upstream base changed, create
-a complete reviewable plan instead of repeating the conservative pull:
+Ordinary `pull` automatically applies a merge only when it can prove all of
+the following: the historical Git source blob matches the base in `.lock`, both
+files are regular supported files, and local and upstream line edits do not
+overlap. It preserves both independent changes and records the new upstream
+base atomically.
+
+Create a complete reviewable plan only when `pull` reports a remaining
+conflict, or when you want an explicit audit record:
 
 ```sh
 memory-bank-cli pull --plan memory-bank-pull-plan.json
@@ -67,8 +73,9 @@ memory-bank-cli pull --apply-plan memory-bank-pull-plan.json
 Apply resolves the current source again, strictly regenerates every
 non-decision field, and rejects unresolved, altered or stale input before
 mutation. Accepted resolutions, deterministic managed updates and `.lock`
-commit atomically. Ordinary `pull` remains conservative and the CLI never
-calls an LLM or treats a mechanical merge as semantic approval.
+commit atomically. The CLI never calls an LLM or treats a mechanical merge as
+semantic approval: overlapping edits, missing historical source and explicit
+ownership choices still require review.
 
 Resolution plans may contain base64-encoded merged document content. Treat
 them with the same privacy as the downstream repository and review them before

@@ -27,6 +27,7 @@ solution. This ledger records why those decisions were accepted.
 | `DEC-04` | accepted | Recover historical base from `.lock.template.source_ref` and verify the Git blob against `BaseDigest`/`BaseMode`. | The immutable source identity and base digest already exist; the upstream fetch contains reachable history. | No lock-history sidecar or protected receipt registry. Missing/mismatched history disables merge only. |
 | `DEC-05` | accepted | Use deterministic non-overlapping line merge and include its exact result in the reviewed plan. | This allows mechanical assistance without claiming semantic correctness. | Apply recomputes exact bytes/mode; overlap keeps merge unavailable. |
 | `DEC-06` | accepted | Route issue #54 through the final implementation and release carrier. | PR #56 passed all required checks, merged as `b9ec3a2`, and closed issue #54. | Release `v2.1.0` carries the versioned changelog and installable binaries. |
+| `DEC-07` | accepted | Let ordinary `pull` apply only Git-verified non-overlapping adapted-file merges. | The user requires a simple pull workflow that preserves independent local changes; this condition is deterministic but does not claim semantic understanding. | `--plan` is reserved for overlap, unavailable history, user-owned choices and audit. |
 
 ## Open Questions
 

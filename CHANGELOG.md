@@ -7,6 +7,12 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Changed
+
+- Let ordinary `pull` automatically apply Git-verified, deterministic
+  non-overlapping three-way merges for adapted files. Ambiguous, overlapping or
+  unverified changes still require a reviewed resolution plan.
+
 ## [2.1.0] - 2026-08-15
 
 ### Added
