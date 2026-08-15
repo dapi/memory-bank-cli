@@ -276,3 +276,51 @@ Yes. Approve both `BD-01` / `DEC-04` (human authorization) and `BD-02` / `DEC-05
 
 - **Status:** `reopened_pending_human_approval`
 - **Critical/important findings remaining:** `BD-01` / `DEC-04` human-authorization approval; `BD-02` / `DEC-05` protected-registry atomicity approval; `DEC-03` publication-routing follow-up.
+
+## Cycle 11
+
+### Review summary
+
+The user selected a trusted-local authorization boundary and Git-backed
+historical-base recovery on 2026-08-15, closing the former implementation
+gates. The canonical package was simplified accordingly: apply proves exact
+state and result integrity but does not claim cryptographic reviewer identity;
+the immutable source ref and base identity already stored in `.lock` replace
+the proposed sidecar and protected registry. Implementation and hermetic tests
+now cover complete planning, all reviewed actions, deterministic merge,
+stale/tamper rejection, rollback, user-owned detach and repeat-pull no-op.
+
+### Critical and important findings
+
+| Severity | Finding | Resolution |
+| --- | --- | --- |
+| `critical` | The previous design introduced external authorization and protected-registry boundaries outside the approved trusted-local product threat model. | Replaced `BD-01`/`BD-02`, sidecar and registry with accepted `DEC-03`/`DEC-04`: deterministic regeneration validates integrity, while review authority remains in the surrounding user/Git workflow. |
+| `important` | Lock v1 cannot represent a retained local deletion while the current upstream path remains present, so offering `keep-local` would repeat the conflict. | The plan exposes only `take-upstream` for local-absent/upstream-present conflict state; merge and unrepresentable keep are explicitly unavailable. |
+| `important` | A reviewed merge could not rely on a digest-only base or plan-supplied bytes. | Historical bytes are read from `.lock.template.source_ref`, mapped through legacy/canonical roots and accepted only when digest and mode match the lock entry. |
+
+### Verification
+
+- `go test -ldflags=-linkmode=external ./...` — passed locally.
+- `go test -count=1 -race -ldflags=-linkmode=external ./...` — passed locally.
+- `go vet ./...` — passed locally.
+- `memory-bank-cli lint --repo-root .` — passed with no link, frontmatter,
+  reachability, depth or index finding.
+- A read-only plan against the current Kirasa lock/source produced verified
+  mechanical merge candidates for all three reported adapted conflicts and did
+  not mutate the downstream repository.
+
+The local external-link flag works around a host-specific Go 1.21 internal
+linker `LC_UUID` failure; repository CI remains the authoritative unmodified
+Linux command surface.
+
+### Human gate
+
+No implementation decision remains. Publication and release proceed through
+the required GitHub checks; `DEC-06` remains pending until the final carrier is
+published.
+
+## Final Report
+
+- **Status:** `implementation_complete_pending_ci`.
+- **Critical/important findings remaining:** none in the implementation;
+  publication routing and release evidence remain pending.

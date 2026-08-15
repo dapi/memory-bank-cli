@@ -7,6 +7,13 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Add reviewed `pull --plan FILE` and `pull --apply-plan FILE` workflows for
+  resolving two-sided adapted template conflicts atomically.
+- Recover and verify historical merge bases from the immutable source ref in
+  the ownership lock, with deterministic non-overlapping merge candidates.
+
 ## [2.0.1] - 2026-08-14
 
 ### Fixed

@@ -13,6 +13,7 @@ audience: humans_and_agents
 # FT-054: AI-Assisted, Human-Approved Pull Resolution
 
 - [brief.md](brief.md) — canonical problem, scope, validation decision and acceptance contract.
-- [design.md](design.md) — selected plan/apply safety contract and C1 context.
-- [decision-log.md](decision-log.md) — FPF-backed decision provenance, including the two unresolved security-boundary gates.
+- [design.md](design.md) — selected trusted-local plan/apply, Git historical-base and atomicity contract.
+- [decision-log.md](decision-log.md) — decision provenance for the accepted authorization and merge-base boundaries.
+- [implementation-plan.md](implementation-plan.md) — active execution sequence for the accepted trusted-local design.
 - [feature-review-report.md](feature-review-report.md) — bounded review-improve record.

@@ -38,6 +38,42 @@ answers are collected before changes are applied. `pull --ask --dry-run` shows t
 resolved plan without changing files; `--ask` is rejected when standard input
 is not a terminal.
 
+## Prepare and apply a reviewed pull plan
+
+When both an adapted downstream document and its upstream base changed, create
+a complete reviewable plan instead of repeating the conservative pull:
+
+```sh
+memory-bank-cli pull --plan memory-bank-pull-plan.json
+```
+
+The CLI writes the plan with owner-only permissions. Use `--plan -` to emit it
+to standard output instead. An agent may analyze the entries and candidate
+merges, but a reviewer must explicitly set `selected_action` for every entry
+whose `requires_human_decision` is true. Available actions are:
+
+- `keep-local` — retain the downstream bytes and advance its adapted base;
+- `take-upstream` — write the upstream bytes and mode;
+- `apply-reviewed-merge` — write the exact candidate from `merge`, only when
+  the old Git source blob matches the base recorded in `.lock` and the line
+  changes do not overlap.
+
+Apply the reviewed plan with:
+
+```sh
+memory-bank-cli pull --apply-plan memory-bank-pull-plan.json
+```
+
+Apply resolves the current source again, strictly regenerates every
+non-decision field, and rejects unresolved, altered or stale input before
+mutation. Accepted resolutions, deterministic managed updates and `.lock`
+commit atomically. Ordinary `pull` remains conservative and the CLI never
+calls an LLM or treats a mechanical merge as semantic approval.
+
+Resolution plans may contain base64-encoded merged document content. Treat
+them with the same privacy as the downstream repository and review them before
+committing.
+
 ## Publish managed changes upstream
 
 From a downstream Git repository with a clean upstream checkout at `memory-bank/.repo`, preview the managed changes that can be proposed upstream:
@@ -60,7 +96,7 @@ Install the latest released version with Go:
 go install github.com/dapi/memory-bank-cli/cmd/memory-bank-cli@latest
 ```
 
-For a reproducible install, replace `latest` with a tag such as `v1.4.0`.
+For a reproducible install, replace `latest` with an exact release tag.
 After installation, run:
 
 ```sh

@@ -219,22 +219,128 @@ func TestUpdateDispatchesSelfUpdaterAndPullKeepsOwnershipFlags(t *testing.T) {
 	}
 }
 
-func TestResolutionPlanFlagsAreNotRegistered(t *testing.T) {
-	for _, arguments := range [][]string{{"pull", "--plan"}, {"pull", "--apply-plan", "resolution-plan.json"}} {
-		var stdout, stderr bytes.Buffer
-		if exitCode := Run(arguments, "test", &stdout, &stderr); exitCode != exitUsage {
-			t.Fatalf("%v exit=%d, want usage", arguments, exitCode)
-		}
-		if !strings.Contains(stderr.String(), "flag provided but not defined") {
-			t.Fatalf("%v stderr=%q", arguments, stderr.String())
-		}
-	}
+func TestResolutionPlanFlagsArePublicAndMutuallyExclusive(t *testing.T) {
 	var stdout, stderr bytes.Buffer
 	if exitCode := Run([]string{"pull", "--help"}, "test", &stdout, &stderr); exitCode != exitSuccess {
 		t.Fatalf("help exit=%d stderr=%q", exitCode, stderr.String())
 	}
-	if strings.Contains(stderr.String(), "-plan") || strings.Contains(stderr.String(), "-apply-plan") {
-		t.Fatalf("private resolution-plan flags leaked into help: %q", stderr.String())
+	if !strings.Contains(stderr.String(), "-plan string") || !strings.Contains(stderr.String(), "-apply-plan string") {
+		t.Fatalf("resolution-plan flags missing from help: %q", stderr.String())
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := Run([]string{"pull", "--plan", "plan.json", "--apply-plan", "plan.json"}, "test", &stdout, &stderr); exitCode != exitUsage || !strings.Contains(stderr.String(), "mutually exclusive") {
+		t.Fatalf("exclusive flags exit=%d stderr=%q", exitCode, stderr.String())
+	}
+}
+
+func TestResolutionPlanCLIReviewsCanonicalMigrationAndSecondPullIsNoOp(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	path := filepath.Join("memory-bank", "domain", "model.md")
+	legacySourcePath := filepath.Join(source, path)
+	if err := os.MkdirAll(filepath.Dir(legacySourcePath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(legacySourcePath, []byte("title\nbase\ntail\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	baseRef := commitCLISource(t, source, "legacy base")
+	var stdout, stderr bytes.Buffer
+	initArgs := []string{"init", "--repo-root", repo, "--source", source, "--template-version", "base", "--source-ref", baseRef}
+	if exitCode := Run(initArgs, "test", &stdout, &stderr); exitCode != exitSuccess {
+		t.Fatalf("init exit=%d stderr=%q", exitCode, stderr.String())
+	}
+	if err := os.WriteFile(filepath.Join(repo, path), []byte("title\nbase\nlocal\ntail\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.RemoveAll(filepath.Join(source, "memory-bank")); err != nil {
+		t.Fatal(err)
+	}
+	canonicalPath := filepath.Join(source, "template", path)
+	if err := os.MkdirAll(filepath.Dir(canonicalPath), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(canonicalPath, []byte("title\nupstream\nbase\ntail\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	targetRef := commitCLISource(t, source, "canonical target")
+	planPath := filepath.Join(t.TempDir(), "review.json")
+	pullArgs := []string{"pull", "--repo-root", repo, "--source", source, "--template-version", "target", "--source-ref", targetRef}
+	lockBefore := mustReadFile(t, filepath.Join(repo, "memory-bank", ".lock"))
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := Run(append(append([]string{}, pullArgs...), "--plan", planPath), "test", &stdout, &stderr); exitCode != exitSuccess {
+		t.Fatalf("plan exit=%d stdout=%q stderr=%q", exitCode, stdout.String(), stderr.String())
+	}
+	if runtime.GOOS != "windows" {
+		if info, err := os.Stat(planPath); err != nil || info.Mode().Perm() != 0o600 {
+			t.Fatalf("plan mode=%v err=%v, want 0600", info, err)
+		}
+	}
+	if got := mustReadFile(t, filepath.Join(repo, "memory-bank", ".lock")); !bytes.Equal(got, lockBefore) {
+		t.Fatal("planning changed lock")
+	}
+	var plan ownership.ResolutionPlan
+	if err := json.Unmarshal(mustReadFile(t, planPath), &plan); err != nil {
+		t.Fatal(err)
+	}
+	selected := false
+	for index := range plan.Entries {
+		if plan.Entries[index].Path == filepath.ToSlash(path) {
+			if plan.Entries[index].Merge == nil {
+				t.Fatalf("plan has no merge: %#v", plan.Entries[index])
+			}
+			plan.Entries[index].SelectedAction = "apply-reviewed-merge"
+			selected = true
+		}
+	}
+	if !selected {
+		t.Fatalf("adapted conflict missing: %#v", plan.Entries)
+	}
+	encoded, err := json.MarshalIndent(plan, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(planPath, append(encoded, '\n'), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	if exitCode := Run(append(append([]string{}, pullArgs...), "--apply-plan", planPath), "test", &stdout, &stderr); exitCode != exitSuccess {
+		t.Fatalf("apply exit=%d stdout=%q stderr=%q", exitCode, stdout.String(), stderr.String())
+	}
+	if got, want := string(mustReadFile(t, filepath.Join(repo, path))), "title\nupstream\nbase\nlocal\ntail\n"; got != want {
+		t.Fatalf("merged=%q, want %q", got, want)
+	}
+	stdout.Reset()
+	stderr.Reset()
+	lockAfterApply := mustReadFile(t, filepath.Join(repo, "memory-bank", ".lock"))
+	if exitCode := Run(pullArgs, "test", &stdout, &stderr); exitCode != exitSuccess {
+		t.Fatalf("second pull exit=%d stdout=%q stderr=%q", exitCode, stdout.String(), stderr.String())
+	}
+	if got := mustReadFile(t, filepath.Join(repo, "memory-bank", ".lock")); !bytes.Equal(got, lockAfterApply) {
+		t.Fatal("second pull changed lock")
+	}
+}
+
+func TestReadResolutionPlanRejectsDuplicateAndUnknownMembers(t *testing.T) {
+	for _, test := range []struct {
+		name string
+		json string
+		want string
+	}{
+		{name: "duplicate", json: `{"format_version":1,"format_version":1}`, want: "duplicate JSON member"},
+		{name: "unknown", json: `{"format_version":1,"base_template":{},"template":{},"lock_digest":"x","entries":[],"extra":true}`, want: "unknown field"},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			path := filepath.Join(t.TempDir(), "plan.json")
+			if err := os.WriteFile(path, []byte(test.json), 0o600); err != nil {
+				t.Fatal(err)
+			}
+			if _, err := readResolutionPlan(path); err == nil || !strings.Contains(err.Error(), test.want) {
+				t.Fatalf("error=%v, want %q", err, test.want)
+			}
+		})
 	}
 }
 

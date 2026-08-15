@@ -375,6 +375,8 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 	templateVersion := flags.String("template-version", "", "human-readable template version")
 	sourceRef := flags.String("source-ref", "", "full commit SHA matching the source checkout HEAD")
 	dryRun := flags.Bool("dry-run", false, "print the complete mutation plan without applying it")
+	planOutput := flags.String("plan", "", "write a versioned pull resolution plan to FILE (use - for stdout)")
+	applyPlan := flags.String("apply-plan", "", "apply a reviewed versioned pull resolution plan from FILE")
 	ask := flags.Bool("ask", false, "interactively resolve user-owned managed-file collisions")
 	agentFile := flags.String("agent-file", "AGENTS.md", "single repository-relative agent instruction file to manage")
 	jsonOutput := addJSONOutputFlag(flags)
@@ -390,6 +392,28 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 	}
 	if *ask && command != "pull" {
 		fmt.Fprintln(stderr, "memory-bank-cli init: --ask is only supported by pull")
+		return exitUsage
+	}
+	if *planOutput != "" && command != "pull" {
+		fmt.Fprintln(stderr, "memory-bank-cli init: --plan is only supported by pull")
+		return exitUsage
+	}
+	if *applyPlan != "" && command != "pull" {
+		fmt.Fprintln(stderr, "memory-bank-cli init: --apply-plan is only supported by pull")
+		return exitUsage
+	}
+	selectedModes := 0
+	for _, selected := range []bool{*ask, *planOutput != "", *applyPlan != ""} {
+		if selected {
+			selectedModes++
+		}
+	}
+	if selectedModes > 1 {
+		fmt.Fprintln(stderr, "memory-bank-cli pull: --ask, --plan, and --apply-plan are mutually exclusive")
+		return exitUsage
+	}
+	if *dryRun && (*planOutput != "" || *applyPlan != "") {
+		fmt.Fprintln(stderr, "memory-bank-cli pull: --dry-run cannot be combined with --plan or --apply-plan")
 		return exitUsage
 	}
 	if *ask && !stdinIsTerminal {
@@ -416,6 +440,51 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 		RepoRoot: repoRoot, SourceRoot: sourceRoot, TemplateVersion: resolvedVersion,
 		SourceRef: resolvedRef, DryRun: *dryRun,
 		AgentFile: *agentFile,
+	}
+	if *planOutput != "" {
+		plan, planErr := ownership.PlanPull(options)
+		if planErr != nil {
+			fmt.Fprintln(stderr, planErr)
+			return exitFailure
+		}
+		encoded, encodeErr := json.MarshalIndent(plan, "", "  ")
+		if encodeErr != nil {
+			fmt.Fprintln(stderr, encodeErr)
+			return exitFailure
+		}
+		encoded = append(encoded, '\n')
+		if *planOutput == "-" {
+			if _, writeErr := stdout.Write(encoded); writeErr != nil {
+				fmt.Fprintln(stderr, writeErr)
+				return exitFailure
+			}
+		} else if writeErr := writeResolutionPlan(*planOutput, encoded); writeErr != nil {
+			fmt.Fprintln(stderr, writeErr)
+			return exitFailure
+		} else {
+			fmt.Fprintf(stdout, "plan: %s\n", *planOutput)
+		}
+		return exitSuccess
+	}
+	if *applyPlan != "" {
+		plan, readErr := readResolutionPlan(*applyPlan)
+		if readErr != nil {
+			fmt.Fprintln(stderr, readErr)
+			return exitFailure
+		}
+		report, applyErr := ownership.ApplyResolutionPlan(options, plan)
+		if applyErr != nil {
+			fmt.Fprintln(stderr, applyErr)
+			return exitFailure
+		}
+		if err := writeResult(stdout, *jsonOutput, report, func(writer io.Writer) { printOwnershipReport(writer, report) }); err != nil {
+			fmt.Fprintln(stderr, err)
+			return exitFailure
+		}
+		if report.ConflictCount > 0 {
+			return exitFailure
+		}
+		return exitSuccess
 	}
 	var report ownership.Report
 	if *ask {
@@ -459,6 +528,144 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 		return exitFailure
 	}
 	return exitSuccess
+}
+
+const maxResolutionPlanBytes = 64 << 20
+
+func writeResolutionPlan(path string, data []byte) error {
+	if len(data) > maxResolutionPlanBytes {
+		return errors.New("resolution plan exceeds 64 MiB limit")
+	}
+	absPath, err := filepath.Abs(path)
+	if err != nil {
+		return fmt.Errorf("resolve resolution plan path: %w", err)
+	}
+	if info, inspectErr := os.Lstat(absPath); inspectErr == nil {
+		if info.Mode()&os.ModeSymlink != 0 || !info.Mode().IsRegular() {
+			return fmt.Errorf("resolution plan destination must be a regular file, not a symlink: %s", path)
+		}
+	} else if !errors.Is(inspectErr, os.ErrNotExist) {
+		return fmt.Errorf("inspect resolution plan destination: %w", inspectErr)
+	}
+	directory := filepath.Dir(absPath)
+	temporary, err := os.CreateTemp(directory, ".memory-bank-resolution-plan-*")
+	if err != nil {
+		return fmt.Errorf("create staged resolution plan: %w", err)
+	}
+	temporaryPath := temporary.Name()
+	cleanup := func() { _ = os.Remove(temporaryPath) }
+	if err := temporary.Chmod(0o600); err != nil {
+		_ = temporary.Close()
+		cleanup()
+		return fmt.Errorf("protect staged resolution plan: %w", err)
+	}
+	if _, err := temporary.Write(data); err != nil {
+		_ = temporary.Close()
+		cleanup()
+		return fmt.Errorf("write staged resolution plan: %w", err)
+	}
+	if err := temporary.Sync(); err != nil {
+		_ = temporary.Close()
+		cleanup()
+		return fmt.Errorf("sync staged resolution plan: %w", err)
+	}
+	if err := temporary.Close(); err != nil {
+		cleanup()
+		return fmt.Errorf("close staged resolution plan: %w", err)
+	}
+	if err := os.Rename(temporaryPath, absPath); err != nil {
+		cleanup()
+		return fmt.Errorf("install resolution plan: %w", err)
+	}
+	return nil
+}
+
+func readResolutionPlan(path string) (ownership.ResolutionPlan, error) {
+	file, err := os.Open(path)
+	if err != nil {
+		return ownership.ResolutionPlan{}, fmt.Errorf("read resolution plan: %w", err)
+	}
+	defer file.Close()
+	info, err := file.Stat()
+	if err != nil || !info.Mode().IsRegular() || info.Size() > maxResolutionPlanBytes {
+		if err == nil {
+			err = errors.New("plan must be a regular file no larger than 64 MiB")
+		}
+		return ownership.ResolutionPlan{}, fmt.Errorf("read resolution plan: %w", err)
+	}
+	data, err := io.ReadAll(io.LimitReader(file, maxResolutionPlanBytes+1))
+	if err != nil || len(data) > maxResolutionPlanBytes {
+		if err == nil {
+			err = errors.New("plan exceeds 64 MiB limit")
+		}
+		return ownership.ResolutionPlan{}, fmt.Errorf("read resolution plan: %w", err)
+	}
+	if err := rejectDuplicateJSONMembers(data); err != nil {
+		return ownership.ResolutionPlan{}, fmt.Errorf("read resolution plan: %w", err)
+	}
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	decoder.DisallowUnknownFields()
+	var plan ownership.ResolutionPlan
+	if err := decoder.Decode(&plan); err != nil {
+		return ownership.ResolutionPlan{}, fmt.Errorf("read resolution plan: %w", err)
+	}
+	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
+		return ownership.ResolutionPlan{}, errors.New("read resolution plan: trailing JSON content")
+	}
+	return plan, nil
+}
+
+func rejectDuplicateJSONMembers(data []byte) error {
+	decoder := json.NewDecoder(bytes.NewReader(data))
+	if err := scanJSONValue(decoder); err != nil {
+		return err
+	}
+	if token, err := decoder.Token(); err != io.EOF {
+		return fmt.Errorf("trailing JSON content: %v", token)
+	}
+	return nil
+}
+
+func scanJSONValue(decoder *json.Decoder) error {
+	token, err := decoder.Token()
+	if err != nil {
+		return err
+	}
+	delimiter, ok := token.(json.Delim)
+	if !ok {
+		return nil
+	}
+	switch delimiter {
+	case '{':
+		seen := make(map[string]bool)
+		for decoder.More() {
+			keyToken, keyErr := decoder.Token()
+			if keyErr != nil {
+				return keyErr
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return errors.New("JSON object key is not a string")
+			}
+			key = strings.ToLower(key)
+			if seen[key] {
+				return fmt.Errorf("duplicate JSON member %q", keyToken)
+			}
+			seen[key] = true
+			if valueErr := scanJSONValue(decoder); valueErr != nil {
+				return valueErr
+			}
+		}
+		_, err = decoder.Token()
+	case '[':
+		for decoder.More() {
+			if err := scanJSONValue(decoder); err != nil {
+				return err
+			}
+		}
+		_, err = decoder.Token()
+	}
+	return err
 }
 
 func askUserOwnedCollisions(stdin io.Reader, writer io.Writer, report ownership.Report) (map[string]bool, error) {
