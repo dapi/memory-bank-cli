@@ -53,15 +53,32 @@ func Run(options Options) (Report, error) {
 
 func loadDocuments(repoRoot string) (map[string]document, error) {
 	documents := make(map[string]document)
-	err := filepath.WalkDir(repoRoot, func(fullPath string, entry fs.DirEntry, walkErr error) error {
+	visited := make(map[string]bool)
+	return documents, walkDocuments(repoRoot, repoRoot, documents, visited)
+}
+
+// walkDocuments walks root and descends into directory symlinks that stay
+// inside repoRoot. A repository may project part of its tree through such a
+// link; skipping it would silently drop every document below it and report the
+// links pointing there as broken. Links leaving the repository are ignored, and
+// visited targets are tracked so a cycle cannot spin.
+func walkDocuments(repoRoot, root string, documents map[string]document, visited map[string]bool) error {
+	resolvedRoot, err := filepath.EvalSymlinks(repoRoot)
+	if err != nil {
+		return err
+	}
+	return filepath.WalkDir(root, func(fullPath string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
 		if entry.IsDir() {
-			if fullPath != repoRoot && ignoredDirectories[entry.Name()] {
+			if fullPath != root && ignoredDirectories[entry.Name()] {
 				return filepath.SkipDir
 			}
 			return nil
+		}
+		if entry.Type()&fs.ModeSymlink != 0 {
+			return followDocumentSymlink(repoRoot, resolvedRoot, fullPath, entry, documents, visited)
 		}
 		if !strings.HasSuffix(entry.Name(), ".md") {
 			return nil
@@ -78,7 +95,68 @@ func loadDocuments(repoRoot string) (map[string]document, error) {
 		documents[filepath.ToSlash(relativePath)] = document{text: text, frontmatter: parseFrontmatter(text)}
 		return nil
 	})
-	return documents, err
+}
+
+// followDocumentSymlink records a linked Markdown file and descends into a
+// linked directory, keeping the document path as seen through the link so the
+// audit reports the path authors actually write.
+func followDocumentSymlink(repoRoot, resolvedRoot, fullPath string, entry fs.DirEntry, documents map[string]document, visited map[string]bool) error {
+	target, err := filepath.EvalSymlinks(fullPath)
+	if err != nil {
+		// A broken link owns no document; the referring index still reports it.
+		return nil
+	}
+	if !withinRoot(resolvedRoot, target) {
+		return nil
+	}
+	info, err := os.Stat(target)
+	if err != nil {
+		return nil
+	}
+
+	if info.IsDir() {
+		if ignoredDirectories[entry.Name()] || visited[target] {
+			return nil
+		}
+		visited[target] = true
+		// Collect the linked tree keyed relative to its own root, then re-root
+		// it under the link so paths match what documents actually reference.
+		linked := make(map[string]document)
+		if err := walkDocuments(target, target, linked, visited); err != nil {
+			return err
+		}
+		prefix, relativeErr := filepath.Rel(repoRoot, fullPath)
+		if relativeErr != nil {
+			return relativeErr
+		}
+		for suffix, doc := range linked {
+			documents[path.Join(filepath.ToSlash(prefix), suffix)] = doc
+		}
+		return nil
+	}
+
+	if !strings.HasSuffix(entry.Name(), ".md") || !info.Mode().IsRegular() {
+		return nil
+	}
+	contents, err := os.ReadFile(target)
+	if err != nil {
+		return err
+	}
+	relativePath, err := filepath.Rel(repoRoot, fullPath)
+	if err != nil {
+		return err
+	}
+	text := string(contents)
+	documents[filepath.ToSlash(relativePath)] = document{text: text, frontmatter: parseFrontmatter(text)}
+	return nil
+}
+
+func withinRoot(resolvedRoot, target string) bool {
+	relative, err := filepath.Rel(resolvedRoot, target)
+	if err != nil {
+		return false
+	}
+	return relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func isScopedMarkdown(documentPath, scopeRoot string) bool {

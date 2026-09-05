@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/dapi/memory-bank-cli/internal/lint"
+	"github.com/dapi/memory-bank-cli/internal/projection"
 	"gopkg.in/yaml.v3"
 )
 
@@ -47,8 +48,13 @@ func (report *Report) checkGovernance(scopeRoot string) {
 		}
 		documentPath := filepath.ToSlash(relative)
 		if entry.Type()&os.ModeSymlink != 0 {
-			report.add(Finding{Code: "governance.unsafe_symlink", Severity: Error, Group: "frontmatter_governance", Path: documentPath, Message: "Governed document is a symlink.", Remediation: "Replace it with a regular repository-owned Markdown file."})
-			return nil
+			// A template source repository may project a governed document
+			// from its own payload. The document behind such a link is the
+			// payload itself, so it is governed exactly as the payload is.
+			if !projection.IsPayloadProjection(report.RepoRoot, documentPath) {
+				report.add(Finding{Code: "governance.unsafe_symlink", Severity: Error, Group: "frontmatter_governance", Path: documentPath, Message: "Governed document is a symlink.", Remediation: "Replace it with a regular repository-owned Markdown file, or point it at the payload file this path installs from."})
+				return nil
+			}
 		}
 		data, err := os.ReadFile(fullPath)
 		if err != nil {

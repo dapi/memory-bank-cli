@@ -176,3 +176,34 @@ func TestInitRejectsRepoRootReplacedByAnotherDirectory(t *testing.T) {
 		t.Fatalf("init wrote lock into replacement repo root: %v", err)
 	}
 }
+
+// A template source repository may project its payload instead of copying it:
+// the destination is a symlink onto the very file this path installs from. Its
+// content equals the payload by construction, so pull has nothing to write and
+// must not abort the run the way it does for a link leaving the repository.
+func TestPullPreservesPayloadProjection(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	write(t, source, "memory-bank/dna/rule.md", "payload\n")
+	initialize(t, repo, source)
+
+	// Re-shape the installed copy into a projection of the repository's own
+	// payload, mirroring a dual-role repository that owns template/.
+	write(t, repo, "template/memory-bank/dna/rule.md", "payload\n")
+	installed := filepath.Join(repo, "memory-bank", "dna", "rule.md")
+	if err := os.Remove(installed); err != nil {
+		t.Fatal(err)
+	}
+	symlinkForTest(t, filepath.Join("..", "..", "template", "memory-bank", "dna", "rule.md"), installed)
+
+	report, err := Update(opts(repo, source, "b"))
+	if err != nil {
+		t.Fatalf("update rejected a payload projection: %v", err)
+	}
+	decision := decisionFor(t, report, "memory-bank/dna/rule.md")
+	if decision.Action != Preserve || !strings.Contains(decision.Reason, "projection") {
+		t.Fatalf("expected the projection to be preserved, got %#v", decision)
+	}
+	if info, statErr := os.Lstat(installed); statErr != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("pull replaced the projection with a regular file: info=%v err=%v", info, statErr)
+	}
+}

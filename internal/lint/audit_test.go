@@ -96,3 +96,50 @@ func TestNormalizeScopeRootRejectsEscapingRepository(t *testing.T) {
 		})
 	}
 }
+
+func writeDocument(t *testing.T, root, relative, contents string) {
+	t.Helper()
+	full := filepath.Join(root, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// A repository may project part of its tree through a directory symlink.
+// Skipping it would drop every document below and report the referring links
+// as broken, which is indistinguishable from a genuinely missing document.
+func TestLoadDocumentsFollowsInRepoDirectorySymlink(t *testing.T) {
+	repo := t.TempDir()
+	writeDocument(t, repo, "template/memory-bank/flows/routing.md", "# Routing\n")
+	writeDocument(t, repo, "memory-bank/README.md", "[routing](flows/routing.md)\n")
+	if err := os.Symlink(filepath.Join("..", "template", "memory-bank", "flows"), filepath.Join(repo, "memory-bank", "flows")); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+
+	documents, err := loadDocuments(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := documents["memory-bank/flows/routing.md"]; !ok {
+		t.Fatalf("document behind a directory symlink is missing; loaded: %v", documents)
+	}
+}
+
+func TestLoadDocumentsIgnoresSymlinkLeavingTheRepository(t *testing.T) {
+	repo, outside := t.TempDir(), t.TempDir()
+	writeDocument(t, outside, "secret.md", "# Secret\n")
+	if err := os.Symlink(filepath.Join(outside, "secret.md"), filepath.Join(repo, "leak.md")); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+
+	documents, err := loadDocuments(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := documents["leak.md"]; ok {
+		t.Fatal("a link pointing outside the repository must not contribute a document")
+	}
+}

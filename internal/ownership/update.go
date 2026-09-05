@@ -16,6 +16,7 @@ import (
 	"time"
 
 	"github.com/dapi/memory-bank-cli/internal/agentinstructions"
+	"github.com/dapi/memory-bank-cli/internal/projection"
 )
 
 type payload struct {
@@ -199,7 +200,7 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 		data:           lockData,
 		expectedExists: hasLock,
 		expectedDigest: lockDigest,
-		preconditions:  append(lockPreconditions(next), remainingReviewedPaths...),
+		preconditions:  append(lockPreconditions(repo, next), remainingReviewedPaths...),
 	})
 	if err := applyAtomicallyPinned(options, mutations, repo); err != nil {
 		var committed *committedError
@@ -576,6 +577,27 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 	for _, path := range paths {
 		incoming := source[path]
 		class := incoming.class
+		// A template source repository may project its payload instead of
+		// copying it: the destination is a symlink onto the very file this
+		// path is installed from. Its content therefore equals the payload by
+		// construction, so there is nothing to write and nothing to conflict
+		// over. Links that leave the repository or point elsewhere are not
+		// projections and still fail the destination guards below.
+		if projection.IsPayloadProjection(repo.root, path) {
+			projected := File{Ownership: class, BaseDigest: incoming.digest, BaseMode: incoming.mode}
+			if class == Managed || class == Generated {
+				projected.PayloadDigest = incoming.digest
+				projected.PayloadMode = incoming.mode
+			}
+			next.Files[path] = projected
+			sourceDecisions = append(sourceDecisions, Decision{
+				Path:      path,
+				Ownership: projected.Ownership,
+				Action:    Preserve,
+				Reason:    "payload projection: destination symlinks to the template file backing it",
+			})
+			continue
+		}
 		prior, tracked := old.Files[path]
 		currentDigest, exists, topology, err := inspectDestinationForPlan(repo, path, cleanRemovals)
 		if err != nil {
@@ -760,12 +782,19 @@ func destinationModeMatches(repo pinnedRepo, relative, expected string) bool {
 	return err == nil && exists && modeMatches(observedMode(info.Mode().Perm()), expected)
 }
 
-func lockPreconditions(lock Lock) []destinationPrecondition {
+func lockPreconditions(repo pinnedRepo, lock Lock) []destinationPrecondition {
 	paths := make([]string, 0, len(lock.Files))
 	for path, file := range lock.Files {
-		if file.Ownership == Managed || file.Ownership == Generated {
-			paths = append(paths, path)
+		if file.Ownership != Managed && file.Ownership != Generated {
+			continue
 		}
+		// A projected payload has no destination state of its own to re-verify:
+		// it resolves to the payload file this path installs from, so the check
+		// would compare the payload against itself.
+		if projection.IsPayloadProjection(repo.root, path) {
+			continue
+		}
+		paths = append(paths, path)
 	}
 	sort.Strings(paths)
 	result := make([]destinationPrecondition, 0, len(paths))
