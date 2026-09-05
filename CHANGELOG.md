@@ -14,7 +14,10 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   repository that owns the payload is not a downstream installation of itself,
   so it may reference generic documents instead of copying them.
 - `pull` and `init` now preserve such a destination instead of aborting the run,
-  and record it as `preserve` with an explicit reason.
+  and record it as `preserve` with an explicit reason. A projection is current
+  only while the payload it resolves to matches the incoming source; when the
+  repository's own `template/` is behind, the path becomes a conflict rather
+  than a lock entry claiming content the file does not have.
 - `doctor` no longer reports a projected document as `manifest.managed_unreadable`
   or `governance.unsafe_symlink`; it inspects the payload the link resolves to.
 - `lint` descends into a directory symlink that stays inside the repository, so

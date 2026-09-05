@@ -577,28 +577,43 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 	for _, path := range paths {
 		incoming := source[path]
 		class := incoming.class
+		prior, tracked := old.Files[path]
 		// A template source repository may project its payload instead of
 		// copying it: the destination is a symlink onto the very file this
-		// path is installed from. Its content therefore equals the payload by
-		// construction, so there is nothing to write and nothing to conflict
-		// over. Links that leave the repository or point elsewhere are not
-		// projections and still fail the destination guards below.
-		if projection.IsPayloadProjection(repo.root, path) {
-			projected := File{Ownership: class, BaseDigest: incoming.digest, BaseMode: incoming.mode}
-			if class == Managed || class == Generated {
-				projected.PayloadDigest = incoming.digest
-				projected.PayloadMode = incoming.mode
+		// path is installed from. Links that leave the repository or point
+		// elsewhere are not projections and still fail the guards below.
+		//
+		// The projection is only current when the local payload it resolves to
+		// matches the incoming source. When the two differ, the destination
+		// silently reads older content than the lock would claim, so the run
+		// must stop instead of recording a digest the file does not have.
+		if resolved, projected := projection.Resolve(repo.root, path); projected {
+			projectedInfo, projectedDigest, err := inspectRegularFile(resolved)
+			if err != nil {
+				return nil, nil, Lock{}, fmt.Errorf("inspect payload projection %q: %w", path, err)
 			}
-			next.Files[path] = projected
-			sourceDecisions = append(sourceDecisions, Decision{
-				Path:      path,
-				Ownership: projected.Ownership,
-				Action:    Preserve,
-				Reason:    "payload projection: destination symlinks to the template file backing it",
-			})
+			projectedMode := observedMode(projectedInfo.Mode().Perm())
+			decision := Decision{Path: path, Ownership: class}
+			file := File{Ownership: class, BaseDigest: incoming.digest, BaseMode: incoming.mode}
+			if class == Managed || class == Generated {
+				file.PayloadDigest = incoming.digest
+				file.PayloadMode = incoming.mode
+			}
+			if projectedDigest == incoming.digest && modeMatches(projectedMode, incoming.mode) {
+				decision.Action = Preserve
+				decision.Reason = "payload projection: destination symlinks to the template file backing it"
+			} else {
+				decision.Action = Conflict
+				decision.Reason = "payload projection is stale: it resolves to local template content that differs from the incoming source; update template/ and re-run"
+				if tracked {
+					file = prior
+				}
+			}
+			decision.Ownership = file.Ownership
+			next.Files[path] = file
+			sourceDecisions = append(sourceDecisions, decision)
 			continue
 		}
-		prior, tracked := old.Files[path]
 		currentDigest, exists, topology, err := inspectDestinationForPlan(repo, path, cleanRemovals)
 		if err != nil {
 			return nil, nil, Lock{}, err

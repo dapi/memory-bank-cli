@@ -23,37 +23,49 @@ import (
 // A destination path X is backed by PayloadRoot/X.
 const PayloadRoot = "template"
 
-// IsPayloadProjection reports whether the repository-relative destination path
-// resolves, through one or more symlinks, to the payload file that backs it.
+// Resolve reports whether the repository-relative destination path resolves,
+// through one or more symlinks, to the payload file that backs it, and returns
+// that resolved payload path.
+//
+// The returned path is what the destination actually reads. A caller must not
+// assume it matches an incoming source payload: the local payload can be older
+// than the source being installed, and only comparing content can tell.
 //
 // It returns false rather than an error for the ordinary negative cases — a
 // regular file, a broken link, a missing payload counterpart — because callers
 // use this to decide between two legitimate behaviours, not to detect faults.
-func IsPayloadProjection(repoRoot, relative string) bool {
+func Resolve(repoRoot, relative string) (string, bool) {
 	if repoRoot == "" || relative == "" {
-		return false
+		return "", false
 	}
 	osRelative := filepath.FromSlash(relative)
 	if !filepath.IsLocal(osRelative) {
-		return false
+		return "", false
 	}
 
 	resolvedRoot, err := filepath.EvalSymlinks(repoRoot)
 	if err != nil {
-		return false
+		return "", false
 	}
 	destination, err := filepath.EvalSymlinks(filepath.Join(repoRoot, osRelative))
 	if err != nil {
-		return false
+		return "", false
 	}
 	payload, err := filepath.EvalSymlinks(filepath.Join(repoRoot, PayloadRoot, osRelative))
 	if err != nil {
-		return false
+		return "", false
 	}
-	if destination != payload {
-		return false
+	if destination != payload || !within(resolvedRoot, destination) {
+		return "", false
 	}
-	return within(resolvedRoot, destination)
+	return destination, true
+}
+
+// IsPayloadProjection reports whether the destination path is a projection of
+// the payload file backing it.
+func IsPayloadProjection(repoRoot, relative string) bool {
+	_, ok := Resolve(repoRoot, relative)
+	return ok
 }
 
 // within reports whether target is the root itself or lives below it. Both

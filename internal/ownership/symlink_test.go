@@ -207,3 +207,47 @@ func TestPullPreservesPayloadProjection(t *testing.T) {
 		t.Fatalf("pull replaced the projection with a regular file: info=%v err=%v", info, statErr)
 	}
 }
+
+// A projection equals the payload it resolves to, not the payload being
+// installed. When the repository's own template/ is older than the incoming
+// source, treating the destination as current would record a digest the file
+// does not have — a lock that lies about installed content.
+func TestPullRejectsStalePayloadProjection(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	write(t, source, "memory-bank/dna/rule.md", "payload v1\n")
+	initialize(t, repo, source)
+
+	write(t, repo, "template/memory-bank/dna/rule.md", "payload v1\n")
+	installed := filepath.Join(repo, "memory-bank", "dna", "rule.md")
+	if err := os.Remove(installed); err != nil {
+		t.Fatal(err)
+	}
+	symlinkForTest(t, filepath.Join("..", "..", "template", "memory-bank", "dna", "rule.md"), installed)
+
+	// The source moves ahead while the repository's own payload stays behind.
+	write(t, source, "memory-bank/dna/rule.md", "payload v2\n")
+
+	report, err := Update(opts(repo, source, "b"))
+	if err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+	decision := decisionFor(t, report, "memory-bank/dna/rule.md")
+	if decision.Action != Conflict || !strings.Contains(decision.Reason, "stale") {
+		t.Fatalf("expected a stale-projection conflict, got %#v", decision)
+	}
+	if report.Applied {
+		t.Fatal("a conflicting run must not be applied")
+	}
+
+	lock, _, err := ReadLock(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	onDisk, err := os.ReadFile(installed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if recorded := lock.Files["memory-bank/dna/rule.md"].PayloadDigest; recorded != digest(onDisk) {
+		t.Fatalf("lock records %s but the projection reads %s", recorded, digest(onDisk))
+	}
+}
