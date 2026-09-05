@@ -15,6 +15,7 @@
 package projection
 
 import (
+	"os"
 	"path/filepath"
 	"strings"
 )
@@ -66,6 +67,45 @@ func Resolve(repoRoot, relative string) (string, bool) {
 func IsPayloadProjection(repoRoot, relative string) bool {
 	_, ok := Resolve(repoRoot, relative)
 	return ok
+}
+
+// Covers reports whether the destination path is a projection or lies below a
+// projected directory, even when the file itself does not exist yet.
+//
+// A caller needs this to tell "nothing to install here, the payload backs it"
+// from "unsafe path". When upstream adds a file below a projected directory,
+// the destination is absent until the local payload catches up, yet the path is
+// still governed by the projection and must not be written through.
+func Covers(repoRoot, relative string) bool {
+	if repoRoot == "" || relative == "" {
+		return false
+	}
+	osRelative := filepath.FromSlash(relative)
+	if !filepath.IsLocal(osRelative) {
+		return false
+	}
+	if IsPayloadProjection(repoRoot, relative) {
+		return true
+	}
+	// Walk towards the root and stop at the first ancestor that exists: only a
+	// symlinked ancestor can carry the projection, and it must project the very
+	// directory that backs this path.
+	prefix := osRelative
+	for {
+		parent := filepath.Dir(prefix)
+		if parent == "." || parent == string(filepath.Separator) || parent == prefix {
+			return false
+		}
+		prefix = parent
+		info, err := os.Lstat(filepath.Join(repoRoot, prefix))
+		if err != nil {
+			continue
+		}
+		if info.Mode()&os.ModeSymlink == 0 {
+			return false
+		}
+		return IsPayloadProjection(repoRoot, filepath.ToSlash(prefix))
+	}
 }
 
 // within reports whether target is the root itself or lives below it. Both

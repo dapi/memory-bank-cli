@@ -53,20 +53,23 @@ func Run(options Options) (Report, error) {
 
 func loadDocuments(repoRoot string) (map[string]document, error) {
 	documents := make(map[string]document)
-	visited := make(map[string]bool)
-	return documents, walkDocuments(repoRoot, repoRoot, documents, visited)
+	resolvedRoot, err := filepath.EvalSymlinks(repoRoot)
+	if err != nil {
+		return nil, err
+	}
+	return documents, walkDocuments(repoRoot, resolvedRoot, repoRoot, "", documents, []string{resolvedRoot})
 }
 
 // walkDocuments walks root and descends into directory symlinks that stay
-// inside repoRoot. A repository may project part of its tree through such a
-// link; skipping it would silently drop every document below it and report the
-// links pointing there as broken. Links leaving the repository are ignored, and
-// visited targets are tracked so a cycle cannot spin.
-func walkDocuments(repoRoot, root string, documents map[string]document, visited map[string]bool) error {
-	resolvedRoot, err := filepath.EvalSymlinks(repoRoot)
-	if err != nil {
-		return err
-	}
+// inside the repository. A repository may project part of its tree through such
+// a link; skipping it would silently drop every document below it and report
+// the links pointing there as broken.
+//
+// prefix is the path the walked tree is reached by, so documents keep the path
+// authors actually write. ancestors carries the resolved directories currently
+// open on the recursion stack: it stops a cycle without suppressing a second
+// legitimate link to the same target.
+func walkDocuments(repoRoot, resolvedRoot, root, prefix string, documents map[string]document, ancestors []string) error {
 	return filepath.WalkDir(root, func(fullPath string, entry fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
@@ -77,8 +80,13 @@ func walkDocuments(repoRoot, root string, documents map[string]document, visited
 			}
 			return nil
 		}
+		relativePath, relativeErr := filepath.Rel(root, fullPath)
+		if relativeErr != nil {
+			return relativeErr
+		}
+		documentPath := path.Join(prefix, filepath.ToSlash(relativePath))
 		if entry.Type()&fs.ModeSymlink != 0 {
-			return followDocumentSymlink(repoRoot, resolvedRoot, fullPath, entry, documents, visited)
+			return followDocumentSymlink(repoRoot, resolvedRoot, fullPath, documentPath, documents, ancestors)
 		}
 		if !strings.HasSuffix(entry.Name(), ".md") {
 			return nil
@@ -87,25 +95,23 @@ func walkDocuments(repoRoot, root string, documents map[string]document, visited
 		if readErr != nil {
 			return readErr
 		}
-		relativePath, relativeErr := filepath.Rel(repoRoot, fullPath)
-		if relativeErr != nil {
-			return relativeErr
-		}
 		text := string(contents)
-		documents[filepath.ToSlash(relativePath)] = document{text: text, frontmatter: parseFrontmatter(text)}
+		documents[documentPath] = document{text: text, frontmatter: parseFrontmatter(text)}
 		return nil
 	})
 }
 
 // followDocumentSymlink records a linked Markdown file and descends into a
-// linked directory, keeping the document path as seen through the link so the
-// audit reports the path authors actually write.
-func followDocumentSymlink(repoRoot, resolvedRoot, fullPath string, entry fs.DirEntry, documents map[string]document, visited map[string]bool) error {
+// linked directory, provided the target stays inside the repository.
+func followDocumentSymlink(repoRoot, resolvedRoot, fullPath, documentPath string, documents map[string]document, ancestors []string) error {
 	target, err := filepath.EvalSymlinks(fullPath)
 	if err != nil {
 		// A broken link owns no document; the referring index still reports it.
 		return nil
 	}
+	// Containment is judged against the repository, not against the tree being
+	// walked, so a link inside a projected subtree back into the repository is
+	// still followed.
 	if !withinRoot(resolvedRoot, target) {
 		return nil
 	}
@@ -115,39 +121,28 @@ func followDocumentSymlink(repoRoot, resolvedRoot, fullPath string, entry fs.Dir
 	}
 
 	if info.IsDir() {
-		if ignoredDirectories[entry.Name()] || visited[target] {
+		// Ignore by what the link actually points at: a link named innocuously
+		// must not smuggle vendor/ or .git/ into the audit.
+		if ignoredDirectories[filepath.Base(target)] || ignoredDirectories[path.Base(documentPath)] {
 			return nil
 		}
-		visited[target] = true
-		// Collect the linked tree keyed relative to its own root, then re-root
-		// it under the link so paths match what documents actually reference.
-		linked := make(map[string]document)
-		if err := walkDocuments(target, target, linked, visited); err != nil {
-			return err
+		for _, ancestor := range ancestors {
+			if ancestor == target {
+				return nil
+			}
 		}
-		prefix, relativeErr := filepath.Rel(repoRoot, fullPath)
-		if relativeErr != nil {
-			return relativeErr
-		}
-		for suffix, doc := range linked {
-			documents[path.Join(filepath.ToSlash(prefix), suffix)] = doc
-		}
-		return nil
+		return walkDocuments(repoRoot, resolvedRoot, target, documentPath, documents, append(ancestors, target))
 	}
 
-	if !strings.HasSuffix(entry.Name(), ".md") || !info.Mode().IsRegular() {
+	if !strings.HasSuffix(documentPath, ".md") || !info.Mode().IsRegular() {
 		return nil
 	}
 	contents, err := os.ReadFile(target)
 	if err != nil {
 		return err
 	}
-	relativePath, err := filepath.Rel(repoRoot, fullPath)
-	if err != nil {
-		return err
-	}
 	text := string(contents)
-	documents[filepath.ToSlash(relativePath)] = document{text: text, frontmatter: parseFrontmatter(text)}
+	documents[documentPath] = document{text: text, frontmatter: parseFrontmatter(text)}
 	return nil
 }
 

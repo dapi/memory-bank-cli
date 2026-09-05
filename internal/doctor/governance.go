@@ -35,18 +35,10 @@ func (report *Report) checkGovernance(scopeRoot string) {
 	documents := map[string]governedDocument{}
 	root := filepath.Join(report.RepoRoot, filepath.FromSlash(scopeRoot))
 	dnaRootExists := fileExists(filepath.Join(root, "dna", "principles.md"))
-	err := filepath.WalkDir(root, func(fullPath string, entry fs.DirEntry, walkErr error) error {
-		if walkErr != nil {
-			return walkErr
-		}
+	err := walkGovernedTree(report.RepoRoot, root, scopeRoot, nil, func(documentPath, fullPath string, entry fs.DirEntry) error {
 		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".md") {
 			return nil
 		}
-		relative, err := filepath.Rel(report.RepoRoot, fullPath)
-		if err != nil {
-			return err
-		}
-		documentPath := filepath.ToSlash(relative)
 		if entry.Type()&os.ModeSymlink != 0 {
 			// A template source repository may project a governed document
 			// from its own payload. The document behind such a link is the
@@ -79,6 +71,62 @@ func (report *Report) checkGovernance(scopeRoot string) {
 	}
 	report.checkDerivedFromCycles(documents)
 	report.checkFeatureLifecycle(documents, scopeRoot)
+}
+
+// walkGovernedTree walks the governed tree and descends into a directory
+// symlink that stays inside the repository. Without this, governance rules
+// would silently not apply to any document below a projected directory, while
+// lint audits them — enforcement would quietly disappear for exactly the layout
+// projections create.
+//
+// prefix is the repository-relative path the walked tree is reached by, so a
+// document keeps the path authors actually reference.
+func walkGovernedTree(repoRoot, root, prefix string, ancestors []string, visit func(documentPath string, fullPath string, entry fs.DirEntry) error) error {
+	resolvedRoot, err := filepath.EvalSymlinks(repoRoot)
+	if err != nil {
+		return err
+	}
+	return filepath.WalkDir(root, func(fullPath string, entry fs.DirEntry, walkErr error) error {
+		if walkErr != nil {
+			return walkErr
+		}
+		relative, relErr := filepath.Rel(root, fullPath)
+		if relErr != nil {
+			return relErr
+		}
+		documentPath := path.Join(prefix, filepath.ToSlash(relative))
+		if entry.Type()&fs.ModeSymlink != 0 {
+			target, evalErr := filepath.EvalSymlinks(fullPath)
+			if evalErr != nil {
+				return nil
+			}
+			if !withinRepository(resolvedRoot, target) {
+				return nil
+			}
+			info, statErr := os.Stat(target)
+			if statErr != nil {
+				return nil
+			}
+			if !info.IsDir() {
+				return visit(documentPath, target, entry)
+			}
+			for _, ancestor := range ancestors {
+				if ancestor == target {
+					return nil
+				}
+			}
+			return walkGovernedTree(repoRoot, target, documentPath, append(ancestors, target), visit)
+		}
+		return visit(documentPath, fullPath, entry)
+	})
+}
+
+func withinRepository(resolvedRoot, target string) bool {
+	relative, err := filepath.Rel(resolvedRoot, target)
+	if err != nil {
+		return false
+	}
+	return relative != ".." && !strings.HasPrefix(relative, ".."+string(filepath.Separator))
 }
 
 func parseFrontmatter(data []byte) (map[string]any, bool, error) {

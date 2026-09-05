@@ -60,7 +60,7 @@ func PlanPull(options Options) (ResolutionPlan, error) {
 	if err := verifySource(pinnedSource.root, options.SourceRef); err != nil {
 		return ResolutionPlan{}, fmt.Errorf("source checkout changed while reading template: %w", err)
 	}
-	_, decisions, _, err := buildPlan(repo, source, lock, true, nil, nil, false)
+	_, decisions, _, _, err := buildPlan(repo, source, lock, true, nil, nil, false)
 	if err != nil {
 		return ResolutionPlan{}, err
 	}
@@ -261,7 +261,7 @@ func readPlanDestination(repo pinnedRepo, path string) (os.FileInfo, []byte, boo
 	if err != nil || !exists {
 		return nil, nil, exists, err
 	}
-	readInfo, data, err := secureReadDestination(repo, path)
+	readInfo, data, err := readDestinationContent(repo, path)
 	if err != nil {
 		return nil, nil, false, err
 	}

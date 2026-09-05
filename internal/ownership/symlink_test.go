@@ -200,8 +200,11 @@ func TestPullPreservesPayloadProjection(t *testing.T) {
 		t.Fatalf("update rejected a payload projection: %v", err)
 	}
 	decision := decisionFor(t, report, "memory-bank/dna/rule.md")
-	if decision.Action != Preserve || !strings.Contains(decision.Reason, "projection") {
+	if decision.Action != Preserve {
 		t.Fatalf("expected the projection to be preserved, got %#v", decision)
+	}
+	if report.ConflictCount != 0 {
+		t.Fatalf("a current projection must not conflict: %d", report.ConflictCount)
 	}
 	if info, statErr := os.Lstat(installed); statErr != nil || info.Mode()&os.ModeSymlink == 0 {
 		t.Fatalf("pull replaced the projection with a regular file: info=%v err=%v", info, statErr)
@@ -249,5 +252,136 @@ func TestPullRejectsStalePayloadProjection(t *testing.T) {
 	}
 	if recorded := lock.Files["memory-bank/dna/rule.md"].PayloadDigest; recorded != digest(onDisk) {
 		t.Fatalf("lock records %s but the projection reads %s", recorded, digest(onDisk))
+	}
+}
+
+// projectRepo re-shapes an installed file into a projection of the
+// repository's own payload, as a dual-role repository does.
+func projectRepo(t *testing.T, repo, relative, contents string) {
+	t.Helper()
+	write(t, repo, "template/"+relative, contents)
+	installed := filepath.Join(repo, filepath.FromSlash(relative))
+	if err := os.Remove(installed); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	depth := strings.Count(relative, "/")
+	symlinkForTest(t, filepath.Join(append(repeatParent(depth), "template", filepath.FromSlash(relative))...), installed)
+}
+
+func repeatParent(count int) []string {
+	parents := make([]string, count)
+	for index := range parents {
+		parents[index] = ".."
+	}
+	return parents
+}
+
+// Upstream removing a projected path must not make pull unusable: before this
+// was handled the whole run aborted on the symlink leaf.
+func TestPullHandlesUpstreamRemovalOfProjection(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	write(t, source, "memory-bank/dna/rule.md", "payload\n")
+	write(t, source, "memory-bank/dna/keep.md", "keep\n")
+	initialize(t, repo, source)
+	projectRepo(t, repo, "memory-bank/dna/rule.md", "payload\n")
+
+	if err := os.Remove(filepath.Join(source, "memory-bank", "dna", "rule.md")); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := Update(opts(repo, source, "b")); err != nil {
+		t.Fatalf("upstream removal of a projected path aborted the run: %v", err)
+	}
+}
+
+// A file added below a projected directory does not exist downstream until the
+// local payload catches up. That is a conflict to resolve in template/, not an
+// unsafe path that stops the run.
+func TestPullReportsNewFileUnderProjectedDirectory(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	write(t, source, "memory-bank/flows/routing.md", "routing\n")
+	initialize(t, repo, source)
+
+	write(t, repo, "template/memory-bank/flows/routing.md", "routing\n")
+	if err := os.RemoveAll(filepath.Join(repo, "memory-bank", "flows")); err != nil {
+		t.Fatal(err)
+	}
+	symlinkForTest(t, filepath.Join("..", "template", "memory-bank", "flows"), filepath.Join(repo, "memory-bank", "flows"))
+
+	write(t, source, "memory-bank/flows/new.md", "new\n")
+
+	report, err := Update(opts(repo, source, "b"))
+	if err != nil {
+		t.Fatalf("a new file under a projected directory aborted the run: %v", err)
+	}
+	decision := decisionFor(t, report, "memory-bank/flows/new.md")
+	if decision.Action != Conflict || !strings.Contains(decision.Reason, "template/") {
+		t.Fatalf("expected an actionable conflict, got %#v", decision)
+	}
+}
+
+// init adopts what it finds. A projection whose payload differs from the source
+// is still an adoption, not a reason to refuse creating the lock.
+func TestInitAdoptsDivergentProjection(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	write(t, source, "memory-bank/dna/rule.md", "payload v2\n")
+	write(t, repo, "template/memory-bank/dna/rule.md", "payload v1\n")
+	if err := os.MkdirAll(filepath.Join(repo, "memory-bank", "dna"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	symlinkForTest(t, filepath.Join("..", "..", "template", "memory-bank", "dna", "rule.md"), filepath.Join(repo, "memory-bank", "dna", "rule.md"))
+
+	report, err := Init(opts(repo, source, "a"))
+	if err != nil {
+		t.Fatalf("init failed: %v", err)
+	}
+	if !report.Applied {
+		t.Fatalf("init must adopt a divergent projection instead of refusing: %#v", report)
+	}
+	if _, err := os.Lstat(filepath.Join(repo, LockFileName)); err != nil {
+		t.Fatalf("init wrote no lock: %v", err)
+	}
+}
+
+// pull --plan must be constructible in a repository that projects its payload:
+// it is the documented route for resolving a stale projection.
+func TestPlanPullBuildsWithProjection(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	write(t, source, "memory-bank/dna/rule.md", "payload\n")
+	initialize(t, repo, source)
+	projectRepo(t, repo, "memory-bank/dna/rule.md", "payload\n")
+
+	plan, err := PlanPull(opts(repo, source, "b"))
+	if err != nil {
+		t.Fatalf("plan could not be built over a projection: %v", err)
+	}
+	if len(plan.Entries) == 0 {
+		t.Fatal("plan has no entries")
+	}
+}
+
+// An untracked path normally requires a human decision because it may be the
+// user's own file. A projection is a pointer at the payload, so when it already
+// reads the incoming content it is adopted rather than turned into a conflict.
+func TestPullAdoptsUntrackedMatchingProjection(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	write(t, source, "memory-bank/dna/rule.md", "payload\n")
+	initialize(t, repo, source)
+
+	// A payload path the lock does not track yet, already projected downstream.
+	write(t, source, "memory-bank/dna/extra.md", "extra\n")
+	write(t, repo, "template/memory-bank/dna/extra.md", "extra\n")
+	symlinkForTest(t, filepath.Join("..", "..", "template", "memory-bank", "dna", "extra.md"), filepath.Join(repo, "memory-bank", "dna", "extra.md"))
+
+	report, err := Update(opts(repo, source, "b"))
+	if err != nil {
+		t.Fatalf("update failed: %v", err)
+	}
+	decision := decisionFor(t, report, "memory-bank/dna/extra.md")
+	if decision.Action != Preserve || !strings.Contains(decision.Reason, "adopt payload projection") {
+		t.Fatalf("expected the projection to be adopted, got %#v", decision)
+	}
+	if info, statErr := os.Lstat(filepath.Join(repo, "memory-bank", "dna", "extra.md")); statErr != nil || info.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("adoption replaced the projection with a regular file: %v %v", info, statErr)
 	}
 }

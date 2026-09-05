@@ -214,8 +214,12 @@ func readRegularWithinRoot(repoRoot, relativePath string) ([]byte, fs.FileInfo, 
 			// of copying it. Such a link resolves inside the repository onto
 			// the payload file backing this exact path, so reading through it
 			// yields the payload itself. Any other symlink stays unsafe.
-			if projection.IsPayloadProjection(repoRoot, relativePath) {
-				return readResolvedRegular(filepath.Join(repoRoot, filepath.FromSlash(relativePath)), relativePath)
+			//
+			// Read the path Resolve verified rather than walking the link
+			// again: a second traversal could follow a link re-pointed in the
+			// meantime.
+			if resolved, projected := projection.Resolve(repoRoot, relativePath); projected {
+				return readResolvedRegular(resolved, relativePath)
 			}
 			return nil, nil, fmt.Errorf("unsafe symlink in path %q", relativePath)
 		}

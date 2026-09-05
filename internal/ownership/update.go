@@ -129,7 +129,7 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 		}
 		options.AdaptedResolutions = automatic
 	}
-	mutations, decisions, next, err := buildPlan(repo, source, old, hasLock, options.UserOwnedResolutions, options.AdaptedResolutions, options.DetachUserOwnedRemovals)
+	mutations, decisions, next, projectedPaths, err := buildPlan(repo, source, old, hasLock, options.UserOwnedResolutions, options.AdaptedResolutions, options.DetachUserOwnedRemovals)
 	if err != nil {
 		return Report{}, err
 	}
@@ -200,7 +200,7 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 		data:           lockData,
 		expectedExists: hasLock,
 		expectedDigest: lockDigest,
-		preconditions:  append(lockPreconditions(repo, next), remainingReviewedPaths...),
+		preconditions:  append(lockPreconditions(projectedPaths, next), remainingReviewedPaths...),
 	})
 	if err := applyAtomicallyPinned(options, mutations, repo); err != nil {
 		var committed *committedError
@@ -218,7 +218,7 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 // three-way merges. Missing history, unreadable paths, overlapping edits, and
 // all non-adapted conflicts deliberately remain unresolved.
 func automaticAdaptedMergeResolutions(repo pinnedRepo, currentSource pinnedSource, source map[string]payload, old Lock, options Options) (map[string]AdaptedResolution, error) {
-	_, decisions, _, err := buildPlan(repo, source, old, true, nil, nil, false)
+	_, decisions, _, _, err := buildPlan(repo, source, old, true, nil, nil, false)
 	if err != nil {
 		return nil, err
 	}
@@ -483,13 +483,17 @@ func modeMatches(observed, expected string) bool {
 	return observed == "" || observed == expected
 }
 
-func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock bool, userOwnedResolutions map[string]bool, adaptedResolutions map[string]AdaptedResolution, detachUserOwnedRemovals bool) ([]mutation, []Decision, Lock, error) {
+// buildPlan also reports which destinations it observed as payload projections.
+// Committing the lock must reuse that classification instead of re-reading the
+// filesystem: a path turned into a projection after planning would otherwise
+// silently lose its commit-time verification.
+func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock bool, userOwnedResolutions map[string]bool, adaptedResolutions map[string]AdaptedResolution, detachUserOwnedRemovals bool) ([]mutation, []Decision, Lock, map[string]bool, error) {
 	if _, err := inspectRepoRoot(repo.root, repo.info); err != nil {
-		return nil, nil, Lock{}, err
+		return nil, nil, Lock{}, nil, err
 	}
 	for sourcePath := range source {
 		if sourcePath == LockFileName || isGitMetadataPath(sourcePath) {
-			return nil, nil, Lock{}, fmt.Errorf("template source contains reserved metadata path: %s", sourcePath)
+			return nil, nil, Lock{}, nil, fmt.Errorf("template source contains reserved metadata path: %s", sourcePath)
 		}
 	}
 	next := Lock{Files: make(map[string]File)}
@@ -497,6 +501,7 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 	var removalDecisions []Decision
 	cleanRemovals := make(map[string]string)
 	removalMutationIndex := make(map[string]int)
+	projected := make(map[string]bool)
 	removed := make([]string, 0)
 	for path := range old.Files {
 		if _, exists := source[path]; !exists {
@@ -508,14 +513,25 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 		prior := old.Files[path]
 		currentDigest, exists, err := digestDestinationFile(repo, path)
 		if err != nil {
-			return nil, nil, Lock{}, err
+			return nil, nil, Lock{}, nil, err
 		}
 		decision := Decision{Path: path, Ownership: prior.Ownership}
+		// A projected path cannot be deleted downstream: the file lives in the
+		// repository's own payload, and removing it there is the actual change
+		// the upstream removal asks for.
+		if exists && projection.Covers(repo.root, path) {
+			projected[path] = true
+			decision.Action = Conflict
+			decision.Reason = "payload projection: the incoming source removed this path, but it is backed by template/; remove it from template/ and re-run"
+			next.Files[path] = prior
+			removalDecisions = append(removalDecisions, decision)
+			continue
+		}
 		currentMode := ""
 		if exists {
 			_, info, _, inspectErr := inspectDestination(repo, path)
 			if inspectErr != nil {
-				return nil, nil, Lock{}, inspectErr
+				return nil, nil, Lock{}, nil, inspectErr
 			}
 			currentMode = observedMode(info.Mode().Perm())
 		}
@@ -543,7 +559,7 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 					removalMutationIndex[path] = len(removalMutations)
 					removalMutations = append(removalMutations, mutation{decision: decision, expectedExists: true, expectedDigest: currentDigest, expectedMode: currentMode})
 				default:
-					return nil, nil, Lock{}, fmt.Errorf("invalid adapted removal resolution %q for %s", resolution.Action, path)
+					return nil, nil, Lock{}, nil, fmt.Errorf("invalid adapted removal resolution %q for %s", resolution.Action, path)
 				}
 			} else {
 				decision.Action, decision.Reason = Conflict, "adapted file changed downstream and was removed upstream"
@@ -578,51 +594,18 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 		incoming := source[path]
 		class := incoming.class
 		prior, tracked := old.Files[path]
-		// A template source repository may project its payload instead of
-		// copying it: the destination is a symlink onto the very file this
-		// path is installed from. Links that leave the repository or point
-		// elsewhere are not projections and still fail the guards below.
-		//
-		// The projection is only current when the local payload it resolves to
-		// matches the incoming source. When the two differ, the destination
-		// silently reads older content than the lock would claim, so the run
-		// must stop instead of recording a digest the file does not have.
-		if resolved, projected := projection.Resolve(repo.root, path); projected {
-			projectedInfo, projectedDigest, err := inspectRegularFile(resolved)
-			if err != nil {
-				return nil, nil, Lock{}, fmt.Errorf("inspect payload projection %q: %w", path, err)
-			}
-			projectedMode := observedMode(projectedInfo.Mode().Perm())
-			decision := Decision{Path: path, Ownership: class}
-			file := File{Ownership: class, BaseDigest: incoming.digest, BaseMode: incoming.mode}
-			if class == Managed || class == Generated {
-				file.PayloadDigest = incoming.digest
-				file.PayloadMode = incoming.mode
-			}
-			if projectedDigest == incoming.digest && modeMatches(projectedMode, incoming.mode) {
-				decision.Action = Preserve
-				decision.Reason = "payload projection: destination symlinks to the template file backing it"
-			} else {
-				decision.Action = Conflict
-				decision.Reason = "payload projection is stale: it resolves to local template content that differs from the incoming source; update template/ and re-run"
-				if tracked {
-					file = prior
-				}
-			}
-			decision.Ownership = file.Ownership
-			next.Files[path] = file
-			sourceDecisions = append(sourceDecisions, decision)
-			continue
+		if projection.IsPayloadProjection(repo.root, path) {
+			projected[path] = true
 		}
 		currentDigest, exists, topology, err := inspectDestinationForPlan(repo, path, cleanRemovals)
 		if err != nil {
-			return nil, nil, Lock{}, err
+			return nil, nil, Lock{}, nil, err
 		}
 		currentMode := ""
 		if exists {
 			_, info, _, inspectErr := inspectDestination(repo, path)
 			if inspectErr != nil {
-				return nil, nil, Lock{}, inspectErr
+				return nil, nil, Lock{}, nil, inspectErr
 			}
 			currentMode = observedMode(info.Mode().Perm())
 		}
@@ -671,7 +654,13 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 				decision.Action, decision.Reason = Preserve, "adopt existing file without overwriting it"
 			}
 		case !tracked:
-			if class == Managed {
+			// An untracked path normally needs a human decision: the file may be
+			// the user's own. A projection is not — it is a pointer at the
+			// payload, and when it already reads the incoming content there is
+			// nothing to protect and nothing to write.
+			if class == Managed && currentDigest == incoming.digest && modeMatches(currentMode, incoming.mode) && projection.IsPayloadProjection(repo.root, path) {
+				decision.Action, decision.Reason = Preserve, "adopt payload projection as managed"
+			} else if class == Managed {
 				decision.Action, decision.Reason = Conflict, "unmanaged file blocks managed template path"
 				file = File{Ownership: UserOwned}
 			} else {
@@ -744,7 +733,7 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 				}
 			case "apply-reviewed-merge", "apply-automatic-merge":
 				if resolution.Mode != "100644" && resolution.Mode != "100755" {
-					return nil, nil, Lock{}, fmt.Errorf("invalid reviewed merge resolution for %s", path)
+					return nil, nil, Lock{}, nil, fmt.Errorf("invalid reviewed merge resolution for %s", path)
 				}
 				if resolution.Action == "apply-automatic-merge" {
 					decision.Action, decision.Reason = UpdateFile, "automatically merge non-overlapping adapted changes"
@@ -753,7 +742,7 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 				}
 				mutationData, mutationMode = resolution.Data, fileMode(resolution.Mode)
 			default:
-				return nil, nil, Lock{}, fmt.Errorf("invalid adapted resolution %q for %s", resolution.Action, path)
+				return nil, nil, Lock{}, nil, fmt.Errorf("invalid adapted resolution %q for %s", resolution.Action, path)
 			}
 		}
 		if resolution, resolved := userOwnedResolutions[path]; resolved && class == Managed && file.Ownership == UserOwned {
@@ -762,6 +751,21 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 				file = File{Ownership: Managed, BaseDigest: incoming.digest, PayloadDigest: incoming.digest, BaseMode: incoming.mode, PayloadMode: incoming.mode}
 			} else {
 				decision.Action, decision.Reason = Preserve, "keep user-owned file by explicit resolution"
+			}
+		}
+		// Nothing may be written through a projection: the destination is the
+		// repository's own payload, and installing into it would rewrite the
+		// source of truth. Such a path is current only while the payload it
+		// resolves to matches the incoming source; otherwise the payload itself
+		// is what needs updating, which only a human can decide.
+		if decision.Action == Create || decision.Action == UpdateFile {
+			if projection.Covers(repo.root, path) {
+				projected[path] = true
+				decision.Action = Conflict
+				decision.Reason = "payload projection is stale: this path is backed by template/, which differs from the incoming source; update template/ and re-run"
+				if tracked {
+					file = prior
+				}
 			}
 		}
 		// A user-owned path can require an explicit choice both when its local
@@ -786,7 +790,7 @@ func buildPlan(repo pinnedRepo, source map[string]payload, old Lock, hasLock boo
 	}
 	mutations := append(removalMutations, sourceMutations...)
 	decisions := append(sourceDecisions, removalDecisions...)
-	return mutations, decisions, next, nil
+	return mutations, decisions, next, projected, nil
 }
 
 func destinationModeMatches(repo pinnedRepo, relative, expected string) bool {
@@ -797,7 +801,7 @@ func destinationModeMatches(repo pinnedRepo, relative, expected string) bool {
 	return err == nil && exists && modeMatches(observedMode(info.Mode().Perm()), expected)
 }
 
-func lockPreconditions(repo pinnedRepo, lock Lock) []destinationPrecondition {
+func lockPreconditions(projected map[string]bool, lock Lock) []destinationPrecondition {
 	paths := make([]string, 0, len(lock.Files))
 	for path, file := range lock.Files {
 		if file.Ownership != Managed && file.Ownership != Generated {
@@ -805,8 +809,9 @@ func lockPreconditions(repo pinnedRepo, lock Lock) []destinationPrecondition {
 		}
 		// A projected payload has no destination state of its own to re-verify:
 		// it resolves to the payload file this path installs from, so the check
-		// would compare the payload against itself.
-		if projection.IsPayloadProjection(repo.root, path) {
+		// would compare the payload against itself. The classification comes
+		// from the plan, never from a fresh look at the filesystem.
+		if projected[path] {
 			continue
 		}
 		paths = append(paths, path)
@@ -1179,6 +1184,19 @@ func applyAtomicallyPinnedWithOps(options Options, mutations []mutation, repo pi
 }
 
 func inspectDestination(repo pinnedRepo, relative string) (string, fs.FileInfo, bool, error) {
+	// A projection reads the payload file backing this path. Report it as the
+	// regular file it resolves to so ordinary decision logic applies; writing
+	// through it is blocked separately, in the plan.
+	if resolved, projected := projection.Resolve(repo.root, relative); projected {
+		info, statErr := os.Stat(resolved)
+		if statErr != nil {
+			return "", nil, false, fmt.Errorf("inspect payload projection %q: %w", relative, statErr)
+		}
+		if !info.Mode().IsRegular() {
+			return "", nil, false, fmt.Errorf("unsupported destination file %q", relative)
+		}
+		return resolved, info, true, nil
+	}
 	target, err := destinationPathPinned(repo, relative)
 	if err != nil {
 		return "", nil, false, err
@@ -1244,7 +1262,7 @@ func verifyDestinationPrecondition(repo pinnedRepo, precondition destinationPrec
 	if !exists {
 		return errors.New("managed payload is missing")
 	}
-	readInfo, data, err := secureReadDestination(repo, precondition.path)
+	readInfo, data, err := readDestinationContent(repo, precondition.path)
 	if err != nil {
 		return err
 	}
@@ -1431,6 +1449,20 @@ func readRegularFile(path string) (fs.FileInfo, []byte, error) {
 	return after, data, nil
 }
 
+// readDestinationContent reads a destination, transparently reading through a
+// payload projection. The projected path was already resolved inside the
+// repository, so it needs no second secure traversal.
+func readDestinationContent(repo pinnedRepo, relative string) (os.FileInfo, []byte, error) {
+	if resolved, projected := projection.Resolve(repo.root, relative); projected {
+		info, data, err := readRegularFile(resolved)
+		if err != nil {
+			return nil, nil, fmt.Errorf("read payload projection %q: %w", relative, err)
+		}
+		return info, data, nil
+	}
+	return secureReadDestination(repo, relative)
+}
+
 func digestDestinationFile(repo pinnedRepo, relative string) (string, bool, error) {
 	_, _, exists, err := inspectDestination(repo, relative)
 	if err != nil {
@@ -1439,7 +1471,7 @@ func digestDestinationFile(repo pinnedRepo, relative string) (string, bool, erro
 	if !exists {
 		return "", false, nil
 	}
-	_, data, err := secureReadDestination(repo, relative)
+	_, data, err := readDestinationContent(repo, relative)
 	if err != nil {
 		return "", false, err
 	}

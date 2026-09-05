@@ -13,18 +13,26 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
   the repository and lands on the `template/` file backing that exact path. A
   repository that owns the payload is not a downstream installation of itself,
   so it may reference generic documents instead of copying them.
-- `pull` and `init` now preserve such a destination instead of aborting the run,
-  and record it as `preserve` with an explicit reason. A projection is current
-  only while the payload it resolves to matches the incoming source; when the
-  repository's own `template/` is behind, the path becomes a conflict rather
-  than a lock entry claiming content the file does not have.
-- `doctor` no longer reports a projected document as `manifest.managed_unreadable`
-  or `governance.unsafe_symlink`; it inspects the payload the link resolves to.
-- `lint` descends into a directory symlink that stays inside the repository, so
-  a projected subtree is audited instead of silently vanishing from scope.
+- Read a projected destination as the payload it resolves to, so `init`, `pull`,
+  `pull --plan`, upstream removals and `doctor` all apply their ordinary rules
+  to it instead of stopping on an unsafe path.
+- `lint` and `doctor` descend into a directory symlink that stays inside the
+  repository, so a projected subtree is audited and governed rather than
+  silently vanishing from scope.
+
+### Changed
+
+- Never write, replace or delete through a projection: the destination is the
+  repository's own payload. When the payload differs from the incoming source,
+  the path becomes an actionable conflict naming `template/` as the thing to
+  update, rather than a lock entry claiming content the file does not have.
+- A projection that already reads the incoming content is adopted as managed
+  instead of being reported as an unmanaged file blocking a template path.
 
 Symlinks that leave the repository root, or point at anything other than the
 payload file backing the path, remain unsafe and are rejected exactly as before.
+A repository without a `template/` tree is unaffected: no path can be a
+projection there, so behaviour is byte-identical.
 
 ## [2.2.0] - 2026-08-15
 

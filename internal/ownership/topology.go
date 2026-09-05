@@ -8,6 +8,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/dapi/memory-bank-cli/internal/projection"
 )
 
 type topologySnapshot struct {
@@ -21,6 +23,20 @@ type removedDirectory struct {
 }
 
 func inspectDestinationForPlan(repo pinnedRepo, relative string, cleanRemovals map[string]string) (string, bool, *topologySnapshot, error) {
+	// A projected destination reads the payload backing it; report its content
+	// so the ordinary decision logic applies. A path merely covered by a
+	// projected directory does not exist yet — the local payload has not caught
+	// up — and must not be reported as an unsafe symlink either.
+	if resolved, projected := projection.Resolve(repo.root, relative); projected {
+		_, contents, err := readRegularFile(resolved)
+		if err != nil {
+			return "", false, nil, fmt.Errorf("inspect payload projection %q: %w", relative, err)
+		}
+		return digest(contents), true, nil, nil
+	}
+	if projection.Covers(repo.root, relative) {
+		return "", false, nil, nil
+	}
 	target, osRelative, err := destinationPathLexicalPinned(repo, relative)
 	if err != nil {
 		return "", false, nil, err

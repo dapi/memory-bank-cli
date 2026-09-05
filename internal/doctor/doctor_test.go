@@ -789,3 +789,37 @@ func hasFinding(report Report, code string) bool {
 	}
 	return false
 }
+
+func writeProjectionFixture(t *testing.T, root, relative, contents string) {
+	t.Helper()
+	full := filepath.Join(root, filepath.FromSlash(relative))
+	if err := os.MkdirAll(filepath.Dir(full), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(full, []byte(contents), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Governance must not quietly stop applying below a projected directory: lint
+// audits those documents, so doctor has to validate them too.
+func TestGovernanceValidatesDocumentsBehindProjectedDirectory(t *testing.T) {
+	repo := t.TempDir()
+	writeProjectionFixture(t, repo, "template/memory-bank/flows/broken.md", "---\nstatus: nonsense\n---\n\n# Broken\n")
+	if err := os.MkdirAll(filepath.Join(repo, "memory-bank"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join("..", "template", "memory-bank", "flows"), filepath.Join(repo, "memory-bank", "flows")); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+
+	report := Report{RepoRoot: repo, Findings: []Finding{}}
+	report.checkGovernance("memory-bank")
+
+	for _, finding := range report.Findings {
+		if finding.Code == "governance.status_invalid" && finding.Path == "memory-bank/flows/broken.md" {
+			return
+		}
+	}
+	t.Fatalf("no governance finding for a document behind a projection: %#v", report.Findings)
+}
