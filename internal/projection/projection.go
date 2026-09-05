@@ -84,12 +84,12 @@ func Covers(repoRoot, relative string) bool {
 	if !filepath.IsLocal(osRelative) {
 		return false
 	}
-	if IsPayloadProjection(repoRoot, relative) {
+	if IsPayloadProjection(repoRoot, relative) || Declares(repoRoot, relative) {
 		return true
 	}
-	// Walk towards the root and stop at the first ancestor that exists: only a
-	// symlinked ancestor can carry the projection, and it must project the very
-	// directory that backs this path.
+	// Walk towards the root. A plain directory ancestor says nothing: it may
+	// itself be reached through a projected symlink higher up, so keep looking
+	// instead of concluding the path is unprojected.
 	prefix := osRelative
 	for {
 		parent := filepath.Dir(prefix)
@@ -101,11 +101,40 @@ func Covers(repoRoot, relative string) bool {
 		if err != nil {
 			continue
 		}
-		if info.Mode()&os.ModeSymlink == 0 {
-			return false
+		if info.Mode()&os.ModeSymlink != 0 {
+			return IsPayloadProjection(repoRoot, filepath.ToSlash(prefix))
 		}
-		return IsPayloadProjection(repoRoot, filepath.ToSlash(prefix))
 	}
+}
+
+// Declares reports whether the destination is a symlink written to point at the
+// payload backing it, even when that payload no longer exists.
+//
+// Removing a file from template/ leaves its projection dangling. The path is
+// still governed by the projection and must reach a decision rather than a
+// hard failure, so a caller needs to recognise it without resolving it. This
+// never enables a read or a write: a dangling link has nothing to read.
+func Declares(repoRoot, relative string) bool {
+	if repoRoot == "" || relative == "" {
+		return false
+	}
+	osRelative := filepath.FromSlash(relative)
+	if !filepath.IsLocal(osRelative) {
+		return false
+	}
+	link := filepath.Join(repoRoot, osRelative)
+	info, err := os.Lstat(link)
+	if err != nil || info.Mode()&os.ModeSymlink == 0 {
+		return false
+	}
+	target, err := os.Readlink(link)
+	if err != nil {
+		return false
+	}
+	if !filepath.IsAbs(target) {
+		target = filepath.Join(filepath.Dir(link), target)
+	}
+	return filepath.Clean(target) == filepath.Join(repoRoot, PayloadRoot, osRelative)
 }
 
 // within reports whether target is the root itself or lives below it. Both

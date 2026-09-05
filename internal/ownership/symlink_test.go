@@ -385,3 +385,49 @@ func TestPullAdoptsUntrackedMatchingProjection(t *testing.T) {
 		t.Fatalf("adoption replaced the projection with a regular file: %v %v", info, statErr)
 	}
 }
+
+// A projected agent-instruction file must plan like any other: the reader has
+// to agree with the inspection, or the run dies with ELOOP.
+func TestPullReadsProjectedAgentFile(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	write(t, source, "memory-bank/dna/rule.md", "payload\n")
+	initialize(t, repo, source)
+
+	write(t, repo, "template/AGENTS.md", "# Agents\n\nSee memory-bank/README.md.\n")
+	agent := filepath.Join(repo, "AGENTS.md")
+	if err := os.Remove(agent); err != nil && !os.IsNotExist(err) {
+		t.Fatal(err)
+	}
+	symlinkForTest(t, filepath.Join("template", "AGENTS.md"), agent)
+
+	if _, err := Update(opts(repo, source, "b")); err != nil {
+		t.Fatalf("a projected agent file aborted the run: %v", err)
+	}
+}
+
+// Following the removal remediation leaves the projection dangling; the next
+// run must still reach a decision instead of failing on the broken link.
+func TestPullHandlesDanglingProjectionAfterRemediation(t *testing.T) {
+	repo, source := t.TempDir(), t.TempDir()
+	write(t, source, "memory-bank/dna/rule.md", "payload\n")
+	write(t, source, "memory-bank/dna/keep.md", "keep\n")
+	initialize(t, repo, source)
+	projectRepo(t, repo, "memory-bank/dna/rule.md", "payload\n")
+
+	if err := os.Remove(filepath.Join(source, "memory-bank", "dna", "rule.md")); err != nil {
+		t.Fatal(err)
+	}
+	// The user does what the first conflict asked: drops the payload file.
+	if err := os.Remove(filepath.Join(repo, "template", "memory-bank", "dna", "rule.md")); err != nil {
+		t.Fatal(err)
+	}
+
+	report, err := Update(opts(repo, source, "b"))
+	if err != nil {
+		t.Fatalf("a dangling projection aborted the run: %v", err)
+	}
+	decision := decisionFor(t, report, "memory-bank/dna/rule.md")
+	if decision.Action != Conflict {
+		t.Fatalf("expected an actionable conflict, got %#v", decision)
+	}
+}

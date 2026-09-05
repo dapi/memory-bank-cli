@@ -823,3 +823,35 @@ func TestGovernanceValidatesDocumentsBehindProjectedDirectory(t *testing.T) {
 	}
 	t.Fatalf("no governance finding for a document behind a projection: %#v", report.Findings)
 }
+
+// A governed document that links outside the repository, or dangles, is what
+// the unsafe-symlink finding exists for. Walking past it silently would remove
+// the check the projection support was supposed to leave intact.
+func TestGovernanceStillReportsUnsafeGovernedSymlinks(t *testing.T) {
+	repo, outside := t.TempDir(), t.TempDir()
+	writeProjectionFixture(t, outside, "evil.md", "---\nstatus: active\n---\n")
+	if err := os.MkdirAll(filepath.Join(repo, "memory-bank", "flows"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "evil.md"), filepath.Join(repo, "memory-bank", "flows", "evil.md")); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+	if err := os.Symlink(filepath.Join("..", "missing.md"), filepath.Join(repo, "memory-bank", "flows", "dangling.md")); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+
+	report := Report{RepoRoot: repo, Findings: []Finding{}}
+	report.checkGovernance("memory-bank")
+
+	found := map[string]bool{}
+	for _, finding := range report.Findings {
+		if finding.Code == "governance.unsafe_symlink" {
+			found[finding.Path] = true
+		}
+	}
+	for _, expected := range []string{"memory-bank/flows/evil.md", "memory-bank/flows/dangling.md"} {
+		if !found[expected] {
+			t.Fatalf("no unsafe_symlink finding for %s: %#v", expected, report.Findings)
+		}
+	}
+}

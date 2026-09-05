@@ -35,6 +35,13 @@ func (report *Report) checkGovernance(scopeRoot string) {
 	documents := map[string]governedDocument{}
 	root := filepath.Join(report.RepoRoot, filepath.FromSlash(scopeRoot))
 	dnaRootExists := fileExists(filepath.Join(root, "dna", "principles.md"))
+	reportUnsafe := func(documentPath string, entry fs.DirEntry) error {
+		if !strings.HasSuffix(strings.ToLower(entry.Name()), ".md") {
+			return nil
+		}
+		report.add(Finding{Code: "governance.unsafe_symlink", Severity: Error, Group: "frontmatter_governance", Path: documentPath, Message: "Governed document is a symlink.", Remediation: "Replace it with a regular repository-owned Markdown file, or point it at the payload file this path installs from."})
+		return nil
+	}
 	err := walkGovernedTree(report.RepoRoot, root, scopeRoot, nil, func(documentPath, fullPath string, entry fs.DirEntry) error {
 		if entry.IsDir() || !strings.HasSuffix(strings.ToLower(entry.Name()), ".md") {
 			return nil
@@ -64,7 +71,7 @@ func (report *Report) checkGovernance(scopeRoot string) {
 		documents[documentPath] = governedDocument{path: documentPath, frontmatter: frontmatter, content: string(data)}
 		validateGovernedDocument(report, documents[documentPath], scopeRoot, dnaRootExists)
 		return nil
-	})
+	}, reportUnsafe)
 	if err != nil {
 		report.add(Finding{Code: "governance.scope_unreadable", Severity: Error, Group: "frontmatter_governance", Path: scopeRoot, Message: err.Error(), Remediation: "Restore a readable memory-bank documentation tree."})
 		return
@@ -81,7 +88,7 @@ func (report *Report) checkGovernance(scopeRoot string) {
 //
 // prefix is the repository-relative path the walked tree is reached by, so a
 // document keeps the path authors actually reference.
-func walkGovernedTree(repoRoot, root, prefix string, ancestors []string, visit func(documentPath string, fullPath string, entry fs.DirEntry) error) error {
+func walkGovernedTree(repoRoot, root, prefix string, ancestors []string, visit func(documentPath string, fullPath string, entry fs.DirEntry) error, report func(documentPath string, entry fs.DirEntry) error) error {
 	resolvedRoot, err := filepath.EvalSymlinks(repoRoot)
 	if err != nil {
 		return err
@@ -97,28 +104,41 @@ func walkGovernedTree(repoRoot, root, prefix string, ancestors []string, visit f
 		documentPath := path.Join(prefix, filepath.ToSlash(relative))
 		if entry.Type()&fs.ModeSymlink != 0 {
 			target, evalErr := filepath.EvalSymlinks(fullPath)
+			// A broken or escaping governed link is exactly what the
+			// unsafe-symlink finding is for; report it instead of walking on
+			// silently.
 			if evalErr != nil {
-				return nil
-			}
-			if !withinRepository(resolvedRoot, target) {
-				return nil
+				return report(documentPath, entry)
 			}
 			info, statErr := os.Stat(target)
 			if statErr != nil {
-				return nil
+				return report(documentPath, entry)
+			}
+			if !withinRepository(resolvedRoot, target) {
+				return report(documentPath, entry)
 			}
 			if !info.IsDir() {
 				return visit(documentPath, target, entry)
+			}
+			// Follow what the link points at, not how it is named: a link into
+			// vendor/ or .git/ must not drag those trees into governance.
+			if ignoredGovernedDirectories[filepath.Base(target)] || target == resolvedRoot {
+				return nil
 			}
 			for _, ancestor := range ancestors {
 				if ancestor == target {
 					return nil
 				}
 			}
-			return walkGovernedTree(repoRoot, target, documentPath, append(ancestors, target), visit)
+			return walkGovernedTree(repoRoot, target, documentPath, append(ancestors, target), visit, report)
 		}
 		return visit(documentPath, fullPath, entry)
 	})
+}
+
+var ignoredGovernedDirectories = map[string]bool{
+	".git": true, ".hg": true, ".svn": true, ".venv": true,
+	"node_modules": true, "tmp": true, "log": true, "vendor": true,
 }
 
 func withinRepository(resolvedRoot, target string) bool {

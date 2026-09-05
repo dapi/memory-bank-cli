@@ -129,24 +129,6 @@ func TestLoadDocumentsFollowsInRepoDirectorySymlink(t *testing.T) {
 	}
 }
 
-func TestLoadDocumentsIgnoresSymlinkLeavingTheRepository(t *testing.T) {
-	repo, outside := t.TempDir(), t.TempDir()
-	writeDocument(t, outside, "secret.md", "# Secret\n")
-	if err := os.Symlink(filepath.Join(outside, "secret.md"), filepath.Join(repo, "leak.md")); err != nil {
-		t.Skipf("symlinks are unavailable: %v", err)
-	}
-
-	documents, err := loadDocuments(repo)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := documents["leak.md"]; ok {
-		t.Fatal("a link pointing outside the repository must not contribute a document")
-	}
-}
-
-// Two links to the same projected directory are two legitimate mount points,
-// not a cycle: suppressing the second one reintroduces bogus broken links.
 func TestLoadDocumentsRecordsEveryLinkToTheSameTarget(t *testing.T) {
 	repo := t.TempDir()
 	writeDocument(t, repo, "template/memory-bank/flows/routing.md", "# Routing\n")
@@ -236,4 +218,26 @@ func keysOf(documents map[string]document) []string {
 	}
 	sort.Strings(paths)
 	return paths
+}
+
+// A downstream repository may symlink a shared document into memory-bank/.
+// It was audited under its in-repository path before projections existed and
+// must stay audited: dropping it turns every reference into a broken link.
+func TestLoadDocumentsKeepsDocumentLinkedFromOutside(t *testing.T) {
+	repo, outside := t.TempDir(), t.TempDir()
+	writeDocument(t, outside, "shared.md", "# Shared\n")
+	if err := os.MkdirAll(filepath.Join(repo, "memory-bank"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Symlink(filepath.Join(outside, "shared.md"), filepath.Join(repo, "memory-bank", "shared.md")); err != nil {
+		t.Skipf("symlinks are unavailable: %v", err)
+	}
+
+	documents, err := loadDocuments(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := documents["memory-bank/shared.md"]; !ok {
+		t.Fatalf("document linked from outside was dropped; loaded: %v", keysOf(documents))
+	}
 }

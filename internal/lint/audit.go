@@ -109,14 +109,18 @@ func followDocumentSymlink(repoRoot, resolvedRoot, fullPath, documentPath string
 		// A broken link owns no document; the referring index still reports it.
 		return nil
 	}
-	// Containment is judged against the repository, not against the tree being
-	// walked, so a link inside a projected subtree back into the repository is
-	// still followed.
-	if !withinRoot(resolvedRoot, target) {
-		return nil
-	}
 	info, err := os.Stat(target)
 	if err != nil {
+		return nil
+	}
+
+	// Containment is judged against the repository, not against the tree being
+	// walked, so a link inside a projected subtree back into the repository is
+	// still followed. A link that leaves the repository is only refused as a
+	// walk root: a single document behind it was always audited under its
+	// in-repository path, and dropping it would report every reference to it
+	// as broken.
+	if info.IsDir() && !withinRoot(resolvedRoot, target) {
 		return nil
 	}
 
