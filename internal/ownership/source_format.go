@@ -58,24 +58,9 @@ func verifySourceFormat(root, ref, payloadRoot string) error {
 	if declaration.SchemaVersion != 1 || declaration.PayloadFormat != "legacy/v1" {
 		return fmt.Errorf("unsupported source format: schema=%d payload_format=%q", declaration.SchemaVersion, declaration.PayloadFormat)
 	}
-	seen := map[string]bool{}
-	for _, capability := range declaration.Capabilities {
-		if seen[capability] {
-			return fmt.Errorf("duplicate source capability %q", capability)
-		}
-		seen[capability] = true
-		supported := false
-		for _, available := range SupportedCapabilities() {
-			if capability == available {
-				supported = true
-			}
-		}
-		if !supported {
-			return fmt.Errorf("unsupported source capability %q", capability)
-		}
-	}
-	if !seen["legacy/v1"] {
-		return errors.New("source declaration requires capability legacy/v1")
+	// Source schema capabilities are fixed independently of the CLI handshake.
+	if len(declaration.Capabilities) != 1 || declaration.Capabilities[0] != "legacy/v1" {
+		return errors.New("source declaration requires exactly capability legacy/v1")
 	}
 	return nil
 }

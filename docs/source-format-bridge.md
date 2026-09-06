@@ -11,7 +11,9 @@ remain later units governed by the shared component design.
   `f1f04de843aef45a2425d4a7351d577bbf89e940`, and rejects an unknown manifestless source.
 - BR-02: A declared source has `memory-bank-source.json` at its checkout root, schema 1,
   `payload_format: legacy/v1`, and `capabilities: [legacy/v1]`. The file must be a tracked
-  regular Git blob at the selected commit. Unknown/duplicate fields, trailing JSON,
+  regular Git blob at the selected commit. The declaration array is exactly [legacy/v1];
+  source-format/v1 belongs to the CLI handshake, not this legacy declaration schema.
+  Unknown/duplicate fields, trailing JSON,
   unsupported schema/format/capabilities, missing mandatory capabilities and a component
   manifest inside a declared legacy source are errors. The component marker is
   `<payload-root>/memory-bank/components.json` for template/, or `<payload-root>/components.json`
