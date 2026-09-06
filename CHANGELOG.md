@@ -7,6 +7,22 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+### Added
+
+- Recognize a payload projection: a symlink whose resolved target stays inside
+  the repository and lands on the `template/` file backing that exact path. A
+  repository that owns the payload is not a downstream installation of itself,
+  so it may reference generic documents instead of copying them. `doctor` then
+  inspects the payload the link resolves to, instead of reporting
+  `manifest.managed_unreadable` and `governance.unsafe_symlink` for every such
+  document.
+
+Recognition requires the repository to actually carry a `template/memory-bank`
+tree. Symlinks that leave the repository root, or point at anything other than
+the payload file backing the path, remain unsafe and are reported exactly as
+before. Directory traversal in `lint` and `doctor` is unchanged, and `init`,
+`pull` and the ownership lock are untouched.
+
 ## [2.2.0] - 2026-08-15
 
 ### Changed
