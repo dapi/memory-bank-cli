@@ -31,6 +31,9 @@ memory-bank-cli capabilities --require legacy/v1
 ```
 
 The command emits JSON and returns nonzero for an unsupported capability.
+This repository also declares its legacy `memory-bank/` payload because the scheduled
+downstream canary uses it as a pinned template fixture.
+
 Keep the previous CLI/source pair to continue using an undeclared custom
 source without changing it. See the [bridge contract](docs/source-format-bridge.md)
 for the supported-source boundary and wire format, and the
