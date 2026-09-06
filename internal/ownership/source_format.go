@@ -51,42 +51,16 @@ func verifySourceFormat(root, ref, payloadRoot string) error {
 		}
 		return fmt.Errorf("unsupported manifestless source %s: use a published supported legacy commit or a declared source", ref)
 	}
-	fields, err := sourceFields(data)
+	declaration, err := decodeSourceDeclaration(data)
 	if err != nil {
-		return fmt.Errorf("invalid %s: %w", SourceDeclarationFile, err)
-	}
-	for key := range fields {
-		if key != "schema_version" && key != "payload_format" && key != "capabilities" {
-			return fmt.Errorf("invalid %s: unknown field %q", SourceDeclarationFile, key)
-		}
-	}
-	// The first pass validates exact key spelling (encoding/json accepts case
-	// aliases), duplicate keys and trailing bytes. Only typed decoding remains.
-	var declaration sourceDeclaration
-	if err := json.Unmarshal(data, &declaration); err != nil {
 		return fmt.Errorf("invalid %s: %w", SourceDeclarationFile, err)
 	}
 	if declaration.SchemaVersion != 1 || declaration.PayloadFormat != "legacy/v1" {
 		return fmt.Errorf("unsupported source format: schema=%d payload_format=%q", declaration.SchemaVersion, declaration.PayloadFormat)
 	}
-	seen := map[string]bool{}
-	for _, capability := range declaration.Capabilities {
-		if seen[capability] {
-			return fmt.Errorf("duplicate source capability %q", capability)
-		}
-		seen[capability] = true
-		supported := false
-		for _, available := range SupportedCapabilities() {
-			if capability == available {
-				supported = true
-			}
-		}
-		if !supported {
-			return fmt.Errorf("unsupported source capability %q", capability)
-		}
-	}
-	if !seen["legacy/v1"] {
-		return errors.New("source declaration requires capability legacy/v1")
+	// Source schema capabilities are fixed independently of the CLI handshake.
+	if len(declaration.Capabilities) != 1 || declaration.Capabilities[0] != "legacy/v1" {
+		return errors.New("source declaration requires exactly capability legacy/v1")
 	}
 	return nil
 }
@@ -108,43 +82,54 @@ func readSourceDeclaration(root, ref string) ([]byte, bool, error) {
 	return data, true, err
 }
 
-// The envelope is shallow: values are scalars or a string array. Typed decoding
-// rejects nested objects, so only top-level keys need duplicate detection here.
-func sourceFields(data []byte) (map[string]json.RawMessage, error) {
+// A single shallow pass enforces exact key spelling, duplicate detection and
+// field types; encoding/json's struct decoder alone accepts case aliases.
+func decodeSourceDeclaration(data []byte) (sourceDeclaration, error) {
+	var declaration sourceDeclaration
 	decoder := json.NewDecoder(bytes.NewReader(data))
 	token, err := decoder.Token()
 	if err != nil {
-		return nil, err
+		return declaration, err
 	}
-	fields := map[string]json.RawMessage{}
+	seen := map[string]bool{}
 	if token != nil {
 		if token != json.Delim('{') {
-			return nil, errors.New("source declaration must be an object")
+			return declaration, errors.New("source declaration must be an object")
 		}
 		for decoder.More() {
 			keyToken, err := decoder.Token()
 			if err != nil {
-				return nil, err
+				return declaration, err
 			}
 			key, ok := keyToken.(string)
 			if !ok {
-				return nil, errors.New("invalid JSON object key")
+				return declaration, errors.New("invalid JSON object key")
 			}
-			if _, exists := fields[key]; exists {
-				return nil, fmt.Errorf("duplicate JSON field %q", key)
+			if seen[key] {
+				return declaration, fmt.Errorf("duplicate JSON field %q", key)
 			}
-			var value json.RawMessage
-			if err := decoder.Decode(&value); err != nil {
-				return nil, err
+			seen[key] = true
+			var target any
+			switch key {
+			case "schema_version":
+				target = &declaration.SchemaVersion
+			case "payload_format":
+				target = &declaration.PayloadFormat
+			case "capabilities":
+				target = &declaration.Capabilities
+			default:
+				return declaration, fmt.Errorf("unknown field %q", key)
 			}
-			fields[key] = value
+			if err := decoder.Decode(target); err != nil {
+				return declaration, err
+			}
 		}
 		if _, err := decoder.Token(); err != nil {
-			return nil, err
+			return declaration, err
 		}
 	}
 	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
-		return nil, errors.New("trailing JSON data")
+		return declaration, errors.New("trailing JSON data")
 	}
-	return fields, nil
+	return declaration, nil
 }
