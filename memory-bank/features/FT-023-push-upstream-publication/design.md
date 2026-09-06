@@ -26,7 +26,7 @@ must_not_define:
 
 ## Context
 
-`REQ-01`–`REQ-05` cross the current repository, a nested upstream checkout, an upstream Git remote and GitHub PR creation. The accepted decisions below prefer a small auditable publish set and compensation rather than fictional distributed atomicity. The [decision log](decision-log.md) retains the provenance of SD-01, SD-02 and the validation decision SD-03.
+`REQ-01`–`REQ-05` cross the current repository, a nested upstream checkout, an upstream Git remote and GitHub PR creation. The accepted FPF decisions in `decision-log.md` prefer a small auditable publish set and compensation rather than fictional distributed atomicity.
 
 ## C4 Applicability
 
