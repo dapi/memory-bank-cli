@@ -7,6 +7,8 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+## [2.3.0] - 2026-09-06
+
 ### Added
 
 - Recognize a payload projection: a symlink whose resolved target stays inside
@@ -212,7 +214,8 @@ before. Directory traversal in `lint` and `doctor` is unchanged, and `init`,
 - Add opt-in GitHub workflow integration and managed Memory Bank blocks.
 - Add Go install, Homebrew, and platform-specific release artifacts.
 
-[Unreleased]: https://github.com/dapi/memory-bank-cli/compare/v2.2.0...HEAD
+[Unreleased]: https://github.com/dapi/memory-bank-cli/compare/v2.3.0...HEAD
+[2.3.0]: https://github.com/dapi/memory-bank-cli/compare/v2.2.0...v2.3.0
 [2.2.0]: https://github.com/dapi/memory-bank-cli/compare/v2.1.0...v2.2.0
 [2.1.0]: https://github.com/dapi/memory-bank-cli/compare/v2.0.1...v2.1.0
 [2.0.1]: https://github.com/dapi/memory-bank-cli/compare/v2.0.0...v2.0.1
