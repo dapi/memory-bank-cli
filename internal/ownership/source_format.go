@@ -51,8 +51,8 @@ func verifySourceFormat(root, ref, payloadRoot string) error {
 		}
 		return fmt.Errorf("unsupported manifestless source %s: use a published supported legacy commit or a declared source", ref)
 	}
-	var fields map[string]json.RawMessage
-	if err := decodeSourceJSON(data, &fields); err != nil {
+	fields, err := sourceFields(data)
+	if err != nil {
 		return fmt.Errorf("invalid %s: %w", SourceDeclarationFile, err)
 	}
 	for key := range fields {
@@ -108,59 +108,43 @@ func readSourceDeclaration(root, ref string) ([]byte, bool, error) {
 	return data, true, err
 }
 
-// Reject duplicate keys before decoding: encoding/json otherwise accepts the last
-// value, which makes the declared source format ambiguous across implementations.
-func decodeSourceJSON(data []byte, target any) error {
+// The envelope is shallow: values are scalars or a string array. Typed decoding
+// rejects nested objects, so only top-level keys need duplicate detection here.
+func sourceFields(data []byte) (map[string]json.RawMessage, error) {
 	decoder := json.NewDecoder(bytes.NewReader(data))
-	var value func() error
-	value = func() error {
-		token, err := decoder.Token()
-		if err != nil {
-			return err
-		}
-		delim, container := token.(json.Delim)
-		if !container {
-			return nil
-		}
-		switch delim {
-		case '{':
-			keys := map[string]bool{}
-			for decoder.More() {
-				keyToken, err := decoder.Token()
-				if err != nil {
-					return err
-				}
-				key, ok := keyToken.(string)
-				if !ok {
-					return errors.New("invalid JSON object key")
-				}
-				if keys[key] {
-					return fmt.Errorf("duplicate JSON field %q", key)
-				}
-				keys[key] = true
-				if err := value(); err != nil {
-					return err
-				}
-			}
-		case '[':
-			for decoder.More() {
-				if err := value(); err != nil {
-					return err
-				}
-			}
-		default:
-			return errors.New("unexpected JSON delimiter")
-		}
-		_, err = decoder.Token()
-		return err
+	token, err := decoder.Token()
+	if err != nil {
+		return nil, err
 	}
-	if err := value(); err != nil {
-		return err
+	fields := map[string]json.RawMessage{}
+	if token != nil {
+		if token != json.Delim('{') {
+			return nil, errors.New("source declaration must be an object")
+		}
+		for decoder.More() {
+			keyToken, err := decoder.Token()
+			if err != nil {
+				return nil, err
+			}
+			key, ok := keyToken.(string)
+			if !ok {
+				return nil, errors.New("invalid JSON object key")
+			}
+			if _, exists := fields[key]; exists {
+				return nil, fmt.Errorf("duplicate JSON field %q", key)
+			}
+			var value json.RawMessage
+			if err := decoder.Decode(&value); err != nil {
+				return nil, err
+			}
+			fields[key] = value
+		}
+		if _, err := decoder.Token(); err != nil {
+			return nil, err
+		}
 	}
 	if _, err := decoder.Token(); !errors.Is(err, io.EOF) {
-		return errors.New("trailing JSON data")
+		return nil, errors.New("trailing JSON data")
 	}
-	decoder = json.NewDecoder(bytes.NewReader(data))
-	decoder.DisallowUnknownFields()
-	return decoder.Decode(target)
+	return fields, nil
 }
