@@ -5,7 +5,6 @@ doc_function: derived
 purpose: "Audit ledger for FT-023 provenance and FPF reasoning. It links to canonical owners and does not define requirements, selected solution or implementation sequence."
 derived_from:
   - brief.md
-  - design.md
   - ../../flows/feature.md
 status: active
 audience: humans_and_agents
@@ -19,7 +18,7 @@ must_not_define:
 
 ## Ownership
 
-`brief.md` owns problem-space facts, validation decision and verify. `design.md` owns accepted feature-local solution facts. This ledger records the evidence and FPF reasoning only; if it conflicts with a canonical owner, update that owner first and then this log.
+`brief.md` owns problem-space facts, validation decision and verify. `design.md` owns accepted feature-local solution facts. This ledger owns the historical evidence and FPF reasoning used by the design. Links to design.md identify where decisions were formalized; they are navigation to the downstream solution owner, not an upstream dependency. Historical evidence remains factual; current selected-solution claims belong to design.md.
 
 ## Decisions and Open Questions
 

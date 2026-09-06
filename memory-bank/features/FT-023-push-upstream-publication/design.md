@@ -5,6 +5,7 @@ doc_function: canonical
 purpose: "Feature-local solution for safe upstream publication: managed-only selection, compensating Git/GitHub transaction and evidence-backed CLI contract."
 derived_from:
   - brief.md
+  - decision-log.md
   - "https://github.com/dapi/memory-bank-cli/issues/29"
 status: active
 audience: humans_and_agents
