@@ -144,7 +144,9 @@ test -x "$cli"
 # installed command contract rather than pinning one legacy tag, so every
 # pre-`pull` release continues to use `update` and later releases use `pull`.
 step="detect-sync-command"
-if "$cli" --help | grep -Eq '^[[:space:]]+pull[[:space:]]'; then
+# Consume the full help stream: grep -q may close the pipe early and make the
+# Go producer exit with SIGPIPE under pipefail, selecting the wrong command.
+if "$cli" --help | grep -E '^[[:space:]]+pull[[:space:]]' >/dev/null; then
   sync_command="pull"
 else
   sync_command="update"
