@@ -39,3 +39,7 @@ findings. Unexecuted checks are not evidence.
 Prepare the bridge commit and record its actual binary identity before component support.
 Component source must wait for supporting CLI. No live downstream mutation, merge or release
 publication belongs to this task. Related PRs state the required release order explicitly.
+
+The candidate [component runtime plan](component-runtime-plan.md) owns W2 CLI execution
+sequencing. It can be reviewed independently from the template execution plan, but W2
+implementation still waits for clean CTR-01/ADR-002 review and the shared Solution Ready gate.
