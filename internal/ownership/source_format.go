@@ -60,8 +60,10 @@ func verifySourceFormat(root, ref, payloadRoot string) error {
 			return fmt.Errorf("invalid %s: unknown field %q", SourceDeclarationFile, key)
 		}
 	}
+	// The first pass validates exact key spelling (encoding/json accepts case
+	// aliases), duplicate keys and trailing bytes. Only typed decoding remains.
 	var declaration sourceDeclaration
-	if err := decodeSourceJSON(data, &declaration); err != nil {
+	if err := json.Unmarshal(data, &declaration); err != nil {
 		return fmt.Errorf("invalid %s: %w", SourceDeclarationFile, err)
 	}
 	if declaration.SchemaVersion != 1 || declaration.PayloadFormat != "legacy/v1" {
