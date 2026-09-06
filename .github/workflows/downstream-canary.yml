@@ -11,9 +11,9 @@ on:
         default: main
         type: string
       template_ref:
-        description: Template Git ref to test
+        description: Git ref in dapi/memory-bank to test
         required: false
-        default: main
+        default: f1f04de843aef45a2425d4a7351d577bbf89e940
         type: string
 
 permissions:
@@ -33,7 +33,8 @@ jobs:
       - name: Run compatibility fixture
         env:
           CLI_REF: ${{ inputs.cli_ref || 'main' }}
-          TEMPLATE_REF: ${{ inputs.template_ref || 'main' }}
+          TEMPLATE_REPOSITORY_URL: https://github.com/dapi/memory-bank.git
+          TEMPLATE_REF: ${{ inputs.template_ref || 'f1f04de843aef45a2425d4a7351d577bbf89e940' }}
           REPORT_DIR: ${{ runner.temp }}/downstream-canary
         run: bash scripts/downstream-smoke.sh
       - name: Upload canary evidence

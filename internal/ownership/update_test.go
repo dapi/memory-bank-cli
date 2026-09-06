@@ -364,7 +364,7 @@ func TestManagedContentDriftIsPreservedWhenTemplateIsUnchanged(t *testing.T) {
 
 	for index := 0; index < 2; index++ {
 		report, err := Update(opts(repo, source, "a"))
-		if err != nil || report.ConflictCount != 0 || decisionFor(t, report, path).Reason != "preserve local managed content while template is unchanged" {
+		if err != nil || report.ConflictCount != 0 || decisionFor(t, report, path).Action != Preserve || report.Applied != (index == 0) {
 			t.Fatalf("drift run %d: report=%#v err=%v", index, report, err)
 		}
 	}

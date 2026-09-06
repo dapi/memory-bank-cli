@@ -136,3 +136,50 @@ func TestComponentMarkerRejectedInLegacyPayloadRoots(t *testing.T) {
 		})
 	}
 }
+
+func TestPinnedSourceIgnoresGitReplacementObjects(t *testing.T) {
+	source, repo := t.TempDir(), t.TempDir()
+	write(t, source, "template/memory-bank/README.md", "original pinned content\n")
+	write(t, source, SourceDeclarationFile, legacyDeclaration)
+	original := rawSourceCommit(t, source)
+	write(t, source, "template/memory-bank/README.md", "replacement content\n")
+	replacement := rawSourceCommit(t, source)
+	runGitTest(t, source, "replace", original, replacement)
+	runGitTest(t, source, "checkout", "--quiet", "--detach", original)
+	before := treeSnapshot(t, repo)
+	_, err := Init(Options{RepoRoot: repo, SourceRoot: source, TemplateVersion: "pinned", SourceRef: original})
+	if err == nil {
+		t.Fatal("installed replacement objects under an unchanged source commit identity")
+	}
+	if !reflect.DeepEqual(before, treeSnapshot(t, repo)) {
+		t.Fatal("replaced source changed downstream")
+	}
+}
+
+func TestUnchangedPullPersistsManagedAdaptation(t *testing.T) {
+	source, repo := t.TempDir(), t.TempDir()
+	target := "memory-bank/domain/model.md"
+	write(t, source, "template/"+target, "template model\n")
+	ref := commitTestSource(t, source)
+	options := Options{RepoRoot: repo, SourceRoot: source, TemplateVersion: "fixture", SourceRef: ref}
+	if _, err := Init(options); err != nil {
+		t.Fatal(err)
+	}
+	write(t, repo, target, "template model\nproject adaptation\n")
+	report, err := Update(options)
+	if err != nil {
+		t.Fatal(err)
+	}
+	lock, _, err := ReadLock(repo)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !report.Applied || lock.Files[target].Ownership != Adapted {
+		t.Fatalf("ownership change was not persisted: report=%#v file=%#v", report, lock.Files[target])
+	}
+	before := treeSnapshot(t, repo)
+	report, err = Update(options)
+	if err != nil || report.Applied || !reflect.DeepEqual(before, treeSnapshot(t, repo)) {
+		t.Fatalf("repeat pull is not a no-op: report=%#v err=%v", report, err)
+	}
+}

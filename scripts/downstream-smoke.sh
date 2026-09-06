@@ -2,6 +2,7 @@
 set -euo pipefail
 
 repository_url="${REPOSITORY_URL:-https://github.com/dapi/memory-bank-cli.git}"
+template_repository_url="${TEMPLATE_REPOSITORY_URL:-$repository_url}"
 cli_ref="${CLI_REF:?CLI_REF is required}"
 template_ref="${TEMPLATE_REF:?TEMPLATE_REF is required}"
 release_tag="${RELEASE_TAG:-}"
@@ -89,19 +90,20 @@ git --version >/dev/null
 
 resolve_ref() {
   local ref="$1"
+  local source_url="$2"
   local sha
   if [[ "$ref" =~ ^[0-9a-f]{40}$ ]]; then
     local resolver="$workspace/ref-resolution"
     if [ ! -d "$resolver/.git" ]; then
       git init --quiet "$resolver"
     fi
-    git -C "$resolver" fetch --quiet --depth=1 "$repository_url" "$ref"
+    git -C "$resolver" fetch --quiet --depth=1 "$source_url" "$ref"
     sha="$(git -C "$resolver" rev-parse --verify 'FETCH_HEAD^{commit}')"
     test "$sha" = "$ref" || return 1
   else
-    sha="$(git ls-remote "$repository_url" "${ref}^{}" | awk 'NR == 1 { print $1 }')"
+    sha="$(git ls-remote "$source_url" "${ref}^{}" | awk 'NR == 1 { print $1 }')"
     if [ -z "$sha" ]; then
-      sha="$(git ls-remote "$repository_url" "$ref" | awk 'NR == 1 { print $1 }')"
+      sha="$(git ls-remote "$source_url" "$ref" | awk 'NR == 1 { print $1 }')"
     fi
   fi
   test -n "$sha" || return 1
@@ -109,7 +111,7 @@ resolve_ref() {
 }
 
 step="resolve-cli-ref"
-cli_sha="$(resolve_ref "$cli_ref")"
+cli_sha="$(resolve_ref "$cli_ref" "$repository_url")"
 cli_install_ref="$cli_sha"
 if [ -n "$release_tag" ] && [ "$cli_ref" = "$release_tag" ]; then
   # Stable releases are installed by tag so the smoke test covers the released
@@ -117,7 +119,7 @@ if [ -n "$release_tag" ] && [ "$cli_ref" = "$release_tag" ]; then
   cli_install_ref="$cli_ref"
 fi
 step="resolve-template-ref"
-template_sha="$(resolve_ref "$template_ref")"
+template_sha="$(resolve_ref "$template_ref" "$template_repository_url")"
 
 source_root="$workspace/template"
 downstream_root="$workspace/downstream"
@@ -125,7 +127,7 @@ bin_root="$workspace/bin"
 
 phase="template"
 step="clone-template"
-git clone --quiet "$repository_url" "$source_root"
+git clone --quiet "$template_repository_url" "$source_root"
 step="checkout-template"
 git -C "$source_root" checkout --quiet --detach "$template_sha"
 step="verify-template-clean"
@@ -142,7 +144,9 @@ test -x "$cli"
 # installed command contract rather than pinning one legacy tag, so every
 # pre-`pull` release continues to use `update` and later releases use `pull`.
 step="detect-sync-command"
-if "$cli" --help | grep -Eq '^[[:space:]]+pull[[:space:]]'; then
+# Consume the full help stream: grep -q may close the pipe early and make the
+# Go producer exit with SIGPIPE under pipefail, selecting the wrong command.
+if "$cli" --help | grep -E '^[[:space:]]+pull[[:space:]]' >/dev/null; then
   sync_command="pull"
 else
   sync_command="update"

@@ -213,7 +213,7 @@ func gitOutput(root string, arguments ...string) (string, error) {
 func gitBytes(root string, arguments ...string) ([]byte, error) {
 	commandArguments := append([]string{"-C", root}, arguments...)
 	command := exec.Command("git", commandArguments...)
-	command.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0")
+	command.Env = append(os.Environ(), "GIT_OPTIONAL_LOCKS=0", "GIT_NO_REPLACE_OBJECTS=1")
 	output, err := command.CombinedOutput()
 	if err != nil {
 		result := strings.TrimSpace(string(output))
