@@ -5,7 +5,6 @@ doc_function: canonical
 purpose: "Feature-local solution for safe upstream publication: managed-only selection, compensating Git/GitHub transaction and evidence-backed CLI contract."
 derived_from:
   - brief.md
-  - decision-log.md
   - "https://github.com/dapi/memory-bank-cli/issues/29"
 status: active
 audience: humans_and_agents
@@ -26,7 +25,7 @@ must_not_define:
 
 ## Context
 
-`REQ-01`–`REQ-05` cross the current repository, a nested upstream checkout, an upstream Git remote and GitHub PR creation. The accepted FPF decisions in `decision-log.md` prefer a small auditable publish set and compensation rather than fictional distributed atomicity.
+`REQ-01`–`REQ-05` cross the current repository, a nested upstream checkout, an upstream Git remote and GitHub PR creation. The accepted decisions below prefer a small auditable publish set and compensation rather than fictional distributed atomicity. The [decision log](decision-log.md) retains their provenance.
 
 ## C4 Applicability
 
