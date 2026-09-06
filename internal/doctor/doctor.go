@@ -13,6 +13,7 @@ import (
 
 	"github.com/dapi/memory-bank-cli/internal/lint"
 	"github.com/dapi/memory-bank-cli/internal/ownership"
+	"github.com/dapi/memory-bank-cli/internal/projection"
 	"gopkg.in/yaml.v3"
 )
 
@@ -140,7 +141,7 @@ func (report *Report) checkIdentityAndDrift(agentFile, scopeRoot string) {
 		}
 		report.add(Finding{Code: "agent.entrypoint_missing", Severity: severity, Group: "agent_integration", Path: agentFile, Message: message, Remediation: fmt.Sprintf("Create the agent instruction file and link it to %s/README.md.", scopeRoot)})
 	} else if !strings.Contains(string(contents), scopeRoot+"/README.md") {
-			report.add(Finding{Code: "agent.memory_bank_link_missing", Severity: Error, Group: "agent_integration", Path: agentFile, Message: fmt.Sprintf("Agent instructions do not route readers to %s/README.md.", scopeRoot), Remediation: fmt.Sprintf("Add a repository-relative link to %s/README.md or run memory-bank-cli pull with the same --agent-file.", scopeRoot)})
+		report.add(Finding{Code: "agent.memory_bank_link_missing", Severity: Error, Group: "agent_integration", Path: agentFile, Message: fmt.Sprintf("Agent instructions do not route readers to %s/README.md.", scopeRoot), Remediation: fmt.Sprintf("Add a repository-relative link to %s/README.md or run memory-bank-cli pull with the same --agent-file.", scopeRoot)})
 	}
 	if exists && lockErr == nil {
 		agentReport, err := ownership.InspectAgentInstructions(report.RepoRoot, agentFile)
@@ -170,12 +171,12 @@ func (report *Report) checkManagedDrift(lock ownership.Lock) {
 			if os.IsNotExist(err) {
 				code, message = "manifest.managed_missing", "Managed file recorded by the lock is missing."
 			}
-		report.add(Finding{Code: code, Severity: Error, Group: "manifest", Path: filePath, Message: message, Remediation: "Restore the file from the pinned template with memory-bank-cli pull."})
+			report.add(Finding{Code: code, Severity: Error, Group: "manifest", Path: filePath, Message: message, Remediation: "Restore the file from the pinned template with memory-bank-cli pull."})
 			continue
 		}
 		digest := fmt.Sprintf("sha256:%x", sha256.Sum256(data))
 		if digest != contract.PayloadDigest {
-		report.add(Finding{Code: "manifest.managed_content_drift", Severity: Error, Group: "manifest", Path: filePath, Message: "Managed file content differs from the lock payload digest.", Remediation: "Review the local change, then restore it through memory-bank-cli pull."})
+			report.add(Finding{Code: "manifest.managed_content_drift", Severity: Error, Group: "manifest", Path: filePath, Message: "Managed file content differs from the lock payload digest.", Remediation: "Review the local change, then restore it through memory-bank-cli pull."})
 		}
 		mode := observedPayloadMode(info.Mode().Perm())
 		if contract.PayloadMode != "" && mode != "" && mode != contract.PayloadMode {
@@ -209,17 +210,32 @@ func readRegularWithinRoot(repoRoot, relativePath string) ([]byte, fs.FileInfo, 
 			return nil, nil, err
 		}
 		if info.Mode()&os.ModeSymlink != 0 {
+			// A template source repository may project its own payload instead
+			// of copying it. Such a link resolves inside the repository onto
+			// the payload file backing this exact path, so reading through it
+			// yields the payload itself. Any other symlink stays unsafe.
+			//
+			// Read the path Resolve verified rather than walking the link
+			// again: a second traversal could follow a link re-pointed in the
+			// meantime.
+			if resolved, projected := projection.Resolve(repoRoot, relativePath); projected {
+				return readResolvedRegular(resolved, relativePath)
+			}
 			return nil, nil, fmt.Errorf("unsafe symlink in path %q", relativePath)
 		}
 	}
-	info, err := os.Stat(current)
+	return readResolvedRegular(current, relativePath)
+}
+
+func readResolvedRegular(path, relativePath string) ([]byte, fs.FileInfo, error) {
+	info, err := os.Stat(path)
 	if err != nil {
 		return nil, nil, err
 	}
 	if !info.Mode().IsRegular() {
 		return nil, info, fmt.Errorf("path %q is not a regular file", relativePath)
 	}
-	data, err := os.ReadFile(current)
+	data, err := os.ReadFile(path)
 	return data, info, err
 }
 
