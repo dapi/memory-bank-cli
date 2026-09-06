@@ -53,6 +53,8 @@ func TestSourceFormatRejectionIsNonMutating(t *testing.T) {
 		{"unknown schema", `{"schema_version":2,"payload_format":"legacy/v1","capabilities":["legacy/v1"]}`, "", "unsupported source format"},
 		{"component format", `{"schema_version":1,"payload_format":"components/v1","capabilities":["components/v1"]}`, "", "unsupported source format"},
 		{"unknown field", `{"schema_version":1,"payload_format":"legacy/v1","capabilities":["legacy/v1"],"extra":true}`, "", "unknown field"},
+		{"case-aliased field", `{"Schema_Version":1,"payload_format":"legacy/v1","capabilities":["legacy/v1"]}`, "", "unknown field"},
+		{"wrong field type", `{"schema_version":"1","payload_format":"legacy/v1","capabilities":["legacy/v1"]}`, "", "cannot unmarshal"},
 		{"duplicate field", `{"schema_version":1,"schema_version":1,"payload_format":"legacy/v1","capabilities":["legacy/v1"]}`, "", "duplicate JSON field"},
 		{"trailing JSON", legacyDeclaration + `{}`, "", "trailing JSON"},
 		{"missing capability", `{"schema_version":1,"payload_format":"legacy/v1"}`, "", "requires capability"},
