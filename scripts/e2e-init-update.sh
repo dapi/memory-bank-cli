@@ -73,6 +73,7 @@ setup_case() {
   require git -C "$template_work" config user.name 'E2E Fixture'
   require git -C "$template_work" config user.email 'fixture@example.invalid'
   write_template_v1
+  printf '%s\n' '{"schema_version":1,"payload_format":"legacy/v1","capabilities":["legacy/v1"]}' >"$template_work/memory-bank-source.json"
   if [ "$include_project_local" = 1 ]; then
     mkdir -p "$template_work/memory-bank/dna"
     printf 'project local v1\n' >"$template_work/memory-bank/dna/managed.md"

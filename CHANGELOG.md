@@ -7,6 +7,11 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+- Gate installation sources by a pinned legacy compatibility list or strict source-format
+  declaration; reject unknown formats before planning or changing downstream files.
+- Add the JSON `capabilities --require` handshake for installation entrypoints.
+
+
 ## [2.3.0] - 2026-09-06
 
 ### Added

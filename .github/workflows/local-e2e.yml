@@ -25,3 +25,15 @@ jobs:
         env:
           E2E_BINARY: ${{ runner.temp }}/memory-bank-cli
         run: bash scripts/e2e-init-update.sh
+      - name: Check out supported manifestless legacy source
+        uses: actions/checkout@v7
+        with:
+          repository: dapi/memory-bank
+          ref: f1f04de843aef45a2425d4a7351d577bbf89e940
+          path: .fixtures/legacy-source
+          persist-credentials: false
+      - name: Verify real bridge source-format compatibility
+        env:
+          E2E_BINARY: ${{ runner.temp }}/memory-bank-cli
+          LEGACY_SOURCE: ${{ github.workspace }}/.fixtures/legacy-source
+        run: bash scripts/e2e-source-format.sh

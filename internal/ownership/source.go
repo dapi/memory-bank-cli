@@ -114,7 +114,7 @@ func verifySourceCheckout(root, expectedRef string) error {
 	if err := verifySourcePayload(root, expectedRef, payloadRoot); err != nil {
 		return err
 	}
-	return nil
+	return verifySourceFormat(root, expectedRef, payloadRoot)
 }
 
 func verifySourcePayload(root, expectedRef, payloadRoot string) error {

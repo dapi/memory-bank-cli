@@ -298,6 +298,7 @@ func TestTemplateOwnedAgentFileUsesLockDriftContract(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
+	writeSource("memory-bank-source.json", `{"schema_version":1,"payload_format":"legacy/v1","capabilities":["legacy/v1"]}`)
 	writeSource("template/AGENTS.md", "canonical template instructions\n")
 	writeSource("template/memory-bank/README.md", "---\ndoc_function: index\npurpose: Test Memory Bank.\nstatus: active\n---\n# Memory Bank\n")
 	runGit(t, source, "init", "--quiet")

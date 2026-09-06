@@ -58,6 +58,8 @@ func Run(arguments []string, version string, stdout, stderr io.Writer) int {
 	}
 
 	switch arguments[0] {
+	case "capabilities":
+		return runCapabilities(arguments[1:], version, stdout, stderr)
 	case "analyze-graph":
 		return runAnalyzeGraph(arguments[1:], stdout, stderr)
 	case "lint":
@@ -124,6 +126,7 @@ func printRootUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "Usage: memory-bank-cli <command> [options]")
 	fmt.Fprintln(writer)
 	fmt.Fprintln(writer, "Commands:")
+	fmt.Fprintln(writer, "  capabilities Report supported source formats and required capabilities")
 	fmt.Fprintln(writer, "  analyze-graph  Analyse typed execution-context handoff evidence")
 	fmt.Fprintln(writer, "  init    Adopt or install a template and create its ownership lock")
 	fmt.Fprintln(writer, "  pull    Safely synchronize a template using its ownership lock")
