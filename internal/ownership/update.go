@@ -157,7 +157,7 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 		return report, nil
 	}
 	template := Template{Version: options.TemplateVersion, SourceRef: options.SourceRef}
-	needsLockWrite := !hasLock || templateMutationCount > 0 || old.SchemaVersion != CurrentSchemaVersion || old.Template != template || len(old.Files) != len(next.Files)
+	needsLockWrite := !hasLock || templateMutationCount > 0 || old.SchemaVersion != CurrentSchemaVersion || old.Template != template || !reflect.DeepEqual(old.Files, next.Files)
 	if !needsLockWrite {
 		if len(mutations) == 0 {
 			return report, nil

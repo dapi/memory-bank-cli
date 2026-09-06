@@ -65,7 +65,12 @@ payload-root validation, using Git objects rather than mutable working-tree file
 
 The only alternatives are accepting every undeclared tree (violates BR-01) or refusing all
 legacy trees (violates compatibility). Use the compiled supported SHA plus strict declarations.
-No state schema, transaction engine, target paths or template payload bytes change in W1.
+No new state schema, transaction writer or target paths are introduced in W1.
+The canonical-source canary exposed one existing bookkeeping bug: a preserve decision can
+change ownership without a file mutation, so run must persist changed Files entries, not
+only a changed file count. A regression fixture verifies persistence and the next no-op pull.
+Git plumbing disables replacement objects so local replace refs cannot change a pinned
+source commit's contents. A real Git fixture proved the previous substitution and now rejects it.
 
 Test helpers in `internal/ownership/source_test.go#commitTestSource`,
 `internal/cli/cli_test.go#commitCLISource` and `scripts/e2e-init-update.sh#setup_case` declare
