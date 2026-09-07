@@ -15,6 +15,8 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
+var absoluteURIScheme = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9+.-]*:`)
+
 type textReplacement struct {
 	start, end int
 	value      []byte
@@ -41,8 +43,8 @@ func RelocateBaseDocument(data []byte, from, to string) ([]byte, error) {
 		if ref == "" || strings.HasPrefix(ref, "/") || strings.HasPrefix(ref, "#") || strings.HasPrefix(ref, "https://") || strings.HasPrefix(ref, "http://") || strings.HasPrefix(ref, "mailto:") {
 			return ref, nil
 		}
-		if strings.ContainsAny(ref, "\\\r\n") {
-			return "", errors.New("unsupported relative reference syntax")
+		if absoluteURIScheme.MatchString(ref) {
+			return "", errors.New("unsupported absolute URI scheme; use lowercase http, https or mailto")
 		}
 		bare, suffix := ref, ""
 		if i := strings.IndexAny(ref, "?#"); i >= 0 {

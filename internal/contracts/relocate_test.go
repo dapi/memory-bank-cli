@@ -32,3 +32,12 @@ func TestBaseRelocationDecodesPercentEscapesOnce(t *testing.T) {
 		t.Fatalf("got %s want %s", got, want)
 	}
 }
+
+func TestBaseRelocationRejectsUnsupportedAbsoluteSchemes(t *testing.T) {
+	for _, ref := range []string{"HTTPS://example.org", "tel:+123", "ftp://example.org", "custom:document"} {
+		input := []byte("---\nstatus: draft\n---\n[x](" + ref + ")\n")
+		if _, err := RelocateBaseDocument(input, "memory-bank/templates/feature.md", "memory-bank/features/FT-1/brief.md"); err == nil {
+			t.Fatalf("absolute URI silently relocated: %s", ref)
+		}
+	}
+}
