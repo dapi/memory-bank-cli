@@ -13,7 +13,7 @@ func ReadmeBlock(m Manifest, s Installation) []byte {
 	lines := []string{agentinstructions.StartMarker, "## Installed components", ""}
 	add := func(label, target, annotation string) {
 		line := "- [" + label + "](" + target + ")"
-		if version == 2 {
+		if version >= 2 {
 			line += " — " + annotation + "."
 		}
 		lines = append(lines, line)
@@ -21,7 +21,11 @@ func ReadmeBlock(m Manifest, s Installation) []byte {
 	add("DNA", "dna/README.md", "governance baseline")
 	if s.Has("documents") {
 		add("Document types", "document-types/README.md", "base document contracts")
-		add("Templates", "templates/README.md", "project-owned draft templates")
+		annotation := "project-owned draft templates"
+		if version >= 3 {
+			annotation = "managed templates for project-owned drafts"
+		}
+		add("Templates", "templates/README.md", annotation)
 		for _, name := range []string{"product", "domain", "engineering", "ops", "adr", "prd", "use-cases", "features", "research", "epics"} {
 			if f, ok := m.Files["memory-bank/"+name+"/README.md"]; ok && s.Has(f.Component) {
 				add(name, name+"/README.md", "project documents")
@@ -40,4 +44,4 @@ func AgentBlock(s Installation) []byte {
 	}
 	return []byte(b)
 }
-func CurrentRenderer() *int { v := 2; return &v }
+func CurrentRenderer() *int { v := 3; return &v }

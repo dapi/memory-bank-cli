@@ -94,35 +94,42 @@ func TestComponentIntegrityRejectsTamperingWithoutMutation(t *testing.T) {
 	}
 	// A historical renderer-1 installation remains readable and upgrades explicitly
 	// through pull; an unknown discriminator fails closed.
-	readmePath := filepath.Join(root, "memory-bank/README.md")
-	readme, _ := os.ReadFile(readmePath)
-	version := 1
+	for _, historicalVersion := range []int{1, 2} {
+		readmePath := filepath.Join(root, "memory-bank/README.md")
+		readme, _ := os.ReadFile(readmePath)
+		lock, _, _ = ReadLock(root)
+		version := historicalVersion
+		lock.Installation.RendererVersion = &version
+		plan := agentinstructions.BuildPlanWithBlock(readme, contracts.ReadmeBlock(manifest, *lock.Installation))
+		if err = os.WriteFile(readmePath, plan.Data, 0644); err != nil {
+			t.Fatal(err)
+		}
+		f := lock.Files["memory-bank/README.md"]
+		f.PayloadDigest = digest(plan.Data)
+		lock.Files["memory-bank/README.md"] = f
+		b, err := marshalLock(lock)
+		if err != nil {
+			t.Fatal(err)
+		}
+		write(t, root, LockFileName, string(b))
+		beforeAudit := treeSnapshot(t, root)
+		if handled, findings, nav, err := ValidateComponents(root, ""); !handled || err != nil || len(findings) > 0 || nav.ExitCode != 0 {
+			t.Fatalf("v1 audit: %v %v %v", err, findings, nav.Errors)
+		}
+		if !reflect.DeepEqual(beforeAudit, treeSnapshot(t, root)) {
+			t.Fatal("historical audit mutated installation")
+		}
+		if r, err := Update(options); err != nil || !r.Applied {
+			t.Fatalf("v1 upgrade: %+v %v", r, err)
+		}
+		lock, _, _ = ReadLock(root)
+		if *lock.Installation.RendererVersion != 3 {
+			t.Fatal("renderer not upgraded")
+		}
+	}
+	version := 99
 	lock.Installation.RendererVersion = &version
-	plan := agentinstructions.BuildPlanWithBlock(readme, contracts.ReadmeBlock(manifest, *lock.Installation))
-	if err = os.WriteFile(readmePath, plan.Data, 0644); err != nil {
-		t.Fatal(err)
-	}
-	f := lock.Files["memory-bank/README.md"]
-	f.PayloadDigest = digest(plan.Data)
-	lock.Files["memory-bank/README.md"] = f
-	b, err := marshalLock(lock)
-	if err != nil {
-		t.Fatal(err)
-	}
-	write(t, root, LockFileName, string(b))
-	if handled, findings, nav, err := ValidateComponents(root, ""); !handled || err != nil || len(findings) > 0 || nav.ExitCode != 0 {
-		t.Fatalf("v1 audit: %v %v %v", err, findings, nav.Errors)
-	}
-	if r, err := Update(options); err != nil || !r.Applied {
-		t.Fatalf("v1 upgrade: %+v %v", r, err)
-	}
-	lock, _, _ = ReadLock(root)
-	if *lock.Installation.RendererVersion != 2 {
-		t.Fatal("renderer not upgraded")
-	}
-	version = 99
-	lock.Installation.RendererVersion = &version
-	b, _ = marshalLock(lock)
+	b, _ := marshalLock(lock)
 	write(t, root, LockFileName, string(b))
 	if _, err = Update(options); err == nil {
 		t.Fatal("unknown renderer accepted")

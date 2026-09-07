@@ -36,3 +36,32 @@ func TestRendererVersionsAndOutsideBytes(t *testing.T) {
 		t.Fatal("Documents requires Flows")
 	}
 }
+
+func TestRendererThreePreservesHistoricalBlocks(t *testing.T) {
+	m := Manifest{Files: map[string]File{}}
+	for _, documents := range []bool{false, true} {
+		components := []string{"dna"}
+		if documents {
+			components = append(components, "documents")
+		}
+		two, three := 2, 3
+		s := Installation{Components: components, RendererVersion: &two}
+		v2 := ReadmeBlock(m, s)
+		s.RendererVersion = &three
+		v3 := ReadmeBlock(m, s)
+		if documents {
+			if !strings.Contains(string(v2), "— project-owned draft templates.") || !strings.Contains(string(v3), "— managed templates for project-owned drafts.") {
+				t.Fatal("canonical annotations missing")
+			}
+			expected := strings.Replace(string(v2), "— project-owned draft templates.", "— managed templates for project-owned drafts.", 1)
+			if expected != string(v3) {
+				t.Fatal("v3 changes more than the Templates annotation")
+			}
+			if agentinstructions.BuildPlanWithBlock(v2, v3).Status != agentinstructions.Outdated || agentinstructions.BuildPlanWithBlock(v3, v2).Status != agentinstructions.Outdated {
+				t.Fatal("cross-version annotation drift accepted")
+			}
+		} else if string(v2) != string(v3) {
+			t.Fatal("core renderer bytes changed")
+		}
+	}
+}

@@ -324,7 +324,7 @@ func sorted(values []string) []string {
 
 // ValidateInstallation checks a persisted closure rather than treating it as new opt-in.
 func (m Manifest) ValidateInstallation(s Installation) error {
-	if s.RendererVersion != nil && *s.RendererVersion != 1 && *s.RendererVersion != 2 {
+	if s.RendererVersion != nil && *s.RendererVersion != 1 && *s.RendererVersion != 2 && *s.RendererVersion != 3 {
 		return errors.New("unsupported component renderer")
 	}
 	if !ValidDigest(s.ManifestDigest) || !SortedSet(s.Components) || !SortedSet(s.Adapters) {
