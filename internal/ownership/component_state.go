@@ -290,6 +290,9 @@ func decodeComponentState(files map[string][]byte, lock Lock, agentFile string, 
 // Navigation is audited in a disposable read-only view of the prospective data.
 // It never uses that view to perform actual repository mutations.
 func componentNavigation(files map[string][]byte, m contracts.Manifest, s contracts.Installation) (lint.Report, error) {
+	if err := contracts.ValidatePriming(files); err != nil {
+		return lint.Report{}, err
+	}
 	view, err := os.MkdirTemp("", "memory-bank-component-audit-")
 	if err != nil {
 		return lint.Report{}, err
@@ -386,5 +389,8 @@ func ValidateComponentSource(root string) error {
 		return err
 	}
 	_, err = contracts.LoadCatalog(m, inventory, nil)
-	return err
+	if err != nil {
+		return err
+	}
+	return contracts.ValidatePriming(inventory)
 }

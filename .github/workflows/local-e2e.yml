@@ -37,3 +37,24 @@ jobs:
           E2E_BINARY: ${{ runner.temp }}/memory-bank-cli
           LEGACY_SOURCE: ${{ github.workspace }}/.fixtures/legacy-source
         run: bash scripts/e2e-source-format.sh
+
+      - name: Check out reviewed component producer
+        uses: actions/checkout@v7
+        with:
+          repository: dapi/memory-bank
+          ref: f695db6a703e5409f10c9988e6460b41068fe30c
+          path: .fixtures/component-source
+          persist-credentials: false
+      - name: Verify component contracts and transaction fixtures
+        env:
+          MEMORY_BANK_COMPONENT_SOURCE: ${{ github.workspace }}/.fixtures/component-source
+          MEMORY_BANK_LEGACY_SOURCE: ${{ github.workspace }}/.fixtures/legacy-source
+        run: |
+          go test ./...
+          go vet ./...
+      - name: Verify actual-binary component acceptance
+        env:
+          E2E_BINARY: ${{ runner.temp }}/memory-bank-cli
+          MEMORY_BANK_COMPONENT_SOURCE: ${{ github.workspace }}/.fixtures/component-source
+          MEMORY_BANK_LEGACY_SOURCE: ${{ github.workspace }}/.fixtures/legacy-source
+        run: python3 scripts/e2e-components.py

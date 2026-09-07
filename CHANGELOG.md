@@ -7,6 +7,16 @@ and this project follows [Semantic Versioning](https://semver.org/spec/v2.0.0.ht
 
 ## [Unreleased]
 
+- Install schema-2 component presets (`core`, `docs`, `full`, `legacy`) and additive
+  adapters on Linux/macOS, with composition-aware README and AGENTS blocks.
+- Create base documents independently from explicit flow adoption; bind adopted
+  documents to immutable contract bundles and support evidence-backed transitions
+  and identity-preserving moves.
+- Migrate the pinned legacy source through deterministic previews, explicit
+  classification/ownership resolutions and exact plan-digest consent.
+- Validate component state before mutations and retain durable recovery journals,
+  including prepared-draft snapshots, when rollback or cleanup cannot finish.
+
 - Gate installation sources by a pinned legacy compatibility list or strict source-format
   declaration; reject unknown formats before planning or changing downstream files.
 - Add the JSON `capabilities --require` handshake for installation entrypoints.

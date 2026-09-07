@@ -126,3 +126,22 @@ func TestMissingRequiredField(t *testing.T) {
 		t.Fatal("missing legacy field was accepted")
 	}
 }
+
+func TestLockedLegacyDoesNotAdoptNewDefaultAdapters(t *testing.T) {
+	m, _ := fixture()
+	s, err := m.Select("legacy", nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	s.ManifestDigest = Digest([]byte("manifest"))
+	s.AdoptionDigest = Digest([]byte("registry"))
+	m.Components["newadapter"] = Component{Dependencies: []string{"flows"}, Adapter: true, Legacy: true}
+	m.Presets["legacy"] = []string{"codex", "dna", "documents", "flows", "newadapter"}
+	kept, err := m.Select("", nil, &s)
+	if err != nil || kept.Has("newadapter") {
+		t.Fatalf("implicit adapter: %+v %v", kept, err)
+	}
+	if err = m.ValidateInstallation(kept); err != nil {
+		t.Fatalf("old closure rejected: %v", err)
+	}
+}

@@ -142,7 +142,7 @@ func ReadManifest(data []byte, inventory map[string][]byte) (Manifest, error) {
 		return m, err
 	}
 	for p, f := range m.Files {
-		if !ValidPath(p) || p == "AGENTS.md" || p == RegistryPath || p == "memory-bank/.lock" {
+		if !ValidPath(p) || p == "AGENTS.md" || p == RegistryPath || p == "memory-bank/.lock" || strings.HasPrefix(p, ".memory-bank-update-") || strings.HasPrefix(p, "memory-bank/.repo/") {
 			return m, fmt.Errorf("reserved or unsafe payload path %s", p)
 		}
 		if _, ok := inventory[p]; inventory != nil && !ok {
@@ -345,9 +345,22 @@ func (m Manifest) ValidateInstallation(s Installation) error {
 			return errors.New("invalid installed adapter")
 		}
 	}
-	wanted, err := m.Select(s.Preset, s.Adapters, nil)
-	if err != nil || !reflect.DeepEqual(wanted.Components, s.Components) || !reflect.DeepEqual(wanted.Adapters, s.Adapters) {
-		return errors.New("installed closure does not match preset and adapters")
+	if s.Preset == "legacy" {
+		// The legacy preset is an installation default, not permission to adopt
+		// adapters newly marked legacy in a subsequent source.
+		if !reflect.DeepEqual(s.Components, []string{"dna", "documents", "flows"}) {
+			return errors.New("invalid legacy component closure")
+		}
+		ids := append(append([]string{}, s.Components...), s.Adapters...)
+		closure, e := m.closure(ids)
+		if e != nil || !reflect.DeepEqual(Keys(closure), sorted(ids)) {
+			return errors.New("invalid locked legacy adapter closure")
+		}
+	} else {
+		wanted, err := m.Select(s.Preset, s.Adapters, nil)
+		if err != nil || !reflect.DeepEqual(wanted.Components, s.Components) || !reflect.DeepEqual(wanted.Adapters, s.Adapters) {
+			return errors.New("installed closure does not match preset and adapters")
+		}
 	}
 	if s.LegacySourceRef != "" {
 		if _, ok := m.LegacySources[s.LegacySourceRef]; !ok || !s.Has("flows") {

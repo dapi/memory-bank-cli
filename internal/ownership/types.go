@@ -68,23 +68,28 @@ type Decision struct {
 }
 
 type Report struct {
-	FormatVersion int        `json:"format_version"`
-	DryRun        bool       `json:"dry_run"`
-	Applied       bool       `json:"applied"`
-	Decisions     []Decision `json:"decisions"`
-	ConflictCount int        `json:"conflict_count"`
-	DriftCount    int        `json:"drift_count"`
+	MigrationPlanDigest string              `json:"migration_plan_digest,omitempty"`
+	Migration           *componentMigration `json:"migration,omitempty"`
+	FormatVersion       int                 `json:"format_version"`
+	DryRun              bool                `json:"dry_run"`
+	Applied             bool                `json:"applied"`
+	Decisions           []Decision          `json:"decisions"`
+	ConflictCount       int                 `json:"conflict_count"`
+	DriftCount          int                 `json:"drift_count"`
 }
 
 // ResolutionPlan is a reviewable, non-mutating snapshot of a complete pull.
 // SelectedAction is the only reviewer-authored field; apply regenerates and
 // compares every other field before allowing the ownership transaction.
 type ResolutionPlan struct {
-	FormatVersion int                   `json:"format_version"`
-	BaseTemplate  Template              `json:"base_template"`
-	Template      Template              `json:"template"`
-	LockDigest    string                `json:"lock_digest"`
-	Entries       []ResolutionPlanEntry `json:"entries"`
+	PreconditionDigest  string                  `json:"precondition_digest,omitempty"`
+	Installation        *contracts.Installation `json:"installation,omitempty"`
+	MigrationPlanDigest string                  `json:"migration_plan_digest,omitempty"`
+	FormatVersion       int                     `json:"format_version"`
+	BaseTemplate        Template                `json:"base_template"`
+	Template            Template                `json:"template"`
+	LockDigest          string                  `json:"lock_digest"`
+	Entries             []ResolutionPlanEntry   `json:"entries"`
 }
 
 type ResolutionPlanEntry struct {
@@ -123,18 +128,21 @@ type AdaptedResolution struct {
 }
 
 type Options struct {
-	Preset                string
-	Adapters              []string
-	MigrateComponents     bool
-	MigrationPlanDigest   string
-	MigrationResolution   []byte
-	componentTransaction  bool
-	componentObservations map[string]observation
-	RepoRoot              string
-	SourceRoot            string
-	TemplateVersion       string
-	SourceRef             string
-	DryRun                bool
+	Preset                         string
+	Adapters                       []string
+	MigrateComponents              bool
+	MigrationPlanDigest            string
+	MigrationResolution            []byte
+	componentTransaction           bool
+	componentObservations          map[string]observation
+	componentDraftInput            string
+	componentDirectories           map[string]directoryState
+	expectedComponentPreconditions string
+	RepoRoot                       string
+	SourceRoot                     string
+	TemplateVersion                string
+	SourceRef                      string
+	DryRun                         bool
 	// UserOwnedResolutions maps user-owned managed-file collisions to their
 	// explicit resolution: false keeps local content, true replaces it with the
 	// incoming source payload.

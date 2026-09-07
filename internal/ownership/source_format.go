@@ -19,7 +19,13 @@ func SupportedLegacySourceRefs() []string {
 }
 
 // SupportedCapabilities is the versioned capability handshake with installers.
-func SupportedCapabilities() []string { return []string{"source-format/v1", "legacy/v1"} }
+func SupportedCapabilities() []string {
+	caps := []string{"source-format/v1", "legacy/v1"}
+	if componentHost() {
+		caps = append(caps, "components/v1", "adoption/v1")
+	}
+	return caps
+}
 
 type sourceDeclaration struct {
 	SchemaVersion int      `json:"schema_version"`

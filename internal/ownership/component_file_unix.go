@@ -53,3 +53,10 @@ func chmodComponentDirectory(repo pinnedRepo, p string, mode os.FileMode) error 
 	defer unix.Close(fd)
 	return unix.Fchmod(fd, uint32(mode.Perm()))
 }
+
+func componentLinkCount(info os.FileInfo) uint64 {
+	if st, ok := info.Sys().(*syscall.Stat_t); ok {
+		return uint64(st.Nlink)
+	}
+	return 0
+}

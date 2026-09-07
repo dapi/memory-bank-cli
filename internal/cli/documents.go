@@ -26,6 +26,7 @@ func runDocument(arguments []string, stdout, stderr io.Writer) int {
 	flags.SetOutput(stderr)
 	root := addRepoRootFlag(flags)
 	o := ownership.DocumentOptions{Operation: op}
+	flags.StringVar(&o.From, "from", "", "prepared local draft for atomic creation (repository-relative)")
 	flags.StringVar(&o.Type, "type", "", "installed document type")
 	flags.StringVar(&o.Path, "path", "", "project Markdown path under memory-bank")
 	flags.StringVar(&o.To, "to", "", "move destination within the original context")

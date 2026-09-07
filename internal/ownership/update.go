@@ -1049,6 +1049,9 @@ func applyAtomicallyPinnedWithOps(options Options, mutations []mutation, repo pi
 
 	fail := func(cause error) error {
 		rollbackErr := rollback()
+		if rollbackErr == nil && journal != nil {
+			rollbackErr = syncRestoredComponentState(repo, journal, staging)
+		}
 		if rollbackErr == nil {
 			cleanupStaging = true
 			return cause

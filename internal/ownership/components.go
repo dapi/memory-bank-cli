@@ -12,12 +12,13 @@ import (
 )
 
 type componentPlan struct {
-	tree      componentTree
-	source    map[string]payload
-	mutations []mutation
-	report    Report
-	next      Lock
-	manifest  contracts.Manifest
+	directories map[string]directoryState
+	tree        componentTree
+	source      map[string]payload
+	mutations   []mutation
+	report      Report
+	next        Lock
+	manifest    contracts.Manifest
 }
 
 func prepareComponents(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest string, source map[string]payload) (componentPlan, error) {
@@ -43,12 +44,24 @@ func prepareComponents(options Options, old Lock, hasLock bool, repo pinnedRepo,
 	if _, err = contracts.LoadCatalog(m, inventory, nil); err != nil {
 		return p, err
 	}
-	// Migration has its own explicit consent and exact-observation preparation.
-	if hasLock && old.SchemaVersion != 2 {
-		return p, errors.New("legacy installation requires reviewed component migration")
+	fullSelection, e := m.Select("legacy", nil, nil)
+	if e != nil {
+		return p, e
 	}
-	if options.MigrateComponents || options.MigrationPlanDigest != "" || len(options.MigrationResolution) > 0 {
-		return p, errors.New("migration flags apply only to a legacy installation")
+	sourceNavigation, e := componentNavigation(inventory, m, fullSelection)
+	if e != nil {
+		return p, e
+	}
+	if sourceNavigation.ExitCode != 0 {
+		return p, fmt.Errorf("source navigation invalid: %+v", sourceNavigation.Errors)
+	}
+	legacyMode := hasLock && old.SchemaVersion != 2
+	if legacyMode {
+		if !options.MigrateComponents {
+			return p, errors.New("legacy installation requires --migrate-components and reviewed preview")
+		}
+	} else if options.MigrateComponents || options.MigrationPlanDigest != "" || len(options.MigrationResolution) > 0 {
+		return p, errors.New("migration flags apply only to legacy installation")
 	}
 	selection, err := m.Select(options.Preset, options.Adapters, old.Installation)
 	if err != nil {
@@ -58,10 +71,42 @@ func prepareComponents(options Options, old Lock, hasLock bool, repo pinnedRepo,
 	if err != nil {
 		return p, err
 	}
-	if hasLock {
+	var legacy legacyMigration
+	if legacyMode {
+		legacy, err = prepareLegacyMigration(options, old, p.tree, m, source, lockDigest)
+		if err != nil {
+			return p, err
+		}
+		selection.LegacySourceRef = old.Template.SourceRef
+		previousSource, e := pinSourceRoot(options.SourceRoot)
+		if e != nil {
+			return p, e
+		}
+		historical, e := readGitSource(previousSource, old.Template.SourceRef)
+		if e != nil {
+			return p, e
+		}
+		for name := range historical {
+			if !strings.HasPrefix(name, "memory-bank/") {
+				f, ok := m.Files[name]
+				if !ok || !selection.Has(f.Component) {
+					return p, fmt.Errorf("migration would remove legacy adapter %s", name)
+				}
+			}
+		}
+	}
+	if hasLock && !legacyMode {
 		state, e := decodeComponentState(p.tree.files, old, "AGENTS.md", true)
 		if e != nil {
 			return p, e
+		}
+		for id, ref := range state.manifest.Contracts {
+			if nextRef, present := m.Contracts[id]; present && nextRef.Digest != ref.Digest {
+				return p, fmt.Errorf("published bundle changed behind existing ID: %s", id)
+			}
+		}
+		if ref := old.Installation.LegacySourceRef; ref != "" && !reflect.DeepEqual(state.manifest.LegacySources[ref], m.LegacySources[ref]) {
+			return p, errors.New("pinned legacy creation mapping changed")
 		}
 		if len(state.findings) > 0 {
 			return p, fmt.Errorf("installed document validation failed: %v", state.findings)
@@ -95,6 +140,9 @@ func prepareComponents(options Options, old Lock, hasLock bool, repo pinnedRepo,
 	composed.class = Generated
 	composed.data = readme.Data
 	composed.digest = digest(readme.Data)
+	if o := p.tree.observed["memory-bank/README.md"]; o.Exists {
+		composed.mode = o.Mode
+	}
 	selected["memory-bank/README.md"] = composed
 	// Existing managed assets must never become adapted through implicit drift.
 	if !hasLock {
@@ -106,7 +154,14 @@ func prepareComponents(options Options, old Lock, hasLock bool, repo pinnedRepo,
 			}
 		}
 	}
-	p.mutations, p.report.Decisions, p.next, err = buildPlan(repo, selected, old, hasLock, options.UserOwnedResolutions, options.AdaptedResolutions, options.DetachUserOwnedRemovals)
+	planningOld := old
+	if legacyMode {
+		planningOld, options, err = resolveLegacyOwnership(repo, selected, old, p.tree, legacy.resolution, options)
+		if err != nil {
+			return p, err
+		}
+	}
+	p.mutations, p.report.Decisions, p.next, err = buildPlan(repo, selected, planningOld, hasLock, options.UserOwnedResolutions, options.AdaptedResolutions, options.DetachUserOwnedRemovals)
 	if err != nil {
 		return p, err
 	}
@@ -118,10 +173,20 @@ func prepareComponents(options Options, old Lock, hasLock bool, repo pinnedRepo,
 	if p.report.ConflictCount > 0 {
 		return p, nil
 	}
+	for name, f := range selected {
+		if f.class == UserOwned {
+			record := p.next.Files[name]
+			record.Ownership = UserOwned
+			p.next.Files[name] = record
+		}
+	}
 	record := p.next.Files["memory-bank/README.md"]
 	record.Ownership = Generated
 	record.BaseDigest = rawReadme.digest
 	record.BaseMode = rawReadme.mode
+	record.PayloadDigest = composed.digest
+	record.PayloadMode = composed.mode
+	p.add("memory-bank/README.md", readme.Data, Generated, "compose component index")
 	p.next.Files["memory-bank/README.md"] = record
 	agent := agentinstructions.BuildPlanWithBlock(p.tree.files["AGENTS.md"], contracts.AgentBlock(selection))
 	if agent.Status == agentinstructions.Ambiguous {
@@ -134,12 +199,24 @@ func prepareComponents(options Options, old Lock, hasLock bool, repo pinnedRepo,
 		if p.tree.observed[contracts.RegistryPath].Exists {
 			return p, errors.New("untracked adoption registry blocks initialization")
 		}
-		registryBytes, e := contracts.RegistryBytes(contracts.EmptyRegistry())
+		registry := contracts.EmptyRegistry()
+		if legacyMode {
+			registry = legacy.registry
+		}
+		registryBytes, e := contracts.RegistryBytes(registry)
 		if e != nil {
 			return p, e
 		}
 		selection.AdoptionDigest = digest(registryBytes)
 		p.add(contracts.RegistryPath, registryBytes, Generated, "initialize explicit adoption registry")
+	}
+	if legacyMode {
+		for _, name := range contracts.Keys(legacy.documents) {
+			p.add(name, legacy.documents[name], UserOwned, "bind existing legacy document identity")
+			if _, tracked := p.next.Files[name]; tracked {
+				p.next.Files[name] = File{Ownership: UserOwned}
+			}
+		}
 	}
 	p.next.SchemaVersion = 2
 	p.next.Installation = &selection
@@ -159,7 +236,11 @@ func prepareComponents(options Options, old Lock, hasLock bool, repo pinnedRepo,
 	if err != nil {
 		return p, err
 	}
-	if len(state.findings) > 0 {
+	if legacyMode {
+		if !reflect.DeepEqual(state.findings, legacy.findings) && !(len(state.findings) == 0 && len(legacy.findings) == 0) {
+			return p, fmt.Errorf("legacy findings changed during migration: before=%v after=%v", legacy.findings, state.findings)
+		}
+	} else if len(state.findings) > 0 {
 		return p, fmt.Errorf("prospective document validation failed: %v", state.findings)
 	}
 	nav, err := componentNavigation(future, m, selection)
@@ -175,6 +256,21 @@ func prepareComponents(options Options, old Lock, hasLock bool, repo pinnedRepo,
 			return p, e
 		}
 		p.add(LockFileName, b, Generated, "record component transaction")
+	}
+	if legacyMode {
+		if err = p.describeMigration(repo, old, lockDigest, legacy); err != nil {
+			return p, err
+		}
+		if !options.DryRun && options.MigrationPlanDigest != p.report.MigrationPlanDigest {
+			return p, errors.New("migration preview digest missing or stale; regenerate and review --dry-run --json")
+		}
+	}
+	preconditionDigest, e := p.capturePreconditions(repo)
+	if e != nil {
+		return p, e
+	}
+	if options.expectedComponentPreconditions != "" && options.expectedComponentPreconditions != preconditionDigest {
+		return p, errors.New("component resolution inputs changed before apply")
 	}
 	return p, nil
 }
@@ -192,6 +288,18 @@ func (p *componentPlan) add(name string, data []byte, class Class, reason string
 	mode := fileMode("100644")
 	if observed.Exists {
 		_, _ = fmt.Sscanf(observed.Permissions, "%o", &mode)
+	}
+	for i, item := range p.mutations {
+		if item.decision.Path == name {
+			p.mutations = append(p.mutations[:i], p.mutations[i+1:]...)
+			break
+		}
+	}
+	for i, decision := range p.report.Decisions {
+		if decision.Path == name {
+			p.report.Decisions = append(p.report.Decisions[:i], p.report.Decisions[i+1:]...)
+			break
+		}
 	}
 	p.mutations = append(p.mutations, mutation{decision: d, data: data, mode: mode, modeSet: true, expectedExists: observed.Exists, expectedDigest: observed.Digest, expectedMode: observed.Mode})
 	p.report.Decisions = append(p.report.Decisions, d)
@@ -225,6 +333,7 @@ func applyComponentPlan(options Options, repo pinnedRepo, plan componentPlan) (R
 	}
 	options.componentTransaction = true
 	options.componentObservations = plan.tree.observed
+	options.componentDirectories = plan.directories
 	for i := range plan.mutations {
 		plan.mutations[i].expectedPermissions = plan.tree.observed[plan.mutations[i].decision.Path].Permissions
 	}

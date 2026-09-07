@@ -5,6 +5,7 @@ import (
 	"embed"
 	"errors"
 	"fmt"
+	"path"
 	"strings"
 )
 
@@ -121,6 +122,20 @@ func LoadCatalog(m Manifest, files map[string][]byte, selection *Installation) (
 	if c.DNA.Rules.FeatureLifecycle {
 		return c, errors.New("DNA cannot contain feature lifecycle")
 	}
+	if selection == nil {
+		for _, p := range Keys(files) {
+			if !strings.HasPrefix(p, "memory-bank/") || !strings.HasSuffix(p, ".md") {
+				continue
+			}
+			doc, err := ParseDocument(p, files[p])
+			if err != nil {
+				return c, fmt.Errorf("source metadata %s: %w", p, err)
+			}
+			if findings := ValidateRules(doc, c.DNA.Rules, Identity{Path: p, ContextRoot: path.Dir(p)}, nil); len(findings) != 0 {
+				return c, fmt.Errorf("source metadata %s: %v", p, findings)
+			}
+		}
+	}
 	if selection != nil && !selection.Has("documents") {
 		return c, nil
 	}
@@ -154,6 +169,9 @@ func LoadCatalog(m Manifest, files map[string][]byte, selection *Installation) (
 		}
 		if hasEmbeddedFrontmatter(doc.Body) {
 			return c, fmt.Errorf("embedded frontmatter is unsupported in %s", d.Template)
+		}
+		if _, err := RelocateBaseDocument(template, d.Template, "memory-bank/features/FT-probe/brief.md"); err != nil {
+			return c, fmt.Errorf("base references %s: %w", d.Template, err)
 		}
 		c.Types[typ] = d
 	}

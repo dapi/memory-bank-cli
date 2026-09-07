@@ -96,6 +96,35 @@ func prepareComponentJournal(repo pinnedRepo, options Options, mutations []mutat
 			}
 		}
 	}
+	if options.componentDirectories != nil && !reflect.DeepEqual(options.componentDirectories, j.Directories) {
+		return nil, errors.New("planned directory state changed before journal")
+	}
+	// A caller-supplied draft is read-only, but recovery binds its original
+	// bytes too. Keep an independently synced snapshot until cleanup succeeds.
+	if p := options.componentDraftInput; p != "" {
+		actual, data, err := observeComponent(repo, p)
+		if err != nil {
+			return nil, err
+		}
+		if !actual.Exists || !sameObservation(actual, j.Before[p]) {
+			return nil, errors.New("draft changed before recovery snapshot")
+		}
+		inputDir := filepath.Join(staging, "inputs")
+		if err = os.Mkdir(inputDir, 0700); err != nil {
+			return nil, err
+		}
+		slot := "inputs/000000"
+		if err = os.WriteFile(filepath.Join(staging, slot), data, 0600); err != nil {
+			return nil, err
+		}
+		if err = syncLocalRegular(filepath.Join(staging, slot)); err != nil {
+			return nil, err
+		}
+		if err = syncLocalDirectory(inputDir); err != nil {
+			return nil, err
+		}
+		j.Backups[p] = slot
+	}
 	for _, item := range staged {
 		if item.replacement != "" {
 			if err := syncLocalRegular(item.replacement); err != nil {
@@ -187,7 +216,7 @@ func syncLocalRegular(p string) error {
 }
 func syncLocalDirectory(p string) error { return syncLocalRegular(p) }
 
-var recoveryBackupPattern = regexp.MustCompile(`^old/[0-9]{6}$`)
+var recoveryBackupPattern = regexp.MustCompile(`^(?:old/[0-9]{6}|inputs/000000)$`)
 var permissionPattern = regexp.MustCompile(`^0[0-7]{3}$`)
 
 func validateJournal(j componentJournal) error {
@@ -219,7 +248,7 @@ func validateJournal(j componentJournal) error {
 	slots := map[string]bool{}
 	for p, slot := range j.Backups {
 		before, ok := j.Before[p]
-		if !ok || !before.Exists || sameObservation(before, j.After[p]) || !recoveryBackupPattern.MatchString(slot) || slots[slot] {
+		if !ok || !before.Exists || (strings.HasPrefix(slot, "old/") == sameObservation(before, j.After[p])) || !recoveryBackupPattern.MatchString(slot) || slots[slot] {
 			return errors.New("invalid recovery backup mapping")
 		}
 		slots[slot] = true
@@ -362,4 +391,45 @@ func verifyComponentInventory(repo pinnedRepo, expected map[string]observation) 
 		}
 		return nil
 	})
+}
+
+// Never discard the only recovery data until the complete restored state is
+// verified and durable, including unchanged read inputs and ancestor modes.
+func syncRestoredComponentState(repo pinnedRepo, j *componentJournal, staging string) error {
+	if err := verifyComponentInventory(repo, j.Before); err != nil {
+		return err
+	}
+	if err := verifyComponentDirectoryStates(repo, j, false); err != nil {
+		return err
+	}
+	for _, p := range contracts.Keys(j.Before) {
+		o, _, err := observeComponent(repo, p)
+		if err != nil && strings.HasPrefix(j.Backups[p], "old/") {
+			info, data, readErr := secureReadDestination(repo, p)
+			backup, backupErr := os.Lstat(filepath.Join(staging, j.Backups[p]))
+			if readErr == nil && backupErr == nil && os.SameFile(info, backup) && componentLinkCount(info) == 2 && info.Mode().IsRegular() && info.Mode()&(os.ModeSetuid|os.ModeSetgid|os.ModeSticky) == 0 {
+				o = observation{true, digest(data), gitMode(info.Mode().Perm()), fmt.Sprintf("%04o", info.Mode().Perm())}
+				err = nil
+			}
+		}
+		if err != nil {
+			return err
+		}
+		if !sameObservation(o, j.Before[p]) {
+			return fmt.Errorf("restored input differs: %s", p)
+		}
+		if o.Exists {
+			if err = syncComponentFile(repo, p); err != nil {
+				return err
+			}
+		}
+	}
+	for _, p := range contracts.Keys(j.Directories) {
+		if j.Directories[p].BeforeExists {
+			if err := syncComponentDirectory(repo, p); err != nil {
+				return err
+			}
+		}
+	}
+	return syncLocalDirectory(repo.root)
 }

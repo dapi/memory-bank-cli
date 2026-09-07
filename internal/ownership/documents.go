@@ -16,6 +16,7 @@ import (
 )
 
 type DocumentOptions struct {
+	From           string
 	RepoRoot       string
 	Operation      string
 	Type           string
@@ -41,6 +42,9 @@ func DocumentOperation(o DocumentOptions) (Report, error) {
 	}
 	if o.Operation == "move" && (!contracts.DocumentPath(o.To) || o.ID == "") {
 		return Report{}, errors.New("move requires --id and a project Markdown --to path")
+	}
+	if o.From != "" && (o.Operation != "create" || !contracts.ValidPath(o.From) || !strings.HasSuffix(strings.ToLower(o.From), ".md") || o.From == o.Path) {
+		return Report{}, errors.New("--from requires create and a different repository-relative Markdown input")
 	}
 	if o.Operation != "move" && (o.To != "" || o.ID != "") {
 		return Report{}, errors.New("--to/--id are only supported by move")
@@ -69,7 +73,11 @@ func DocumentOperation(o DocumentOptions) (Report, error) {
 	if o.To != "" {
 		extra = append(extra, o.To)
 	}
-	tree, err := readComponentTree(repo, lock, extra)
+	readPaths := append([]string{}, extra...)
+	if o.From != "" {
+		readPaths = append(readPaths, o.From)
+	}
+	tree, err := readComponentTree(repo, lock, readPaths)
 	if err != nil {
 		return Report{}, err
 	}
@@ -123,6 +131,9 @@ func DocumentOperation(o DocumentOptions) (Report, error) {
 		}
 		o.Contract = state.manifest.LegacySources[installation.LegacySourceRef].Contracts[typ]
 	}
+	if existing, ok := state.docs[o.Path]; ok && o.Operation != "move" && existing.Has("document_type") && existing.String("document_type") != typ {
+		return Report{}, errors.New("operation cannot change an existing document type")
+	}
 	adopting := o.Contract != "" || o.Operation != "create"
 	if adopting && !installation.Has("flows") {
 		return Report{}, errors.New("adoption requires installed Flows")
@@ -151,12 +162,19 @@ func DocumentOperation(o DocumentOptions) (Report, error) {
 	// A retry is accepted only with the current complete identity and last move.
 	if o.Operation == "move" && !tree.observed[o.Path].Exists {
 		b, ok := state.bindings[o.ID]
-		if ok && b.Identity.Path == o.To && len(registry.History) > 0 {
-			last := registry.History[len(registry.History)-1]
-			if last.Operation == "move" && last.DocumentID == o.ID && last.FromPath == o.Path && last.ToPath == o.To {
-				return p.report, nil
+		if ok && b.Identity.Path == o.To {
+			for i := len(registry.History) - 1; i >= 0; i-- {
+				last := registry.History[i]
+				if last.DocumentID != o.ID {
+					continue
+				}
+				if last.Operation == "move" && last.FromPath == o.Path && last.ToPath == o.To {
+					return p.report, nil
+				}
+				break
 			}
 		}
+
 		return Report{}, errors.New("move source missing or retry identity/history mismatch")
 	}
 	raw := tree.files[o.Path]
@@ -165,7 +183,28 @@ func DocumentOperation(o DocumentOptions) (Report, error) {
 		if tree.observed[o.Path].Exists {
 			return Report{}, errors.New("document already exists")
 		}
-		raw = state.catalog.Files[state.catalog.Types[typ].Template]
+		templatePath := state.catalog.Types[typ].Template
+		raw, err = contracts.RelocateBaseDocument(state.catalog.Files[templatePath], templatePath, o.Path)
+		if err != nil {
+			return Report{}, err
+		}
+		if o.From != "" {
+			if !tree.observed[o.From].Exists {
+				return Report{}, errors.New("draft input missing")
+			}
+			draft, e := contracts.ParseDocument(o.From, tree.files[o.From])
+			if e != nil {
+				return Report{}, e
+			}
+			if draft.Has("document_id") || draft.Has("flow_contract") || (draft.Has("document_type") && draft.String("document_type") != typ) || (draft.Has("doc_kind") && draft.String("doc_kind") != typ) {
+				return Report{}, errors.New("draft has adoption or incompatible type metadata")
+			}
+			if e = contracts.ValidateDraftCopy(draft, o.Path); e != nil {
+				return Report{}, e
+			}
+			raw = draft.Raw
+		}
+
 	case "adopt":
 		if !tree.observed[o.Path].Exists {
 			return Report{}, errors.New("document missing")
@@ -195,6 +234,13 @@ func DocumentOperation(o DocumentOptions) (Report, error) {
 		}
 		if tree.observed[o.To].Exists || o.To == o.Path {
 			return Report{}, errors.New("move destination exists")
+		}
+		relocated, e := contracts.RelocateBaseDocument(raw, o.Path, o.To)
+		if e != nil {
+			return Report{}, e
+		}
+		if string(relocated) != string(raw) {
+			return Report{}, errors.New("move would change relative reference meaning; use location-independent references first")
 		}
 		if !strings.HasPrefix(o.To, binding.Identity.ContextRoot+"/") {
 			return Report{}, errors.New("move cannot change adoption context")
@@ -311,7 +357,7 @@ func DocumentOperation(o DocumentOptions) (Report, error) {
 		return Report{}, err
 	}
 	p.add(LockFileName, b, Generated, "record document transaction")
-	return applyComponentPlan(Options{RepoRoot: repo.root, DryRun: o.DryRun, BeforeMutation: o.BeforeMutation}, repo, p)
+	return applyComponentPlan(Options{RepoRoot: repo.root, DryRun: o.DryRun, BeforeMutation: o.BeforeMutation, componentDraftInput: o.From}, repo, p)
 }
 
 func (p *componentPlan) addNavigation(document string) error {
