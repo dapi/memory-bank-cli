@@ -8,9 +8,7 @@ work_root="$(mktemp -d)"
 trap 'rm -rf "$work_root"' EXIT
 mkdir "$work_root/downstream" "$work_root/unknown" "$work_root/component"
 "$E2E_BINARY" capabilities --require source-format/v1 --require legacy/v1
-if "$E2E_BINARY" capabilities --require components/v1 >"$work_root/capabilities.json"; then
-  echo 'bridge advertised unsupported components' >&2; exit 1
-fi
+"$E2E_BINARY" capabilities --require components/v1 --require adoption/v1
 "$E2E_BINARY" init --repo-root "$work_root/downstream" --source "$LEGACY_SOURCE" --source-ref "$legacy_ref" --template-version legacy-f1f04de --json >"$work_root/init.json"
 "$E2E_BINARY" pull --repo-root "$work_root/downstream" --source "$LEGACY_SOURCE" --source-ref "$legacy_ref" --template-version legacy-f1f04de --json >"$work_root/pull.json"
 cp -R "$work_root/downstream" "$work_root/before"

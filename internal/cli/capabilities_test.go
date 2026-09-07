@@ -4,11 +4,16 @@ import (
 	"bytes"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
 
 func TestCapabilitiesWireContract(t *testing.T) {
+	componentCode, componentUnsupported, caps := 1, `["components/v1","adoption/v1"]`, `["source-format/v1","legacy/v1"]`
+	if runtime.GOOS == "linux" || runtime.GOOS == "darwin" {
+		componentCode, componentUnsupported, caps = 0, `[]`, `["source-format/v1","legacy/v1","components/v1","adoption/v1"]`
+	}
 	for _, tc := range []struct {
 		args        []string
 		code        int
@@ -16,11 +21,11 @@ func TestCapabilitiesWireContract(t *testing.T) {
 	}{
 		{nil, 0, `[]`},
 		{[]string{"--require", "legacy/v1", "--require", "source-format/v1"}, 0, `[]`},
-		{[]string{"--require", "components/v1", "--require", "adoption/v1"}, 1, `["components/v1","adoption/v1"]`},
+		{[]string{"--require", "components/v1", "--require", "adoption/v1"}, componentCode, componentUnsupported},
 	} {
 		var out, err bytes.Buffer
 		code := Run(append([]string{"capabilities"}, tc.args...), "test-version", &out, &err)
-		want := `{"schema_version":1,"cli_version":"test-version","capabilities":["source-format/v1","legacy/v1"],"unsupported":` + tc.unsupported + "}\n"
+		want := `{"schema_version":1,"cli_version":"test-version","capabilities":` + caps + `,"unsupported":` + tc.unsupported + "}\n"
 		if code != tc.code || out.String() != want || err.Len() != 0 {
 			t.Fatalf("code=%d stdout=%s stderr=%s", code, out.String(), err.String())
 		}

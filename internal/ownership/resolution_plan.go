@@ -60,6 +60,12 @@ func PlanPull(options Options) (ResolutionPlan, error) {
 	if err := verifySource(pinnedSource.root, options.SourceRef); err != nil {
 		return ResolutionPlan{}, fmt.Errorf("source checkout changed while reading template: %w", err)
 	}
+	if hasComponentSource(source) {
+		return planComponentResolution(options, repo, lock, lockDigest, source)
+	}
+	if lock.SchemaVersion == 2 || componentFlags(options) {
+		return ResolutionPlan{}, errors.New("component selection/state requires a component source")
+	}
 	_, decisions, _, err := buildPlan(repo, source, lock, true, nil, nil, false)
 	if err != nil {
 		return ResolutionPlan{}, err
@@ -169,6 +175,9 @@ func PlanPull(options Options) (ResolutionPlan, error) {
 // ApplyResolutionPlan regenerates all deterministic plan fields, validates the
 // selected resolution overlays, and delegates one atomic mutation to Update.
 func ApplyResolutionPlan(options Options, plan ResolutionPlan) (Report, error) {
+	if plan.FormatVersion == 2 {
+		return applyComponentResolution(options, plan)
+	}
 	if plan.FormatVersion != ResolutionPlanVersion {
 		return Report{}, fmt.Errorf("unsupported resolution plan format %d", plan.FormatVersion)
 	}

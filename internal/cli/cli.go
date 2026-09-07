@@ -16,11 +16,13 @@ import (
 	"strings"
 
 	"github.com/dapi/memory-bank-cli/internal/analyzegraph"
+	"github.com/dapi/memory-bank-cli/internal/contracts"
 	"github.com/dapi/memory-bank-cli/internal/doctor"
 	"github.com/dapi/memory-bank-cli/internal/githubadapter"
 	"github.com/dapi/memory-bank-cli/internal/handoff"
 	"github.com/dapi/memory-bank-cli/internal/lint"
 	"github.com/dapi/memory-bank-cli/internal/ownership"
+	"github.com/dapi/memory-bank-cli/internal/projection"
 	"github.com/dapi/memory-bank-cli/internal/push"
 	"github.com/dapi/memory-bank-cli/internal/repository"
 	"github.com/dapi/memory-bank-cli/internal/selfupdate"
@@ -58,6 +60,8 @@ func Run(arguments []string, version string, stdout, stderr io.Writer) int {
 	}
 
 	switch arguments[0] {
+	case "document":
+		return runDocument(arguments[1:], stdout, stderr)
 	case "capabilities":
 		return runCapabilities(arguments[1:], version, stdout, stderr)
 	case "analyze-graph":
@@ -126,6 +130,7 @@ func printRootUsage(writer io.Writer) {
 	fmt.Fprintln(writer, "Usage: memory-bank-cli <command> [options]")
 	fmt.Fprintln(writer)
 	fmt.Fprintln(writer, "Commands:")
+	fmt.Fprintln(writer, "  document Create, adopt, transition, or move a project document")
 	fmt.Fprintln(writer, "  capabilities Report supported source formats and required capabilities")
 	fmt.Fprintln(writer, "  analyze-graph  Analyse typed execution-context handoff evidence")
 	fmt.Fprintln(writer, "  init    Adopt or install a template and create its ownership lock")
@@ -382,6 +387,12 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 	applyPlan := flags.String("apply-plan", "", "apply a reviewed versioned pull resolution plan from FILE")
 	ask := flags.Bool("ask", false, "interactively resolve user-owned managed-file collisions")
 	agentFile := flags.String("agent-file", "AGENTS.md", "single repository-relative agent instruction file to manage")
+	preset := flags.String("preset", "", "component preset: core, docs, full, legacy")
+	var adapters entrypointFlags
+	flags.Var(&adapters, "adapter", "add an optional adapter (repeatable)")
+	migrate := flags.Bool("migrate-components", false, "explicitly migrate a supported legacy installation")
+	migrationDigest := flags.String("migration-plan-digest", "", "exact reviewed migration preview digest")
+	migrationResolution := flags.String("migration-resolution", "", "legacy classification resolution JSON file")
 	jsonOutput := addJSONOutputFlag(flags)
 	if err := flags.Parse(arguments); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
@@ -442,7 +453,18 @@ func runOwnership(arguments []string, command string, stdin io.Reader, stdinIsTe
 	options := ownership.Options{
 		RepoRoot: repoRoot, SourceRoot: sourceRoot, TemplateVersion: resolvedVersion,
 		SourceRef: resolvedRef, DryRun: *dryRun,
-		AgentFile: *agentFile,
+		AgentFile: *agentFile, Preset: *preset, Adapters: adapters, MigrateComponents: *migrate, MigrationPlanDigest: *migrationDigest,
+	}
+	if *migrationResolution != "" {
+		options.MigrationResolution, err = os.ReadFile(*migrationResolution)
+		if err != nil {
+			fmt.Fprintln(stderr, err)
+			return exitFailure
+		}
+	}
+	if command == "init" && (*migrate || *migrationDigest != "" || *migrationResolution != "") {
+		fmt.Fprintln(stderr, "migration flags require pull")
+		return exitUsage
 	}
 	if *planOutput != "" {
 		plan, planErr := ownership.PlanPull(options)
@@ -979,6 +1001,25 @@ func runLint(arguments []string, commandName, version string, stdout, stderr io.
 	if err != nil {
 		fmt.Fprintln(stderr, err)
 		return exitFailure
+	}
+
+	if scopeRoot == "memory-bank" && !projection.IsUninstalledSourceProjection(repoRoot, contracts.ManifestPath) {
+		handled, findings, nav, e := ownership.ValidateComponents(repoRoot, "")
+		if handled {
+			if e != nil {
+				report.Errors.Config = append(report.Errors.Config, lint.ConfigError{Message: e.Error()})
+				report.ExitCode = 1
+			} else {
+				if len(configuredEntrypoints) == 0 {
+					report = nav
+					report.RepoRoot = repoRoot
+				}
+				for _, f := range findings {
+					report.Errors.Config = append(report.Errors.Config, lint.ConfigError{Message: fmt.Sprintf("%s: %s (%s)", f.Code, f.RuleID, f.Subject)})
+					report.ExitCode = 1
+				}
+			}
+		}
 	}
 
 	if err := writeResult(stdout, *jsonOutput, report, func(writer io.Writer) {

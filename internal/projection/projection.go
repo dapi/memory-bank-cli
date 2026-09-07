@@ -92,3 +92,11 @@ func within(root, target string) bool {
 	}
 	return true
 }
+
+// IsUninstalledSourceProjection distinguishes a source repository's local
+// projection from a downstream installation. Any existing or unreadable lock
+// keeps the caller on the strict installed-state validation path.
+func IsUninstalledSourceProjection(repoRoot, relative string) bool {
+	_, exists, err := ownership.ReadLock(repoRoot)
+	return err == nil && !exists && IsPayloadProjection(repoRoot, relative)
+}

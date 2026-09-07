@@ -26,16 +26,17 @@ type payload struct {
 }
 
 type mutation struct {
-	decision         Decision
-	data             []byte
-	mode             fs.FileMode
-	modeSet          bool
-	expectedExists   bool
-	expectedDigest   string
-	expectedMode     string
-	preconditions    []destinationPrecondition
-	topology         *topologySnapshot
-	topologyReplaced bool
+	decision            Decision
+	data                []byte
+	mode                fs.FileMode
+	modeSet             bool
+	expectedExists      bool
+	expectedDigest      string
+	expectedMode        string
+	expectedPermissions string
+	preconditions       []destinationPrecondition
+	topology            *topologySnapshot
+	topologyReplaced    bool
 }
 
 type destinationPrecondition struct {
@@ -44,6 +45,7 @@ type destinationPrecondition struct {
 	exists         bool
 	digest         string
 	mode           string
+	permissions    string
 }
 
 var immutableRefPattern = regexp.MustCompile(`^[0-9a-fA-F]{40}([0-9a-fA-F]{24})?$`)
@@ -116,6 +118,12 @@ func run(options Options, old Lock, hasLock bool, repo pinnedRepo, lockDigest st
 	}
 	if err := verifySource(pinnedSource.root, options.SourceRef); err != nil {
 		return Report{}, fmt.Errorf("source checkout changed while reading template: %w", err)
+	}
+	if hasComponentSource(source) {
+		return runComponents(options, old, hasLock, repo, lockDigest, source)
+	}
+	if old.SchemaVersion == 2 || componentFlags(options) {
+		return Report{}, errors.New("component selection/state requires a component source")
 	}
 	// An ordinary pull resolves only mechanically provable adapted-file merges:
 	// a locked historical base is available and the two line edits do not
@@ -949,6 +957,14 @@ func applyAtomicallyPinnedWithOps(options Options, mutations []mutation, repo pi
 			if !digestExists || (item.expectedDigest != "" && currentDigest != item.expectedDigest) {
 				return fmt.Errorf("prepare %s: destination content changed while update was being planned", item.decision.Path)
 			}
+			if item.expectedPermissions != "" && item.expectedPermissions != fmt.Sprintf("%04o", info.Mode().Perm()) {
+				return fmt.Errorf("prepare %s: permissions changed", item.decision.Path)
+			}
+			if options.componentTransaction {
+				if err := checkOriginalComponentFile(info); err != nil {
+					return err
+				}
+			}
 			if item.expectedMode != "" && !modeMatches(observedMode(info.Mode().Perm()), item.expectedMode) {
 				return fmt.Errorf("prepare %s: destination mode changed while update was being planned", item.decision.Path)
 			}
@@ -986,6 +1002,13 @@ func applyAtomicallyPinnedWithOps(options Options, mutations []mutation, repo pi
 		staged[index].replacementDigest = replacementDigest
 	}
 
+	var journal *componentJournal
+	if options.componentTransaction {
+		journal, err = prepareComponentJournal(repo, options, mutations, staged, staging)
+		if err != nil {
+			return err
+		}
+	}
 	createdDirectories := make([]string, 0)
 	removedDirectories := make([]removedDirectory, 0)
 	rollback := func() error {
@@ -1026,6 +1049,9 @@ func applyAtomicallyPinnedWithOps(options Options, mutations []mutation, repo pi
 
 	fail := func(cause error) error {
 		rollbackErr := rollback()
+		if rollbackErr == nil && journal != nil {
+			rollbackErr = syncRestoredComponentState(repo, journal, staging)
+		}
 		if rollbackErr == nil {
 			cleanupStaging = true
 			return cause
@@ -1050,6 +1076,11 @@ func applyAtomicallyPinnedWithOps(options Options, mutations []mutation, repo pi
 			return fail(fmt.Errorf("apply %s: %w", item.decision.Path, err))
 		}
 		if item.decision.Path == LockFileName {
+			if journal != nil {
+				if err := verifyComponentInventory(repo, journal.After); err != nil {
+					return fail(err)
+				}
+			}
 			for priorIndex := 0; priorIndex < index; priorIndex++ {
 				prior := &staged[priorIndex]
 				if !prior.originalMoved && !prior.replacementInstalled {
@@ -1078,6 +1109,18 @@ func applyAtomicallyPinnedWithOps(options Options, mutations []mutation, repo pi
 			}
 		}
 		if item.expectedExists {
+			if options.componentTransaction {
+				if err := checkOriginalComponentFile(item.originalInfo); err != nil {
+					return fail(err)
+				}
+				info, _, e := secureReadDestination(repo, item.decision.Path)
+				if e != nil {
+					return fail(e)
+				}
+				if e = checkOriginalComponentFile(info); e != nil {
+					return fail(e)
+				}
+			}
 			if ops.renameFromDestination != nil && sameOperation(ops.rename, os.Rename) {
 				if err := ops.renameFromDestination(repo, item.decision.Path, item.backup); err != nil {
 					return fail(fmt.Errorf("apply %s: move original to staging: %w", item.decision.Path, err))
@@ -1086,6 +1129,11 @@ func applyAtomicallyPinnedWithOps(options Options, mutations []mutation, repo pi
 				return fail(fmt.Errorf("apply %s: move original to staging: %w", item.decision.Path, err))
 			}
 			item.originalMoved = true
+			if journal != nil {
+				if err := syncComponentParents(repo, item.decision.Path, filepath.Dir(item.backup)); err != nil {
+					return fail(err)
+				}
+			}
 			backupInfo, backupDigest, err := inspectRegularFile(item.backup)
 			if err != nil {
 				return fail(fmt.Errorf("apply %s: inspect staged original: %w", item.decision.Path, err))
@@ -1106,8 +1154,16 @@ func applyAtomicallyPinnedWithOps(options Options, mutations []mutation, repo pi
 				return fail(fmt.Errorf("apply %s: %w", item.decision.Path, err))
 			}
 		}
+		createdBefore := len(createdDirectories)
 		if err := ensureDestinationParents(repo, item.decision.Path, &createdDirectories); err != nil {
 			return fail(fmt.Errorf("apply %s: %w", item.decision.Path, err))
+		}
+		if journal != nil {
+			for _, directory := range createdDirectories[createdBefore:] {
+				if err := chmodComponentDirectory(repo, directory, 0755); err != nil {
+					return fail(err)
+				}
+			}
 		}
 		if _, _, nowExists, err := inspectDestination(repo, item.decision.Path); err != nil {
 			return fail(fmt.Errorf("apply %s: %w", item.decision.Path, err))
@@ -1127,6 +1183,11 @@ func applyAtomicallyPinnedWithOps(options Options, mutations []mutation, repo pi
 		item.replacementInstalled = true
 		if err := os.Remove(item.replacement); err != nil {
 			return fail(fmt.Errorf("apply %s: detach installed payload from staging: %w", item.decision.Path, err))
+		}
+	}
+	if journal != nil {
+		if err := commitComponentJournal(repo, journal, staging); err != nil {
+			return fail(err)
 		}
 	}
 	commitComplete = true
@@ -1173,6 +1234,10 @@ func verifyOriginalTarget(repo pinnedRepo, item *stagedMutation) error {
 	if !os.SameFile(item.originalInfo, currentInfo) {
 		return errors.New("destination identity changed after staging")
 	}
+	if item.expectedPermissions != "" && item.expectedPermissions != fmt.Sprintf("%04o", currentInfo.Mode().Perm()) {
+		return fmt.Errorf("prepare %s: permissions changed", item.decision.Path)
+	}
+
 	if item.expectedMode != "" && !modeMatches(observedMode(currentInfo.Mode().Perm()), item.expectedMode) {
 		return errors.New("destination mode changed after staging")
 	}
@@ -1206,6 +1271,14 @@ func verifyDestinationPrecondition(repo pinnedRepo, precondition destinationPrec
 	}
 	if !os.SameFile(info, readInfo) {
 		return errors.New("managed payload identity changed before lock commit")
+	}
+	if precondition.permissions != "" {
+		if fmt.Sprintf("%04o", readInfo.Mode().Perm()) != precondition.permissions {
+			return errors.New("component input permissions changed before lock commit")
+		}
+		if err := checkOriginalComponentFile(readInfo); err != nil {
+			return err
+		}
 	}
 	currentDigest := digest(data)
 	if currentDigest != precondition.digest {

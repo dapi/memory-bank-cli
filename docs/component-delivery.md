@@ -15,7 +15,9 @@ Baseline `env -u GOROOT go test ./...` passes all packages on 2026-09-07.
 
 ## Gates and realization
 
-CLI-01 uses the independently reviewed [bridge plan](source-format-bridge.md). CLI-02/03 wait for the shared component design gate. CLI code, tests
+CLI-01 follows the independently reviewed [bridge plan](source-format-bridge.md).
+The shared design and W2 execution-plan gates are complete; CLI-02/03 are implemented in
+[PR 64](https://github.com/dapi/memory-bank-cli/pull/64), stacked on bridge PR 63. CLI code, tests
 and evidence stay here. The slice is independently verifiable with synthetic source fixtures;
 the template PR supplies the final cross-repository source integration.
 
@@ -39,3 +41,24 @@ findings. Unexecuted checks are not evidence.
 Prepare the bridge commit and record its actual binary identity before component support.
 Component source must wait for supporting CLI. No live downstream mutation, merge or release
 publication belongs to this task. Related PRs state the required release order explicitly.
+
+The reviewed [component runtime plan](component-runtime-plan.md) owns W2 CLI execution
+sequencing. CTR-01/ADR-002 and the shared Solution Ready gate were accepted before implementation.
+
+## Implemented verification surfaces
+
+`internal/contracts` validates portable paths, deterministic wire encodings, frozen bundles,
+registry continuity, reference relocation and base/flow rules. `internal/ownership` integrates
+those contracts with composition, document operations, migration previews, resolution plans
+and the existing pinned transaction writer. A prepared `--from` draft receives a durable
+private snapshot for recovery; it remains an unchanged read precondition through cleanup.
+
+The local acceptance run passes the complete Go suite and vet, 28 existing E2Es, source-format
+fixtures and `scripts/e2e-components.py` against the actual producer. CI repeats these checks
+using immutable producer and legacy source commits. Specific fixtures include all six base
+types remaining unadopted, registry/marker/identity/type tampering, renderer-1 upgrade,
+ambiguous migration resolution, unchanged legacy finding multisets, selector transition
+rollback, adapter closure and complete recovery with restored read inputs.
+
+The PR records the final immutable review revisions and CI links. No merge, release or live
+migration is claimed by this implementation checkpoint.
