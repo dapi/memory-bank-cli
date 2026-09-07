@@ -214,11 +214,29 @@ func hasEmbeddedFrontmatter(body []byte) bool {
 				continue
 			}
 			embedded, err := ParseDocument("", []byte(strings.Join(lines[i:j+1], "\n")+"\n"))
-			if err == nil && (embedded.Has("status") || embedded.Has("doc_kind") || embedded.Has("document_type") || embedded.Has("document_id") || embedded.Has("flow_contract")) {
-				return true
+			if err == nil {
+				for _, key := range []string{"status", "title", "purpose", "doc_kind", "doc_function", "derived_from", "audience", "delivery_status", "research_status", "decision_status", "document_type", "document_id", "flow_contract", "template_for", "template_target_path", "canonical_for", "must_not_define"} {
+					if embedded.Has(key) {
+						return true
+					}
+				}
 			}
 			break
 		}
 	}
 	return false
+}
+
+// ValidateTransition applies to a NEW operation. Both endpoints must be installed;
+// unlike lock-authenticated history replay, this may not rely on retired contracts.
+func (c Catalog) ValidateTransition(from, to, typ string, evidence []string) error {
+	old, oldOK := c.Bundles[from]
+	next, nextOK := c.Bundles[to]
+	if !oldOK || !nextOK || old.Type != typ || next.Type != typ || from == to {
+		return errors.New("transition requires two installed compatible contracts")
+	}
+	if !SortedSet(evidence) || ((old.TransitionEvidence || next.TransitionEvidence) && len(evidence) == 0) {
+		return errors.New("transition requires valid evidence references")
+	}
+	return nil
 }

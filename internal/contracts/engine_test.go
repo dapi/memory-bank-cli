@@ -157,3 +157,11 @@ func TestEmbeddedMetadataCRLFAndHorizontalRule(t *testing.T) {
 		t.Fatal("horizontal rule mistaken for metadata")
 	}
 }
+
+func TestEmbeddedLifecycleAndDependencyFieldsRejected(t *testing.T) {
+	for _, field := range []string{"delivery_status", "research_status", "decision_status", "derived_from", "purpose", "doc_function"} {
+		if !hasEmbeddedFrontmatter([]byte("# Body\n---\n" + field + ": value\n---\n")) {
+			t.Fatalf("missed %s", field)
+		}
+	}
+}

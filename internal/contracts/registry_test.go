@@ -140,3 +140,24 @@ func TestTransitionReplayRequiresAvailableBundleEvidence(t *testing.T) {
 		t.Fatal(err)
 	}
 }
+
+func TestRetiredHistoryIsReadableButCannotAuthorizeNewTransition(t *testing.T) {
+	old, c, docs := registryFixture(t)
+	id := old.Selectors[0].Snapshot[0]
+	current := "feature/v1"
+	retired := "retired/v1"
+	r := EmptyRegistry()
+	r.Records = []Record{{id.ID, id.Path, id.Type, id.ContextRoot, current, c.Manifest.Contracts[current].Digest}}
+	r.History = []Event{{"adopt", id.ID, id.Path, id.Path, "", retired, []string{}}, {"transition", id.ID, id.Path, id.Path, retired, current, []string{}}}
+	raw, _ := Project(docs[id.Path].Raw, map[string]string{"flow_contract": current})
+	docs = map[string]Document{id.Path: document(t, id.Path, string(raw))}
+	if _, err := ValidateRegistry(r, c, docs); err != nil {
+		t.Fatalf("required an inactive historical bundle: %v", err)
+	}
+	if err := c.ValidateTransition(retired, current, id.Type, nil); err == nil {
+		t.Fatal("retired contract authorized a new transition")
+	}
+	if err := c.ValidateTransition(current, retired, id.Type, nil); err == nil {
+		t.Fatal("unknown target authorized a new transition")
+	}
+}

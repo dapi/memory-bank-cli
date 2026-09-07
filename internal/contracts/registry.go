@@ -76,6 +76,10 @@ func ReadRegistry(data []byte) (Registry, error) {
 	return r, nil
 }
 
+// ValidateRegistry checks a registry whose exact bytes have already been authenticated
+// against installation.adoption_digest. CTR-01 deliberately does not require retaining
+// inactive historical bundles; the trusted lock protects previously checked history.
+// New writes must additionally call Catalog.ValidateTransition before appending an event.
 func ValidateRegistry(r Registry, c Catalog, docs map[string]Document) (map[string]Binding, error) {
 	active := map[string]Binding{}
 	all := map[string]Identity{}
@@ -223,9 +227,9 @@ func ValidateRegistry(r Registry, c Catalog, docs map[string]Document) (map[stri
 					return nil, errors.New("invalid move event")
 				}
 			case "transition":
-				oldBundle := c.Bundles[event.FromContract]
-				newBundle := c.Bundles[event.ToContract]
-				if (oldBundle.TransitionEvidence || newBundle.TransitionEvidence) && len(event.Evidence) == 0 {
+				oldBundle, oldAvailable := c.Bundles[event.FromContract]
+				newBundle, newAvailable := c.Bundles[event.ToContract]
+				if ((oldAvailable && oldBundle.TransitionEvidence) || (newAvailable && newBundle.TransitionEvidence)) && len(event.Evidence) == 0 {
 					return nil, errors.New("transition history lacks required evidence")
 				}
 				if event.ToPath != prior.path || event.ToContract == prior.contract {
