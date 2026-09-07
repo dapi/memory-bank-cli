@@ -130,3 +130,30 @@ func TestLegacyDesignParserRetainsHistoricalCommentBehavior(t *testing.T) {
 		t.Fatal("compatibility parser changed historical behavior")
 	}
 }
+
+func TestProjectionRejectsMultilineScalarContinuation(t *testing.T) {
+	for _, raw := range []string{"---\ndocument_id: \"old\n  continued\"\nstatus: draft\n---\n", "---\ndocument_id: old\n  continued\nstatus: draft\n---\n"} {
+		if _, err := Project([]byte(raw), map[string]string{"document_id": "replacement"}); err == nil {
+			t.Fatalf("accepted multiline projection: %q", raw)
+		}
+	}
+}
+func TestLegacyMissingFrontmatterCompanionDoesNotActivateLifecycle(t *testing.T) {
+	p := "memory-bank/features/FT-1/brief.md"
+	d := document(t, p, "---\nstatus: draft\ndelivery_status: planned\n---\n# Brief\n")
+	companion := document(t, "memory-bank/features/FT-1/design.md", "# No frontmatter\n")
+	id := Identity{"doc-stable", p, "feature", "memory-bank/features/FT-1"}
+	bundle, _ := LegacyBundle("legacy/f1f04de/feature/v1", "feature")
+	got := ValidateBundle(d, bundle, id, map[string]Document{p: d, companion.Path: companion})
+	if len(got) != 1 || got[0].Code != "governance.frontmatter_missing" || got[0].Subject != "design.md" {
+		t.Fatalf("legacy presence semantics changed: %v", got)
+	}
+}
+func TestEmbeddedMetadataCRLFAndHorizontalRule(t *testing.T) {
+	if !hasEmbeddedFrontmatter([]byte("# Example\r\n---\r\nstatus: draft\r\n---\r\n")) {
+		t.Fatal("missed CRLF embedded metadata")
+	}
+	if hasEmbeddedFrontmatter([]byte("# Title\n---\nJust a paragraph.\n---\n")) {
+		t.Fatal("horizontal rule mistaken for metadata")
+	}
+}

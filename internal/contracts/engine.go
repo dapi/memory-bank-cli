@@ -61,16 +61,32 @@ func ValidateRules(d Document, r Rules, id Identity, context map[string]Document
 func ValidateBundle(d Document, b Bundle, id Identity, context map[string]Document) []Finding {
 	if b.Legacy {
 		out := legacyMetadata(d, id, id.Type == "feature", id.Type == "adr")
-		if id.Type == "feature" || id.Type == "research" || id.Type == "epic" {
-			for _, p := range Keys(context) {
-				other := context[p]
-				if p != d.Path && strings.HasPrefix(p, id.ContextRoot+"/") {
-					out = append(out, legacyMetadata(other, id, false, false)...)
-				}
+		validContext := map[string]Document{}
+		for _, p := range Keys(context) {
+			other := context[p]
+			if !strings.HasPrefix(p, id.ContextRoot+"/") {
+				continue
+			}
+			if p != d.Path && (id.Type == "feature" || id.Type == "research" || id.Type == "epic") {
+				out = append(out, legacyMetadata(other, id, false, false)...)
+			}
+			fields, found, err := parseLegacyFrontmatter(other.Raw)
+			if err == nil && found {
+				other.Fields = fields
+				validContext[p] = other
 			}
 		}
+		fields, found, err := parseLegacyFrontmatter(d.Raw)
+		if err == nil && found {
+			d.Fields = fields
+			validContext[d.Path] = d
+		}
 		if id.Type == "feature" {
-			out = append(out, featureFindings(d, id, context, true)...)
+			if _, valid := validContext[d.Path]; valid {
+				out = append(out, featureFindings(d, id, validContext, true)...)
+			} else if len(validContext) > 0 {
+				out = append(out, finding(id, "", "lifecycle.feature_brief_missing", "lifecycle.feature_brief_missing"))
+			}
 		}
 		return SortFindings(out)
 	}

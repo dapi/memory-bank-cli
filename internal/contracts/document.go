@@ -120,6 +120,12 @@ func Project(data []byte, updates map[string]string) ([]byte, error) {
 			if k.Style != 0 || k.Column != 1 || v.Kind != yaml.ScalarNode || v.Tag != "!!str" || v.Anchor != "" || v.Line != k.Line || v.Style&(yaml.TaggedStyle|yaml.LiteralStyle|yaml.FoldedStyle) != 0 {
 				return nil, fmt.Errorf("projection %s requires a plain key and single-line untagged string", key)
 			}
+			physicalLines := bytes.Split(d.Raw, []byte("\n"))
+			sourceLine := physicalLines[k.Line] // Node lines are relative to YAML after delimiter.
+			var oneLine map[string]any
+			if err := yaml.Unmarshal(sourceLine, &oneLine); err != nil || oneLine[key] != d.Fields[key] {
+				return nil, fmt.Errorf("projection %s spans physical lines", key)
+			}
 			if d.String(key) == value {
 				continue
 			}

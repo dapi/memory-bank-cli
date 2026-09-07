@@ -119,7 +119,7 @@ func ValidateRegistry(r Registry, c Catalog, docs map[string]Document) (map[stri
 	}
 	previous = ""
 	for _, sel := range r.Selectors {
-		if sel.ID <= previous || sel.ID != SelectorID(sel.SourceRef, sel.Type, sel.ContractID, sel.BundleDigest) || !SortedSet(sel.Exclusions) {
+		if len(sel.Snapshot) == 0 || sel.ID <= previous || sel.ID != SelectorID(sel.SourceRef, sel.Type, sel.ContractID, sel.BundleDigest) || !SortedSet(sel.Exclusions) {
 			return nil, errors.New("invalid selector identity or ordering")
 		}
 		previous = sel.ID
@@ -223,6 +223,11 @@ func ValidateRegistry(r Registry, c Catalog, docs map[string]Document) (map[stri
 					return nil, errors.New("invalid move event")
 				}
 			case "transition":
+				oldBundle := c.Bundles[event.FromContract]
+				newBundle := c.Bundles[event.ToContract]
+				if (oldBundle.TransitionEvidence || newBundle.TransitionEvidence) && len(event.Evidence) == 0 {
+					return nil, errors.New("transition history lacks required evidence")
+				}
 				if event.ToPath != prior.path || event.ToContract == prior.contract {
 					return nil, errors.New("invalid transition event")
 				}

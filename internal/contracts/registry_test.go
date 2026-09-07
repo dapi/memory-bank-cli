@@ -110,3 +110,33 @@ func TestCanonicalRegistryAndBaseDocument(t *testing.T) {
 		t.Fatal("accepted noncanonical registry")
 	}
 }
+
+func TestEmptySelectorRejected(t *testing.T) {
+	r, c, _ := registryFixture(t)
+	r.Selectors = r.Selectors[:1]
+	r.Selectors[0].Snapshot = []Identity{}
+	r.History = []Event{}
+	if _, err := ValidateRegistry(r, c, map[string]Document{}); err == nil {
+		t.Fatal("accepted empty selector group")
+	}
+}
+func TestTransitionReplayRequiresAvailableBundleEvidence(t *testing.T) {
+	r, c, docs := registryFixture(t)
+	id := r.Selectors[0].Snapshot[0]
+	next := "feature/v1"
+	bundle := c.Bundles[next]
+	bundle.TransitionEvidence = true
+	c.Bundles[next] = bundle
+	r.Selectors[0].Exclusions = []string{id.ID}
+	r.Records = []Record{{id.ID, id.Path, id.Type, id.ContextRoot, next, c.Manifest.Contracts[next].Digest}}
+	r.History = append(r.History, Event{"transition", id.ID, id.Path, id.Path, r.Selectors[0].ContractID, next, []string{}})
+	raw, _ := Project(docs[id.Path].Raw, map[string]string{"flow_contract": next})
+	docs[id.Path] = document(t, id.Path, string(raw))
+	if _, err := ValidateRegistry(r, c, docs); err == nil {
+		t.Fatal("accepted transition without required evidence")
+	}
+	r.History[len(r.History)-1].Evidence = []string{"review/42"}
+	if _, err := ValidateRegistry(r, c, docs); err != nil {
+		t.Fatal(err)
+	}
+}

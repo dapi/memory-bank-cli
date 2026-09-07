@@ -152,7 +152,7 @@ func LoadCatalog(m Manifest, files map[string][]byte, selection *Installation) (
 		if doc.String("status") != "draft" || doc.String("document_type") != typ || doc.String("doc_kind") != typ || doc.Has("document_id") || doc.Has("flow_contract") {
 			return c, fmt.Errorf("invalid base template metadata %s", d.Template)
 		}
-		if bytes.Contains(doc.Body, []byte("\n---\n")) {
+		if hasEmbeddedFrontmatter(doc.Body) {
 			return c, fmt.Errorf("embedded frontmatter is unsupported in %s", d.Template)
 		}
 		c.Types[typ] = d
@@ -201,4 +201,24 @@ func LoadCatalog(m Manifest, files map[string][]byte, selection *Installation) (
 		}
 	}
 	return c, nil
+}
+
+func hasEmbeddedFrontmatter(body []byte) bool {
+	lines := strings.Split(strings.ReplaceAll(string(body), "\r\n", "\n"), "\n")
+	for i, line := range lines {
+		if line != "---" {
+			continue
+		}
+		for j := i + 1; j < len(lines); j++ {
+			if lines[j] != "---" {
+				continue
+			}
+			embedded, err := ParseDocument("", []byte(strings.Join(lines[i:j+1], "\n")+"\n"))
+			if err == nil && (embedded.Has("status") || embedded.Has("doc_kind") || embedded.Has("document_type") || embedded.Has("document_id") || embedded.Has("flow_contract")) {
+				return true
+			}
+			break
+		}
+	}
+	return false
 }
