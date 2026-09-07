@@ -43,6 +43,7 @@ jobs:
         with:
           repository: dapi/memory-bank
           ref: f695db6a703e5409f10c9988e6460b41068fe30c
+          fetch-depth: 0
           path: .fixtures/component-source
           persist-credentials: false
       - name: Verify component contracts and transaction fixtures
