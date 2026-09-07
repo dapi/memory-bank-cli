@@ -5,8 +5,9 @@ This is CLI #62's implementation plan for W2, owned by memory-bank-cli. It impor
 and the parent issue's acceptance contract. The template feature owns payload declarations,
 base templates and flow wrappers; this file owns CLI implementation sequencing only.
 
-Status: candidate. Implementation waits for a clean review of CTR-01/ADR-002, this plan, and
-the bridge checkpoint. Bridge checkpoint: ready PR #63 at 3b434fd93678c36447d10d4f308a39ce5d74b040, with
+Status: active. Shared Solution Ready is satisfied by the reviewed c22294b → b94560c
+contract chain (2026-09-07T01:14:17Z). This execution plan passed independent review at
+acbfb32, and the bridge checkpoint is complete. Bridge checkpoint: ready PR #63 at 3b434fd93678c36447d10d4f308a39ce5d74b040, with
 required CI, actual-binary canary and independent functional/simplification reviews clean. No release or live downstream migration is included.
 
 ## Grounding and boundaries
@@ -164,4 +165,4 @@ The source-format bridge remains a separate delivery checkpoint; this plan does 
 advertise component capability until its complete operation matrix is implemented.
 Producer/consumer fixtures must cover CTR-01 selector grouping/IDs, context-root derivation,
 canonical registry bytes and exact legacy finding multiset equality. Shared contract review
-and this execution-plan review are separate gates; neither is assumed complete here.
+and this execution-plan review are separate gates; both completion checkpoints are recorded above.
