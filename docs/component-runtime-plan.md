@@ -6,8 +6,8 @@ and the parent issue's acceptance contract. The template feature owns payload de
 base templates and flow wrappers; this file owns CLI implementation sequencing only.
 
 Status: candidate. Implementation waits for a clean review of CTR-01/ADR-002, this plan, and
-the bridge checkpoint. Bridge candidate commit: a0811c4 (full SHA recorded with binary evidence
-once independent review completes). No release or live downstream migration is included.
+the bridge checkpoint. Bridge checkpoint: ready PR #63 at 3b434fd93678c36447d10d4f308a39ce5d74b040, with
+required CI, actual-binary canary and independent functional/simplification reviews clean. No release or live downstream migration is included.
 
 ## Grounding and boundaries
 
@@ -108,6 +108,30 @@ uninstall, contract composition, automatic adoption, arbitrary code execution or
 is introduced. Exact serialized fields and encoding rules are owned by the shared
 [CTR-01 wire format](https://github.com/dapi/memory-bank/blob/feat/141-component-adoption/docs/component-wire-format.md).
 Go types and producer/consumer fixtures implement it; semantic changes return to design review.
+
+## Durable recovery extension
+
+The consolidated CTR-01 recovery predicate requires internal/ownership/component_recovery.go
+and a component-only hook in the existing transaction engine. Before mutation, persist and
+sync a versioned staging journal binding every observed/target path, before/after bytes and
+modes, numbered backup mapping and created directories. Use a prepared/committed journal
+state: first sync existing target-file contents and staged replacements, then sync the
+prepared file, its staging directory and repository parent before target mutation.
+The existing writer renames originals into numbered backups; it does not create copied
+backup files before mutation. Sync both directories after each original rename and before
+installing its replacement, preserving the already synced original inode at target or backup.
+The journal also records directory before/after existence and modes for complete restoration; after all replacements and lock-last, sync changed files and directories, then
+atomically persist/sync the committed journal and staging directory. A crash before that
+last durable marker is ambiguous and requires restoring the complete before state. No new
+file writer or automatic rollback replay is introduced. Before subsequent component planning, retained staging blocks writes unless
+its complete before state has been restored; committed cleanup retries instead check complete
+after state and integrity. Unknown journals fail closed. The repository owner performs manual restoration using the
+journal's exact path-to-backup mapping and before observations: restore originals from
+numbered backups or a trusted pre-operation backup, restore modes, remove originally absent
+targets and created empty directories, and preserve concurrent edits separately. Recovery
+checking never edits target files; it checks the restored mixed-state fixture against all
+observations before cleaning staging and permitting ordinary preflight. Tests inject rollback/cleanup failure and verify that restoring only the lock is
+insufficient, complete restoration permits cleanup/re-entry and retry is idempotent.
 
 ## Verification and failure boundaries
 
