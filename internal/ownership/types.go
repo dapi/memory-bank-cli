@@ -1,7 +1,10 @@
 // Package ownership implements the versioned Memory Bank ownership and update contract.
 package ownership
 
-import "time"
+import (
+	"github.com/dapi/memory-bank-cli/internal/contracts"
+	"time"
+)
 
 const (
 	LockFileName          = "memory-bank/.lock"
@@ -38,10 +41,11 @@ type File struct {
 }
 
 type Lock struct {
-	SchemaVersion int             `json:"schema_version"`
-	Template      Template        `json:"template"`
-	LastUpdate    UpdateRecord    `json:"last_update"`
-	Files         map[string]File `json:"files"`
+	Installation  *contracts.Installation `json:"installation,omitempty"`
+	SchemaVersion int                     `json:"schema_version"`
+	Template      Template                `json:"template"`
+	LastUpdate    UpdateRecord            `json:"last_update"`
+	Files         map[string]File         `json:"files"`
 }
 
 type Action string
@@ -119,11 +123,18 @@ type AdaptedResolution struct {
 }
 
 type Options struct {
-	RepoRoot        string
-	SourceRoot      string
-	TemplateVersion string
-	SourceRef       string
-	DryRun          bool
+	Preset                string
+	Adapters              []string
+	MigrateComponents     bool
+	MigrationPlanDigest   string
+	MigrationResolution   []byte
+	componentTransaction  bool
+	componentObservations map[string]observation
+	RepoRoot              string
+	SourceRoot            string
+	TemplateVersion       string
+	SourceRef             string
+	DryRun                bool
 	// UserOwnedResolutions maps user-owned managed-file collisions to their
 	// explicit resolution: false keeps local content, true replaces it with the
 	// incoming source payload.

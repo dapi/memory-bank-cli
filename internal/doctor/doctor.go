@@ -11,6 +11,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/dapi/memory-bank-cli/internal/contracts"
 	"github.com/dapi/memory-bank-cli/internal/lint"
 	"github.com/dapi/memory-bank-cli/internal/ownership"
 	"github.com/dapi/memory-bank-cli/internal/projection"
@@ -70,8 +71,39 @@ func Run(options Options) (Report, error) {
 	}
 	report := Report{FormatVersion: ReportFormatVersion, Profile: profile, RepoRoot: repoRoot, Navigation: navigation, Findings: []Finding{}}
 	report.addNavigationFindings()
-	report.checkIdentityAndDrift(options.AgentFile, scopeRoot)
-	report.checkGovernance(scopeRoot)
+
+	handled := false
+	if profile == ProfileDownstream {
+		var componentErr error
+		var findings []contracts.Finding
+		var nav lint.Report
+		handled, findings, nav, componentErr = ownership.ValidateComponents(repoRoot, options.AgentFile)
+		if handled {
+			if componentErr != nil {
+				report.add(Finding{Code: "components.invalid", Severity: Error, Group: "components", Message: componentErr.Error()})
+			} else {
+				report.Navigation = nav
+				report.Navigation.RepoRoot = repoRoot
+				report.Findings = []Finding{}
+				report.addNavigationFindings()
+				for _, f := range findings {
+					report.add(Finding{Code: f.Code, Severity: Error, Group: "governance", Subject: f.Subject, Message: f.RuleID})
+				}
+				lock, _, _ := ownership.ReadLock(repoRoot)
+				report.TemplateIdentity = TemplateIdentity{SchemaVersion: lock.SchemaVersion, Version: lock.Template.Version, SourceRef: lock.Template.SourceRef}
+			}
+		}
+	}
+	if !handled {
+		report.checkIdentityAndDrift(options.AgentFile, scopeRoot)
+		report.checkGovernance(scopeRoot)
+	}
+	if profile == ProfileTemplate {
+		if err := ownership.ValidateComponentSource(repoRoot); err != nil {
+			report.add(Finding{Code: "components.source_invalid", Severity: Error, Group: "components", Message: err.Error()})
+		}
+	}
+
 	report.checkCI()
 	sort.SliceStable(report.Findings, func(i, j int) bool {
 		left, right := report.Findings[i], report.Findings[j]

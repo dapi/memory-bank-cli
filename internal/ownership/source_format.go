@@ -36,12 +36,25 @@ func verifySourceFormat(root, ref, payloadRoot string) error {
 	if err != nil {
 		return fmt.Errorf("inspect component marker: %w", err)
 	}
-	if entry != "" {
-		return errors.New("unsupported component source: this bridge supports only legacy/v1; upgrade the CLI before installing components")
-	}
 	data, exists, err := readSourceDeclaration(root, ref)
 	if err != nil {
 		return err
+	}
+	if entry != "" {
+		if !componentHost() {
+			return errors.New("component sources require Linux or macOS")
+		}
+		if !exists {
+			return errors.New("unsupported component source: declaration missing")
+		}
+		d, e := decodeSourceDeclaration(data)
+		if e != nil {
+			return e
+		}
+		if d.SchemaVersion != 1 || d.PayloadFormat != "components/v1" || len(d.Capabilities) != 2 || d.Capabilities[0] != "adoption/v1" || d.Capabilities[1] != "components/v1" {
+			return errors.New("unsupported component source: invalid declaration")
+		}
+		return nil
 	}
 	if !exists {
 		for _, allowed := range SupportedLegacySourceRefs() {

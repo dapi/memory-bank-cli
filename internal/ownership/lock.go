@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"github.com/dapi/memory-bank-cli/internal/contracts"
 	"io"
 	"os"
 	"path"
@@ -52,8 +53,18 @@ func readLockSnapshot(repo pinnedRepo) (Lock, bool, string, error) {
 	}
 	// Schema 0 was the unversioned prototype. Its fields have v1 semantics and
 	// are rewritten as v1 after the next successful update.
-	if lock.SchemaVersion != 0 && lock.SchemaVersion != CurrentSchemaVersion {
+	if lock.SchemaVersion != 0 && lock.SchemaVersion != CurrentSchemaVersion && lock.SchemaVersion != 2 {
 		return Lock{}, false, "", fmt.Errorf("unsupported memory-bank lock schema %d (supported: %d)", lock.SchemaVersion, CurrentSchemaVersion)
+	}
+	if lock.SchemaVersion == 2 {
+		if err := contracts.Decode(data, &lock); err != nil {
+			return Lock{}, false, "", err
+		}
+		if lock.Installation == nil {
+			return Lock{}, false, "", errors.New("schema-2 installation missing")
+		}
+	} else if lock.Installation != nil {
+		return Lock{}, false, "", errors.New("legacy lock contains component installation")
 	}
 	if lock.Files == nil {
 		lock.Files = make(map[string]File)
@@ -65,7 +76,7 @@ func readLockSnapshot(repo pinnedRepo) (Lock, bool, string, error) {
 		return Lock{}, false, "", fmt.Errorf("invalid last update in %s", LockFileName)
 	}
 	for filePath, file := range lock.Files {
-		if filePath == LockFileName || path.IsAbs(filePath) || strings.Contains(filePath, "\\") || path.Clean(filePath) != filePath || strings.HasPrefix(filePath, "../") || filePath == "." || isGitMetadataPath(filePath) {
+		if filePath == contracts.RegistryPath || filePath == LockFileName || path.IsAbs(filePath) || strings.Contains(filePath, "\\") || path.Clean(filePath) != filePath || strings.HasPrefix(filePath, "../") || filePath == "." || isGitMetadataPath(filePath) {
 			return Lock{}, false, "", fmt.Errorf("invalid path %q in %s", filePath, LockFileName)
 		}
 		switch file.Ownership {
@@ -73,14 +84,14 @@ func readLockSnapshot(repo pinnedRepo) (Lock, bool, string, error) {
 			if !digestPattern.MatchString(file.BaseDigest) || !digestPattern.MatchString(file.PayloadDigest) {
 				return Lock{}, false, "", fmt.Errorf("invalid digest contract for %s", filePath)
 			}
-			if lock.SchemaVersion == CurrentSchemaVersion && (!modePattern.MatchString(file.BaseMode) || !modePattern.MatchString(file.PayloadMode)) {
+			if lock.SchemaVersion >= CurrentSchemaVersion && (!modePattern.MatchString(file.BaseMode) || !modePattern.MatchString(file.PayloadMode)) {
 				return Lock{}, false, "", fmt.Errorf("invalid mode contract for %s", filePath)
 			}
 		case Adapted:
 			if !digestPattern.MatchString(file.BaseDigest) {
 				return Lock{}, false, "", fmt.Errorf("invalid base digest for %s", filePath)
 			}
-			if lock.SchemaVersion == CurrentSchemaVersion && !modePattern.MatchString(file.BaseMode) {
+			if lock.SchemaVersion >= CurrentSchemaVersion && !modePattern.MatchString(file.BaseMode) {
 				return Lock{}, false, "", fmt.Errorf("invalid base mode for %s", filePath)
 			}
 		case UserOwned:

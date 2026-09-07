@@ -52,6 +52,7 @@ type Manifest struct {
 	MigrationPaths         map[string]PathMigration `json:"migration_paths,omitempty"`
 }
 type Installation struct {
+	RendererVersion *int     `json:"renderer_version,omitempty"`
 	Preset          string   `json:"preset"`
 	Components      []string `json:"components"`
 	Adapters        []string `json:"adapters"`
@@ -323,6 +324,9 @@ func sorted(values []string) []string {
 
 // ValidateInstallation checks a persisted closure rather than treating it as new opt-in.
 func (m Manifest) ValidateInstallation(s Installation) error {
+	if s.RendererVersion != nil && *s.RendererVersion != 1 && *s.RendererVersion != 2 {
+		return errors.New("unsupported component renderer")
+	}
 	if !ValidDigest(s.ManifestDigest) || !SortedSet(s.Components) || !SortedSet(s.Adapters) {
 		return errors.New("invalid installation metadata")
 	}
