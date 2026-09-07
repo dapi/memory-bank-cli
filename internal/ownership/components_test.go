@@ -178,7 +178,7 @@ func TestComponentAtomicLegacyFlowCreation(t *testing.T) {
 	if r, err := Init(o); err != nil || !r.Applied {
 		t.Fatalf("init: %+v %v", r, err)
 	}
-	draft := "---\nstatus: draft\ndoc_kind: feature\ndelivery_status: planned\n---\n\n# Feature\n"
+	draft := "---\nstatus: draft\ndoc_kind: feature\ndelivery_status: planned\n---\n\n# Feature\n\n[Index](../memory-bank/README.md)\n"
 	write(t, root, "drafts/feature.md", draft)
 	d := DocumentOptions{RepoRoot: root, Operation: "create", Type: "feature", Path: "memory-bank/features/FT-125/brief.md", From: "drafts/feature.md", LegacyFlow: true}
 	if r, err := DocumentOperation(d); err != nil || !r.Applied {
@@ -187,6 +187,10 @@ func TestComponentAtomicLegacyFlowCreation(t *testing.T) {
 	input, _ := os.ReadFile(filepath.Join(root, d.From))
 	if string(input) != draft {
 		t.Fatal("draft changed")
+	}
+	created, _ := os.ReadFile(filepath.Join(root, d.Path))
+	if !strings.Contains(string(created), "[Index](../../README.md)") {
+		t.Fatal("draft reference not relocated")
 	}
 	b, _ := os.ReadFile(filepath.Join(root, contracts.RegistryPath))
 	registry, err := contracts.ReadRegistry(b)
@@ -253,6 +257,9 @@ func TestComponentCommittedRecoveryRetriesCleanup(t *testing.T) {
 	}
 	draftPath := "drafts/input.md"
 	write(t, root, draftPath, "prepared draft")
+	if err = os.Chmod(filepath.Join(root, "drafts"), 0700); err != nil {
+		t.Fatal(err)
+	}
 	observation, _, err := observeComponent(repo, draftPath)
 	if err != nil {
 		t.Fatal(err)
@@ -283,10 +290,19 @@ func TestComponentCommittedRecoveryRetriesCleanup(t *testing.T) {
 	if err = os.Remove(filepath.Join(root, draftPath)); err != nil {
 		t.Fatal(err)
 	}
+	if err = os.Remove(filepath.Join(root, "drafts")); err != nil {
+		t.Fatal(err)
+	}
 	if err = checkComponentRecovery(repo, true); err == nil {
-		t.Fatal("deleted read input allowed cleanup")
+		t.Fatal("deleted read input directory allowed cleanup")
 	}
 	write(t, root, draftPath, string(snapshot))
+	if err = checkComponentRecovery(repo, true); err == nil {
+		t.Fatal("wrong restored input directory mode allowed cleanup")
+	}
+	if err = os.Chmod(filepath.Join(root, "drafts"), 0700); err != nil {
+		t.Fatal(err)
+	}
 	if err = checkComponentRecovery(repo, true); err != nil {
 		t.Fatal(err)
 	}

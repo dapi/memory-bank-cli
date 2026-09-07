@@ -103,7 +103,7 @@ digest before writes. Neither unattended mode nor --preset legacy replaces this 
 
 CLI flags: init/pull --preset NAME, repeated --adapter NAME; pull --migrate-components,
 --migration-plan-digest DIGEST and --migration-resolution FILE. Document commands use --type,
---path, --contract, --to, --id (required for move), --dry-run and repeatable --evidence REF as applicable. An explicit
+--path, --contract, optional --from for prepared creation, --to, --id (required for move), --dry-run and repeatable --evidence REF as applicable. An explicit
 --legacy-flow chooses the installation's pinned compatibility contract. No adapter removal,
 uninstall, contract composition, automatic adoption, arbitrary code execution or global service
 is introduced. Exact serialized fields and encoding rules are owned by the shared
@@ -118,8 +118,9 @@ sync a versioned staging journal binding every observed/target path, before/afte
 modes, numbered backup mapping and created directories. Use a prepared/committed journal
 state: first sync existing target-file contents and staged replacements, then sync the
 prepared file, its staging directory and repository parent before target mutation.
-The existing writer renames originals into numbered backups; it does not create copied
-backup files before mutation. Sync both directories after each original rename and before
+The existing writer renames originals into numbered backups; it does not copy write-target originals before mutation. The optional read-only --from
+input has a separate durable inputs/000000 snapshot, bound together with every ancestor
+directory state through cleanup. Sync both directories after each original rename and before
 installing its replacement, preserving the already synced original inode at target or backup.
 The journal also records directory before/after existence and modes for complete restoration; after all replacements and lock-last, sync changed files and directories, then
 atomically persist/sync the committed journal and staging directory. A crash before that

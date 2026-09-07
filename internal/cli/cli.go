@@ -16,11 +16,13 @@ import (
 	"strings"
 
 	"github.com/dapi/memory-bank-cli/internal/analyzegraph"
+	"github.com/dapi/memory-bank-cli/internal/contracts"
 	"github.com/dapi/memory-bank-cli/internal/doctor"
 	"github.com/dapi/memory-bank-cli/internal/githubadapter"
 	"github.com/dapi/memory-bank-cli/internal/handoff"
 	"github.com/dapi/memory-bank-cli/internal/lint"
 	"github.com/dapi/memory-bank-cli/internal/ownership"
+	"github.com/dapi/memory-bank-cli/internal/projection"
 	"github.com/dapi/memory-bank-cli/internal/push"
 	"github.com/dapi/memory-bank-cli/internal/repository"
 	"github.com/dapi/memory-bank-cli/internal/selfupdate"
@@ -1001,7 +1003,7 @@ func runLint(arguments []string, commandName, version string, stdout, stderr io.
 		return exitFailure
 	}
 
-	if scopeRoot == "memory-bank" {
+	if scopeRoot == "memory-bank" && !projection.IsUninstalledSourceProjection(repoRoot, contracts.ManifestPath) {
 		handled, findings, nav, e := ownership.ValidateComponents(repoRoot, "")
 		if handled {
 			if e != nil {

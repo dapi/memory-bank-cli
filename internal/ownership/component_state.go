@@ -1,7 +1,6 @@
 package ownership
 
 import (
-	"bytes"
 	"errors"
 	"fmt"
 	"io/fs"
@@ -343,6 +342,9 @@ func ValidateComponents(root, agent string) (handled bool, findings []contracts.
 		}
 		return false, nil, navigation, nil
 	}
+	if agent != "" && agent != "AGENTS.md" {
+		return true, nil, navigation, errors.New("component installations require AGENTS.md")
+	}
 	tree, e := readComponentTree(repo, lock, []string{agent})
 	if e != nil {
 		return true, nil, navigation, e
@@ -361,7 +363,6 @@ func ValidateComponents(root, agent string) (handled bool, findings []contracts.
 }
 
 func sameObservation(a, b observation) bool { return reflect.DeepEqual(a, b) }
-func sameBytes(a, b []byte) bool            { return bytes.Equal(a, b) }
 
 // ValidateComponentSource checks the complete local producer inventory. No
 // downstream lock is expected when the explicit template profile is selected.

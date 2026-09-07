@@ -374,6 +374,3 @@ func hasComponentSource(source map[string]payload) bool {
 	_, ok := source[contracts.ManifestPath]
 	return ok
 }
-func reservedComponentPath(p string) bool {
-	return strings.HasPrefix(p, ".memory-bank-update-") || p == contracts.RegistryPath || p == LockFileName
-}

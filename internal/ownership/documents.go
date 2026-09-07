@@ -199,10 +199,10 @@ func DocumentOperation(o DocumentOptions) (Report, error) {
 			if draft.Has("document_id") || draft.Has("flow_contract") || (draft.Has("document_type") && draft.String("document_type") != typ) || (draft.Has("doc_kind") && draft.String("doc_kind") != typ) {
 				return Report{}, errors.New("draft has adoption or incompatible type metadata")
 			}
-			if e = contracts.ValidateDraftCopy(draft, o.Path); e != nil {
+			raw, e = contracts.RelocateBaseDocument(draft.Raw, draft.Path, o.Path)
+			if e != nil {
 				return Report{}, e
 			}
-			raw = draft.Raw
 		}
 
 	case "adopt":

@@ -2,14 +2,14 @@ package contracts
 
 import "testing"
 
-func TestDraftCopyRejectsRelativeReferences(t *testing.T) {
-	for _, body := range []string{"[source](../source.md)", "[source]: ../source.md", "![image](image.png)", "<a href='relative.md'>link</a>", "[link]:\n  relative.md"} {
+func TestDraftCopyRejectsUnsupportedReferences(t *testing.T) {
+	for _, body := range []string{"[source](../../outside.md)", "<a href='relative.md'>link</a>", "[link]:\n  relative.md"} {
 		d, e := ParseDocument("drafts/input.md", []byte("---\nstatus: draft\n---\n"+body))
 		if e != nil {
 			t.Fatal(e)
 		}
-		if e = ValidateDraftCopy(d, "memory-bank/features/FT-1/brief.md"); e == nil {
-			t.Fatalf("relative reference accepted: %s", body)
+		if _, e = RelocateBaseDocument(d.Raw, d.Path, "memory-bank/features/FT-1/brief.md"); e == nil {
+			t.Fatalf("unsafe reference accepted: %s", body)
 		}
 	}
 	for _, body := range []string{"[source](/memory-bank/README.md)", "[site](https://example.org)", "[self](#heading)", "plain draft", "```\n[example](relative.md)\n```"} {
@@ -17,7 +17,7 @@ func TestDraftCopyRejectsRelativeReferences(t *testing.T) {
 		if e != nil {
 			t.Fatal(e)
 		}
-		if e = ValidateDraftCopy(d, "memory-bank/features/FT-1/brief.md"); e != nil {
+		if _, e = RelocateBaseDocument(d.Raw, d.Path, "memory-bank/features/FT-1/brief.md"); e != nil {
 			t.Fatalf("independent draft rejected: %s: %v", body, e)
 		}
 	}
@@ -43,7 +43,7 @@ func TestDraftGrammarVectors(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		err = ValidateDraftCopy(d, "memory-bank/features/FT-1/brief.md")
+		_, err = RelocateBaseDocument(d.Raw, d.Path, "memory-bank/features/FT-1/brief.md")
 		if (err == nil) != tc.valid {
 			t.Fatalf("%q valid=%v: %v", tc.text, tc.valid, err)
 		}

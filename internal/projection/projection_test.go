@@ -94,3 +94,20 @@ func TestRejectsPathsOutsideTheRepositoryRoot(t *testing.T) {
 		}
 	}
 }
+
+func TestSourceProjectionRequiresAbsentLock(t *testing.T) {
+	root := t.TempDir()
+	writeForTest(t, root, "template/memory-bank/components.json", "{}")
+	link := writeForTest(t, root, "memory-bank/components.json", "temporary")
+	if err := os.Remove(link); err != nil {
+		t.Fatal(err)
+	}
+	symlinkForTest(t, "../template/memory-bank/components.json", link)
+	if !IsUninstalledSourceProjection(root, "memory-bank/components.json") {
+		t.Fatal("source projection not recognized")
+	}
+	writeForTest(t, root, "memory-bank/.lock", "{}")
+	if IsUninstalledSourceProjection(root, "memory-bank/components.json") {
+		t.Fatal("existing lock bypassed")
+	}
+}

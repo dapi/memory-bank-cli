@@ -31,6 +31,9 @@ func TestComponentIntegrityRejectsTamperingWithoutMutation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	if _, _, _, err := ValidateComponents(root, "CLAUDE.md"); err == nil {
+		t.Fatal("alternate component agent target accepted")
+	}
 	manifestBytes, _ := os.ReadFile(filepath.Join(root, contracts.ManifestPath))
 	manifest, err := contracts.ReadManifest(manifestBytes, nil)
 	if err != nil {

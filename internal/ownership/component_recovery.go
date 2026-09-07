@@ -230,6 +230,11 @@ func validateJournal(j componentJournal) error {
 		if !contracts.ValidPath(p) || strings.HasPrefix(p, ".memory-bank-update-") {
 			return errors.New("unsafe recovery target")
 		}
+		for parent := path.Dir(p); parent != "."; parent = path.Dir(parent) {
+			if _, exists := j.Directories[parent]; !exists {
+				return errors.New("recovery journal omits input ancestor")
+			}
+		}
 		for _, o := range []observation{o, j.After[p]} {
 			if o.Exists {
 				if !contracts.ValidDigest(o.Digest) || !modePattern.MatchString(o.Mode) || !permissionPattern.MatchString(o.Permissions) {

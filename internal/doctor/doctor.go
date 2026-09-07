@@ -73,7 +73,7 @@ func Run(options Options) (Report, error) {
 	report.addNavigationFindings()
 
 	handled := false
-	if profile == ProfileDownstream {
+	if profile == ProfileDownstream && !projection.IsUninstalledSourceProjection(repoRoot, contracts.ManifestPath) {
 		var componentErr error
 		var findings []contracts.Finding
 		var nav lint.Report
