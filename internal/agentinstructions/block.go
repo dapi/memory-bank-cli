@@ -45,7 +45,10 @@ type markerLine struct {
 // BuildPlan returns a safe whole-file replacement while preserving every byte
 // outside the exact managed markers. A newly appended block is separated from
 // existing content by one blank line; no existing newline is rewritten.
-func BuildPlan(original []byte) Plan {
+func BuildPlan(original []byte) Plan { return BuildPlanWithBlock(original, CurrentBlock) }
+
+// BuildPlanWithBlock shares the exact marker boundary rules with component renderers.
+func BuildPlanWithBlock(original, block []byte) Plan {
 	rawStarts := bytes.Count(original, []byte(StartMarker))
 	rawEnds := bytes.Count(original, []byte(EndMarker))
 	upper := bytes.ToUpper(original)
@@ -63,8 +66,8 @@ func BuildPlan(original []byte) Plan {
 			}
 			data = append(data, '\n')
 		}
-		data = append(data, CurrentBlock...)
-		return Plan{Status: Missing, Data: data, Diff: blockDiff(nil, CurrentBlock)}
+		data = append(data, block...)
+		return Plan{Status: Missing, Data: data, Diff: blockDiff(nil, block)}
 	}
 	if len(starts) != 1 || len(ends) != 1 {
 		return Plan{Status: Ambiguous}
@@ -75,14 +78,14 @@ func BuildPlan(original []byte) Plan {
 	start := starts[0].start
 	end := ends[0].end
 	existing := original[start:end]
-	if bytes.Equal(existing, CurrentBlock) {
+	if bytes.Equal(existing, block) {
 		return Plan{Status: Current, Data: append([]byte(nil), original...)}
 	}
-	data := make([]byte, 0, len(original)-len(existing)+len(CurrentBlock))
+	data := make([]byte, 0, len(original)-len(existing)+len(block))
 	data = append(data, original[:start]...)
-	data = append(data, CurrentBlock...)
+	data = append(data, block...)
 	data = append(data, original[end:]...)
-	return Plan{Status: Outdated, Data: data, Diff: blockDiff(existing, CurrentBlock)}
+	return Plan{Status: Outdated, Data: data, Diff: blockDiff(existing, block)}
 }
 
 // standaloneMarkers recognizes ownership boundaries only when the marker is

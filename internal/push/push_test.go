@@ -423,6 +423,9 @@ func TestDryRunIncludesCanonicalTemplatePathsOutsideMemoryBank(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(source, "template", ".config", "hidden"), []byte("base\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
+	if err := os.WriteFile(filepath.Join(source, "memory-bank-source.json"), []byte(`{"schema_version":1,"payload_format":"legacy/v1","capabilities":["legacy/v1"]}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	git(t, source, "init", "--quiet")
 	git(t, source, "add", ".")
 	git(t, source, "-c", "user.name=Test", "-c", "user.email=test@example.invalid", "commit", "--quiet", "-m", "template")

@@ -404,6 +404,11 @@ func TestPinnedSourceExecutableModeIsInstalled(t *testing.T) {
 
 func commitTestSource(t *testing.T, root string) string {
 	t.Helper()
+	if _, err := os.Lstat(filepath.Join(root, "memory-bank-source.json")); os.IsNotExist(err) {
+		if err := os.WriteFile(filepath.Join(root, "memory-bank-source.json"), []byte(`{"schema_version":1,"payload_format":"legacy/v1","capabilities":["legacy/v1"]}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	runGitTest(t, root, "init", "--quiet")
 	runGitTest(t, root, "add", "--all")
 	runGitTest(t, root, "-c", "user.name=Memory Bank Tests", "-c", "user.email=tests@example.invalid", "commit", "--quiet", "-m", "source")

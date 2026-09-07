@@ -28,6 +28,11 @@ func testRepository(t *testing.T) string {
 
 func commitCLISource(t *testing.T, root, message string) string {
 	t.Helper()
+	if _, err := os.Lstat(filepath.Join(root, "memory-bank-source.json")); os.IsNotExist(err) {
+		if err := os.WriteFile(filepath.Join(root, "memory-bank-source.json"), []byte(`{"schema_version":1,"payload_format":"legacy/v1","capabilities":["legacy/v1"]}`), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
 	if _, err := os.Stat(filepath.Join(root, ".git")); os.IsNotExist(err) {
 		runCLIGit(t, root, "init", "--quiet")
 	}

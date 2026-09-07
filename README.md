@@ -9,6 +9,33 @@ Existing locks from the legacy payload roots are migrated conservatively:
 unchanged files adopt canonical ownership, while local customization is
 preserved for explicit resolution.
 
+## Source compatibility
+
+Before planning any `init`, `pull` or doctor repair, the CLI checks the pinned
+source format. The supported manifestless source is Memory Bank commit
+`f1f04de843aef45a2425d4a7351d577bbf89e940`. Unknown manifestless commits are
+rejected before downstream writes, including saved pull plans.
+
+Custom legacy sources must commit `memory-bank-source.json` at the checkout
+root (outside `template/`) and consumers must explicitly repin that commit:
+
+```json
+{"schema_version":1,"payload_format":"legacy/v1","capabilities":["legacy/v1"]}
+```
+
+This bridge supports legacy payloads only. Component payloads require a later
+CLI. Check capabilities before invoking an installer:
+
+```sh
+memory-bank-cli capabilities --require legacy/v1
+```
+
+The command emits JSON and returns nonzero for an unsupported capability.
+Keep the previous CLI/source pair to continue using an undeclared custom
+source without changing it. See the [bridge contract](docs/source-format-bridge.md)
+for the supported-source boundary and wire format, and the
+[component delivery plan](docs/component-delivery.md) for the subsequent work.
+
 ## Analyse an execution handoff
 
 Inspect an Execution Handoff without changing the handoff or Memory Bank:
