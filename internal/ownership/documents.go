@@ -149,7 +149,6 @@ func DocumentOperation(o DocumentOptions) (Report, error) {
 		evidenceSet[ref] = true
 	}
 	evidence := contracts.Keys(evidenceSet)
-	sort.Strings(evidence)
 	if !contracts.SortedSet(evidence) {
 		return Report{}, errors.New("evidence must contain unique nonempty references")
 	}
